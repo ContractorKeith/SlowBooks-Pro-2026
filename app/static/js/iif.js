@@ -315,7 +315,8 @@ const IIFPage = {
             const total = (result.accounts || 0) + (result.customers || 0) +
                           (result.vendors || 0) + (result.items || 0) +
                           (result.invoices || 0) + (result.payments || 0) +
-                          (result.estimates || 0);
+                          (result.estimates || 0) + (result.bills || 0) +
+                          (result.deposits || 0);
             toast(`Imported ${total} records`);
             App.setStatus('QuickBooks Interop — Import complete');
         } catch (err) {
@@ -333,6 +334,8 @@ const IIFPage = {
             ['Invoices', result.invoices],
             ['Payments', result.payments],
             ['Estimates', result.estimates],
+            ['Bills', result.bills],
+            ['Deposits', result.deposits],
         ];
 
         let html = '<div class="iif-results"><h4>Import Results</h4>';

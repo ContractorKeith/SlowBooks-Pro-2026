@@ -9,6 +9,8 @@ class IIFImportResult(BaseModel):
     invoices: int = 0
     payments: int = 0
     estimates: int = 0
+    bills: int = 0
+    deposits: int = 0
     errors: list[dict] = []
     warnings: list[str] = []
 
