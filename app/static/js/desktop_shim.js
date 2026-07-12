@@ -137,12 +137,19 @@
     };
 
     // Same treatment for <a target="_blank"> anchors (attachment downloads,
-    // employee documents, print-preview links). Plain download links
-    // (no target="_blank") are left alone -- WebView2's native download
-    // flow already handles those correctly in the same window.
+    // employee documents, print-preview links) AND plain <a download>
+    // anchors (CSV exports, Settings -> Backups "Download"). Field test
+    // showed the latter were NOT handled correctly by WebView2's native
+    // download flow -- ALLOW_DOWNLOADS routes them through a fresh request
+    // that doesn't carry the session cookie, same underlying problem as
+    // the PDF/print-preview 401 this file was written to fix, just via a
+    // different link pattern. Both go through the same fetch-then-save
+    // path below.
     document.addEventListener('click', function (e) {
         if (!inDesktopShell()) return;
-        const a = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
+        const a = e.target && e.target.closest
+            ? e.target.closest('a[target="_blank"], a[download]')
+            : null;
         if (!a || !a.href || !isSameOrigin(a.href)) return;
         e.preventDefault();
         openSameOriginUrl(a.href);
