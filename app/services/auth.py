@@ -6,6 +6,7 @@
 # session issued via Starlette SessionMiddleware (signed cookie).
 # ============================================================================
 
+import logging
 import os
 import secrets
 from pathlib import Path
@@ -16,6 +17,8 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.services.settings_service import get_setting_raw, set_setting
+
+logger = logging.getLogger(__name__)
 
 # Settings-table key where the argon2 hash lives
 AUTH_PASSWORD_KEY = "auth_password_hash"
@@ -54,6 +57,13 @@ def get_session_secret() -> str:
       1. SESSION_SECRET_KEY env var (ops-preferred)
       2. .slowbooks-session.key file next to the repo (auto-created at 0600)
       3. Fresh random generation (not persisted if the FS is read-only)
+
+    The diagnostics below are deliberate: this key rotating unexpectedly
+    silently invalidates every existing session cookie (users get bounced
+    to a login screen mid-use with no visible cause). #3 is a SILENT
+    fallback by design elsewhere in this function -- these log lines exist
+    so that when it fires, it shows up in the desktop install's log
+    instead of vanishing into an `except OSError: pass`.
     """
     env_key = os.environ.get("SESSION_SECRET_KEY", "").strip()
     if env_key:
@@ -64,11 +74,13 @@ def get_session_secret() -> str:
         try:
             existing = key_path.read_text().strip()
             if existing:
+                logger.info("session secret loaded from %s", key_path)
                 return existing
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("could not read %s: %s", key_path, exc)
 
     new_key = secrets.token_urlsafe(48)
+    persisted = False
     try:
         import tempfile
 
@@ -77,13 +89,25 @@ def get_session_secret() -> str:
         os.close(fd)
         os.chmod(tmp, 0o600)
         os.replace(tmp, str(key_path))
-    except OSError:
-        pass
+        persisted = True
+    except OSError as exc:
+        logger.warning("could not persist session secret to %s: %s", key_path, exc)
     if key_path.exists():
         try:
-            return key_path.read_text().strip() or new_key
+            existing = key_path.read_text().strip()
+            if existing:
+                if persisted:
+                    logger.info("new session secret written to %s", key_path)
+                return existing
         except OSError:
             pass
+    logger.warning(
+        "session secret is NOT persisted -- it will be different every "
+        "time the server restarts, which logs everyone out without "
+        "warning. This should only ever log once, on a truly first-ever "
+        "launch; if it keeps appearing on every restart, %s isn't writable.",
+        key_path,
+    )
     return new_key
 
 
