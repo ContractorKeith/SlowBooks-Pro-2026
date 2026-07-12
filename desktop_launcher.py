@@ -556,6 +556,51 @@ class PickerApi:
             return {"success": False, "error": str(exc)}
         return {"success": True}
 
+    def save_backup_file(self, filename: str) -> dict:
+        """Copy a backup file straight from disk into the user's Downloads
+        folder -- no HTTP request at all.
+
+        Field test: fetching /api/backups/download/<file> from this page's
+        own JS (the same pattern open_document_pdf/_html use) came back
+        "Failed to fetch" even though the server logged a 200 for the exact
+        same request. Root cause: that endpoint serves
+        media_type="application/octet-stream" with Content-Disposition:
+        attachment, and WebView2 (with ALLOW_DOWNLOADS on, needed elsewhere
+        for the Save-As dialog on this same window) intercepts that at the
+        network layer as a native download -- even when the request was
+        made via fetch() from a page's own script, not a real click or
+        navigation. The response never reaches the page's fetch() promise.
+        A CSV export sidesteps this by switching to Content-Disposition:
+        inline (browser-renderable text, so it's no longer download-
+        flagged); an octet-stream binary has no such option. Since the
+        desktop app and the backup file are on the same machine, this
+        skips HTTP for the backup case entirely.
+        """
+        try:
+            import shutil
+
+            from app.services.backup_service import BACKUP_DIR, _safe_backup_filename
+
+            safe_name = _safe_backup_filename(filename)
+            if safe_name is None:
+                return {"success": False, "error": "Invalid backup filename"}
+            src = (BACKUP_DIR / safe_name).resolve()
+            if not src.is_relative_to(BACKUP_DIR.resolve()) or not src.exists():
+                return {"success": False, "error": "Backup file not found"}
+
+            downloads = Path.home() / "Downloads"
+            downloads.mkdir(parents=True, exist_ok=True)
+            dest = downloads / src.name
+            stem, suffix = src.stem, src.suffix
+            n = 1
+            while dest.exists():
+                dest = downloads / f"{stem} ({n}){suffix}"
+                n += 1
+            shutil.copy2(src, dest)
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "path": str(dest)}
+
     def list_companies(self) -> dict:
         from app.services import company_service
 

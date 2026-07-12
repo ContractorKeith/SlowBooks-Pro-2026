@@ -8,7 +8,7 @@
  * which has a separate cookie jar — so those URLs came back
  * {"detail":"Not authenticated"}.
  *
- * Two things were tried and rejected before this design:
+ * Three things were tried and rejected before this design:
  *   1. An <iframe> overlay — blocked outright by this app's own
  *      Content-Security-Policy: frame-ancestors 'none' ("This content is
  *      blocked. Contact the site owner to fix the issue.").
@@ -17,16 +17,31 @@
  *      pywebview windows in one process nominally share a WebView2
  *      profile, but a fresh top-level browsing context evidently doesn't
  *      reliably carry the first window's session cookie in practice.
+ *   3. Fetching a Content-Disposition: attachment response from this
+ *      page's own JS and saving it via createObjectURL + <a download> —
+ *      field-tested and the fetch() itself failed ("Failed to fetch")
+ *      even though the server logged a normal 200 for the same request.
+ *      WebView2 (with ALLOW_DOWNLOADS on, needed for the final save step
+ *      below) intercepts "attachment" responses as a native download at
+ *      the network layer, regardless of whether the request came from a
+ *      real click or a script's fetch() call — the response never reaches
+ *      the page's fetch() promise.
  *
  * What actually works: fetch the URL from THIS page's own JavaScript —
  * exactly like the app's normal API calls, which is why those always
  * succeed — then hand the already-fetched content over to Python to
  * display. No second authenticated network request is ever made.
- *   - A response with Content-Disposition: attachment (CSV exports,
- *     attachment downloads) is saved via the same createObjectURL + <a
- *     download> trick the Settings → Backups "Download" link already
- *     uses successfully — entirely in this page, no native window
- *     involved.
+ *   - CSV exports ask the server for Content-Disposition: inline (see the
+ *     X-Slowbooks-Desktop header below) instead of attachment. text/csv is
+ *     browser-renderable, so "inline" isn't download-flagged and the
+ *     fetch() completes normally; the response is then saved via
+ *     createObjectURL + <a download>, entirely in this page.
+ *   - Settings → Backups "Download" skips HTTP entirely — see the
+ *     save_backup_file() branch in the click handler below. The backup
+ *     file (application/octet-stream, never browser-renderable, so
+ *     "inline" wouldn't help) is read straight off disk by Python and
+ *     copied to the user's Downloads folder, since the desktop app and
+ *     the file are already on the same machine.
  *   - An HTML response (print-preview pages) is handed to
  *     open_document_html(), which opens it in a new native window via
  *     pywebview's html= parameter.
@@ -83,10 +98,21 @@
         setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 30000);
     }
 
+    // Backups download URLs are handled by save_backup_file() instead of a
+    // fetch (see module docstring) -- matched here so the click handler can
+    // route them differently before falling into the generic fetch path.
+    function backupFilenameFromUrl(url) {
+        const m = /\/api\/backups\/download\/([^/?#]+)/.exec(url);
+        return m ? decodeURIComponent(m[1]) : null;
+    }
+
     async function openSameOriginUrl(url) {
         let response;
         try {
-            response = await fetch(url, { credentials: 'same-origin' });
+            response = await fetch(url, {
+                credentials: 'same-origin',
+                headers: { 'X-Slowbooks-Desktop': '1' },
+            });
         } catch (e) {
             if (typeof toast === 'function') toast('Could not load the document: ' + e.message, 'error');
             return;
@@ -152,6 +178,20 @@
             : null;
         if (!a || !a.href || !isSameOrigin(a.href)) return;
         e.preventDefault();
+
+        const backupFilename = backupFilenameFromUrl(a.href);
+        if (backupFilename && window.pywebview && window.pywebview.api
+                && window.pywebview.api.save_backup_file) {
+            window.pywebview.api.save_backup_file(backupFilename).then(function (result) {
+                if (result && result.success) {
+                    if (typeof toast === 'function') toast('Saved to Downloads: ' + result.path);
+                } else if (typeof toast === 'function') {
+                    toast((result && result.error) || 'Could not save the backup', 'error');
+                }
+            });
+            return;
+        }
+
         openSameOriginUrl(a.href);
     }, true);
 })();
