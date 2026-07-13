@@ -130,7 +130,14 @@
         const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
         const fallbackName = url.split('/').pop().split('?')[0] || 'download';
 
-        if (/attachment/i.test(disposition)) {
+        // CSV exports ask the server for "inline" instead of "attachment"
+        // (see app/routes/csv.py's X-Slowbooks-Desktop handling) specifically
+        // so WebView2 doesn't intercept the fetch() itself -- but that means
+        // the /attachment/ check below no longer catches them, and they'd
+        // otherwise fall through to the HTML branch and render as a raw-text
+        // "document" window instead of saving. text/csv is never meant to be
+        // *displayed* here, only saved, regardless of its disposition.
+        if (/attachment/i.test(disposition) || contentType.includes('csv')) {
             const blob = await response.blob();
             saveBlob(blob, filenameFromDisposition(disposition, fallbackName));
             return;
