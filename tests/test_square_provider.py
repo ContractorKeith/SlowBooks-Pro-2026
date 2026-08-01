@@ -276,3 +276,50 @@ def test_webhook_route_resolves_invoice_by_stored_order_id(
     payment = db_session.query(Payment).filter_by(reference="ORDER77").one()
     assert payment.method == "square"
     assert payment.amount == Decimal("123.45")
+
+
+def test_poll_open_order_with_zero_due_is_paid(monkeypatch):
+    """Verified against the live sandbox: a fully-paid quick-pay order
+    stays OPEN (COMPLETED is about fulfillment) with a tender attached
+    and net_amount_due_money 0. That must read as paid."""
+    monkeypatch.setattr(
+        sq._http,
+        "send",
+        lambda req, **kw: FakeResponse(
+            200,
+            {
+                "order": {
+                    "id": "ORDER77",
+                    "state": "OPEN",
+                    "total_money": {"amount": 789, "currency": "USD"},
+                    "net_amount_due_money": {"amount": 0, "currency": "USD"},
+                    "tenders": [
+                        {"id": "T1", "amount_money": {"amount": 789, "currency": "USD"}}
+                    ],
+                }
+            },
+        ),
+    )
+    result = SquareProvider().poll_status("ORDER77", SETTINGS)
+    assert result.status == "paid"
+    assert result.amount == Decimal("7.89")
+
+
+def test_poll_open_order_with_balance_due_still_pending(monkeypatch):
+    monkeypatch.setattr(
+        sq._http,
+        "send",
+        lambda req, **kw: FakeResponse(
+            200,
+            {
+                "order": {
+                    "id": "O",
+                    "state": "OPEN",
+                    "total_money": {"amount": 789, "currency": "USD"},
+                    "net_amount_due_money": {"amount": 789, "currency": "USD"},
+                    "tenders": [],
+                }
+            },
+        ),
+    )
+    assert SquareProvider().poll_status("O", SETTINGS).status == "pending"

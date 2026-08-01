@@ -206,7 +206,9 @@ class SquareProvider(PaymentProvider):
             return PaymentResult(status="unknown", external_id=external_id)
         order = resp.json().get("order") or {}
         state = order.get("state")
-        if state == "COMPLETED":
+        if state == "CANCELED":
+            return PaymentResult(status="cancelled", external_id=external_id, raw=order)
+        if _order_is_paid(order):
             amount_cents = (order.get("total_money") or {}).get("amount")
             return PaymentResult(
                 status="paid",
@@ -219,6 +221,22 @@ class SquareProvider(PaymentProvider):
                 invoice_id=None,
                 raw=order,
             )
-        if state == "CANCELED":
-            return PaymentResult(status="cancelled", external_id=external_id, raw=order)
         return PaymentResult(status="pending", external_id=external_id, raw=order)
+
+
+def _order_is_paid(order: dict) -> bool:
+    """A payment-link order is paid when COMPLETED — but verified against
+    the live sandbox (2026-08-01), a fully-paid quick-pay order stays in
+    state OPEN with a tender attached and net_amount_due_money of 0, and
+    never transitions to COMPLETED (that state is about fulfillment, not
+    payment). Treat both shapes as paid; an OPEN order with no tenders or
+    a remaining balance stays pending.
+    """
+    if order.get("state") == "COMPLETED":
+        return True
+    if order.get("state") != "OPEN":
+        return False
+    if not order.get("tenders"):
+        return False
+    net_due = (order.get("net_amount_due_money") or {}).get("amount")
+    return net_due == 0
