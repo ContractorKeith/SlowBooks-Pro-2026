@@ -535,3 +535,164 @@ def profit_loss_by_class(
         "total_expenses": sum(c["expenses"] for c in columns),
         "total_net_income": sum(c["net_income"] for c in columns),
     }
+
+
+# ── Financial-report PDFs ────────────────────────────────────────────────
+# One shared renderer (report_pdf.html + _report_theme.html) with the
+# pdf_paper_size setting (letter default, a4 selectable). The statements
+# pack bundles P&L + Balance Sheet + Trial Balance into one document.
+
+
+def _money(value) -> str:
+    amount = Decimal(str(value or 0))
+    sign = "-" if amount < 0 else ""
+    return f"{sign}${abs(amount):,.2f}"
+
+
+def _pl_section(data: dict) -> dict:
+    rows = []
+    for label, key, total_key in (
+        ("Income", "income", "total_income"),
+        ("Cost of Goods Sold", "cogs", "total_cogs"),
+    ):
+        rows.append({"cells": [label, ""], "style": "subtotal"})
+        for item in data[key]:
+            rows.append(
+                {"cells": [f"  {item['account_name']}", _money(item["amount"])]}
+            )
+        rows.append(
+            {"cells": [f"Total {label}", _money(data[total_key])], "style": "subtotal"}
+        )
+    rows.append(
+        {"cells": ["Gross Profit", _money(data["gross_profit"])], "style": "subtotal"}
+    )
+    rows.append({"cells": ["Expenses", ""], "style": "subtotal"})
+    for item in data["expenses"]:
+        rows.append({"cells": [f"  {item['account_name']}", _money(item["amount"])]})
+    rows.append(
+        {
+            "cells": ["Total Expenses", _money(data["total_expenses"])],
+            "style": "subtotal",
+        }
+    )
+    rows.append(
+        {"cells": ["Net Income", _money(data["net_income"])], "style": "grand-total"}
+    )
+    return {
+        "title": "Profit & Loss",
+        "period": f"{data['start_date']} — {data['end_date']}",
+        "columns": ["", "Amount"],
+        "rows": rows,
+    }
+
+
+def _bs_section(data: dict) -> dict:
+    rows = []
+    for label, key, total_key in (
+        ("Assets", "assets", "total_assets"),
+        ("Liabilities", "liabilities", "total_liabilities"),
+        ("Equity", "equity", "total_equity"),
+    ):
+        rows.append({"cells": [label, ""], "style": "subtotal"})
+        for item in data[key]:
+            rows.append(
+                {"cells": [f"  {item['account_name']}", _money(item["amount"])]}
+            )
+        rows.append(
+            {"cells": [f"Total {label}", _money(data[total_key])], "style": "subtotal"}
+        )
+    rows.append(
+        {
+            "cells": [
+                "Liabilities + Equity",
+                _money(data["total_liabilities"] + data["total_equity"]),
+            ],
+            "style": "grand-total",
+        }
+    )
+    return {
+        "title": "Balance Sheet",
+        "period": f"As of {data['as_of_date']}",
+        "columns": ["", "Amount"],
+        "rows": rows,
+    }
+
+
+def _tb_section(data: dict) -> dict:
+    rows = [
+        {
+            "cells": [
+                f"{item['account_number']} {item['account_name']}".strip(),
+                _money(item["total_debit"]),
+                _money(item["total_credit"]),
+            ]
+        }
+        for item in data["items"]
+    ]
+    rows.append(
+        {
+            "cells": [
+                "Total",
+                _money(data["total_debit"]),
+                _money(data["total_credit"]),
+            ],
+            "style": "grand-total",
+        }
+    )
+    return {
+        "title": "Trial Balance",
+        "period": f"{data['start_date']} — {data['end_date']}",
+        "columns": ["Account", "Debit", "Credit"],
+        "rows": rows,
+    }
+
+
+def _pdf_response(sections, db, filename: str):
+    from fastapi.responses import Response
+    from app.services.pdf_service import generate_report_pdf
+    from app.services.settings_service import get_all_settings
+
+    pdf_bytes = generate_report_pdf(sections, get_all_settings(db))
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/profit-loss/pdf")
+def profit_loss_pdf(
+    start_date: date = Query(default=None),
+    end_date: date = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    data = profit_loss(start_date, end_date, db)
+    return _pdf_response([_pl_section(data)], db, "profit-loss.pdf")
+
+
+@router.get("/balance-sheet/pdf")
+def balance_sheet_pdf(
+    as_of_date: date = Query(default=None), db: Session = Depends(get_db)
+):
+    data = balance_sheet(as_of_date, db)
+    return _pdf_response([_bs_section(data)], db, "balance-sheet.pdf")
+
+
+@router.get("/financial-statements/pdf")
+def financial_statements_pdf(
+    start_date: date = Query(default=None),
+    end_date: date = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """The statements pack: P&L, Balance Sheet, and Trial Balance in one
+    audit-ready document (each statement on its own page)."""
+    pl = profit_loss(start_date, end_date, db)
+    bs = balance_sheet(date.fromisoformat(pl["end_date"]), db)
+    tb = trial_balance(
+        date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"]), db
+    )
+    return _pdf_response(
+        [_pl_section(pl), _bs_section(bs), _tb_section(tb)],
+        db,
+        "financial-statements.pdf",
+    )
