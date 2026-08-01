@@ -595,7 +595,14 @@ def import_transactions(db: Session, blocks: list) -> dict:
     Other types (GENERAL JOURNAL, etc.) are silently skipped — extend
     the dispatch table here when adding support.
     """
-    counts = {"invoices": 0, "payments": 0, "estimates": 0, "bills": 0, "deposits": 0}
+    counts = {
+        "invoices": 0,
+        "payments": 0,
+        "estimates": 0,
+        "bills": 0,
+        "deposits": 0,
+        "duplicates_skipped": 0,
+    }
     errors = []
     warnings = []
 
@@ -631,10 +638,16 @@ def import_transactions(db: Session, blocks: list) -> dict:
                 result = _import_bill(db, trns, spls)
                 if result:
                     counts["bills"] += 1
+                else:
+                    # None = (vendor, bill_number) already imported —
+                    # a deliberate dedup hit, not a silent drop.
+                    counts["duplicates_skipped"] += 1
             elif trns_type == "DEPOSIT":
                 result = _import_deposit(db, trns, spls)
                 if result:
                     counts["deposits"] += 1
+                else:
+                    counts["duplicates_skipped"] += 1
             # Skip other transaction types (GENERAL JOURNAL, etc.) for now
             sp.commit()
 
@@ -723,6 +736,9 @@ def _import_bill(db: Session, trns: dict, spls: list) -> Bill:
     # Resolve all SPL expense accounts up front. Doing this BEFORE any
     # db.add() means a partial parse (one of three SPLs has a missing
     # account) raises cleanly without a half-created Bill row.
+    # TODO(class-tracking): SPL rows may carry a CLASS column; it's
+    # tolerated (ignored) today and gets wired to the Class dimension
+    # when class tracking lands.
     spl_resolved = []
     for spl in spls:
         spl_acct_name = spl.get("ACCNT", "").strip()
@@ -1475,6 +1491,7 @@ def import_all(db: Session, content: str) -> dict:
         result["estimates"] = counts.get("estimates", 0)
         result["bills"] = counts.get("bills", 0)
         result["deposits"] = counts.get("deposits", 0)
+        result["duplicates_skipped"] = counts.get("duplicates_skipped", 0)
         result["errors"].extend(r["errors"])
         result["warnings"].extend(r.get("warnings", []))
 

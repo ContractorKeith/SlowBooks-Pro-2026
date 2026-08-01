@@ -336,6 +336,7 @@ const IIFPage = {
             ['Estimates', result.estimates],
             ['Bills', result.bills],
             ['Deposits', result.deposits],
+            ['Duplicates skipped', result.duplicates_skipped],
         ];
 
         let html = '<div class="iif-results"><h4>Import Results</h4>';

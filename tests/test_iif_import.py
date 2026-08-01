@@ -151,6 +151,7 @@ BILL_IIF = (
 
 def _seed_apple_vendor(db_session):
     from app.models.contacts import Vendor
+
     v = Vendor(name="Apple Store", is_active=True)
     db_session.add(v)
     db_session.commit()
@@ -184,15 +185,22 @@ def test_iif_import_bill_happy_path(db_session, seed_accounts):
         assert b.lines[0].account.name == "Office Supplies"
     # Each bill has a balanced journal entry (DR Expense, CR AP).
     from app.models.transactions import TransactionLine
+
     for b in bills:
         assert b.transaction_id is not None
-        lines = db_session.query(TransactionLine).filter_by(transaction_id=b.transaction_id).all()
+        lines = (
+            db_session.query(TransactionLine)
+            .filter_by(transaction_id=b.transaction_id)
+            .all()
+        )
         total_dr = sum((Decimal(str(l.debit)) for l in lines), Decimal("0"))
         total_cr = sum((Decimal(str(l.credit)) for l in lines), Decimal("0"))
         assert total_dr == total_cr == b.total
 
 
-def test_iif_import_bill_missing_vendor_returns_error_no_partial(db_session, seed_accounts):
+def test_iif_import_bill_missing_vendor_returns_error_no_partial(
+    db_session, seed_accounts
+):
     """Spec: don't auto-create vendors. Surface the missing name so the
     user can fix Vendors first."""
     from app.services.iif_import import parse_iif, import_transactions
@@ -212,7 +220,9 @@ def test_iif_import_bill_missing_vendor_returns_error_no_partial(db_session, see
     assert db_session.query(Bill).count() == 0
 
 
-def test_iif_import_bill_missing_account_returns_error_no_partial(db_session, seed_accounts):
+def test_iif_import_bill_missing_account_returns_error_no_partial(
+    db_session, seed_accounts
+):
     """Same defensive posture for the SPL expense account: error out,
     don't silently fall back to a default expense category."""
     from app.services.iif_import import parse_iif, import_transactions
@@ -318,7 +328,11 @@ def test_iif_import_deposit_happy_path(db_session, seed_accounts):
     assert result["imported"]["deposits"] == 1, result
     assert result["errors"] == [], result["errors"]
 
-    txn = db_session.query(Transaction).filter_by(source_type="deposit", reference="DEP-001").first()
+    txn = (
+        db_session.query(Transaction)
+        .filter_by(source_type="deposit", reference="DEP-001")
+        .first()
+    )
     assert txn is not None
     lines = db_session.query(TransactionLine).filter_by(transaction_id=txn.id).all()
     assert len(lines) == 2
@@ -371,6 +385,7 @@ def test_iif_import_deposit_dedupes_on_docnum(db_session, seed_accounts):
 # import_all integration: counts roll up correctly into the result schema
 # ============================================================================
 
+
 def test_import_all_reports_bills_and_deposits_in_result(db_session, seed_accounts):
     """The route returns the result dict directly to the UI; the UI
     enumerates Bills/Deposits rows. Pin that the orchestrator
@@ -379,6 +394,7 @@ def test_import_all_reports_bills_and_deposits_in_result(db_session, seed_accoun
 
     # Seed Apple Store so the BILL portion succeeds.
     from app.models.contacts import Vendor
+
     db_session.add(Vendor(name="Apple Store", is_active=True))
     db_session.commit()
 
@@ -389,3 +405,24 @@ def test_import_all_reports_bills_and_deposits_in_result(db_session, seed_accoun
     assert result["bills"] == 2, result
     assert result["deposits"] == 1, result
     assert result["errors"] == [], result["errors"]
+
+
+def test_reimport_reports_duplicates_skipped(db_session, seed_accounts):
+    """Re-running the same BILL/DEPOSIT IIF reports dedup hits explicitly
+    instead of silently importing nothing."""
+    from app.models.contacts import Vendor
+    from app.services.iif_import import import_all
+
+    db_session.add(Vendor(name="Apple Store", is_active=True))
+    db_session.commit()
+
+    combined = BILL_IIF + DEPOSIT_IIF
+    first = import_all(db_session, combined)
+    assert first["bills"] == 2
+    assert first["deposits"] == 1
+    assert first["duplicates_skipped"] == 0
+
+    second = import_all(db_session, combined)
+    assert second["bills"] == 0
+    assert second["deposits"] == 0
+    assert second["duplicates_skipped"] == 3
