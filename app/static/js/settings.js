@@ -17,9 +17,6 @@ const SettingsPage = {
         return `
             <div class="page-header">
                 <h2>Company Settings</h2>
-                <div style="font-size:10px; color:var(--text-muted);">
-                    CPreferencesDialog — IDD_PREFERENCES @ 0x0023F800
-                </div>
             </div>
             <form id="settings-form" onsubmit="SettingsPage.save(event)">
                 <div class="settings-section">

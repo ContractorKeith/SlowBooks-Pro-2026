@@ -103,6 +103,7 @@ class InvoiceResponse(BaseModel):
     balance_due: Decimal
     notes: Optional[str]
     payment_token: Optional[str] = None
+    checkout_provider: Optional[str] = None
     lines: list[InvoiceLineResponse] = []
     customer_name: Optional[str] = None
     created_at: datetime

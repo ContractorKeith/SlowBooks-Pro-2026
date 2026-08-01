@@ -25,7 +25,7 @@ import re
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import DATABASE_URL
@@ -332,11 +332,14 @@ def create_company(
             base_url + "postgres", isolation_level="AUTOCOMMIT"
         )
         with system_engine.connect() as conn:
-            # database_name is validated above against strict alphanumeric pattern
-            conn.execute(text(f'CREATE DATABASE "{database_name}"'))
+            # database_name is validated above against strict alphanumeric pattern;
+            # dialect-level quoting is defence-in-depth for the DDL statement,
+            # which cannot use bound parameters.
+            quoted_db_name = conn.dialect.identifier_preparer.quote(database_name)
+            conn.exec_driver_sql(f"CREATE DATABASE {quoted_db_name}")
         system_engine.dispose()
 
-        # Run Alembic migrations on new database
+        # Create schema on the new database
         new_engine = create_engine(base_url + database_name)
         from app.database import Base
 

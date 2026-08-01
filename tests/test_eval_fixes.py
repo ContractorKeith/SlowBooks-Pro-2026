@@ -139,6 +139,27 @@ def test_csv_export_neutralizes_formula(db_session):
     assert "'=HYPERLINK" in out  # apostrophe-prefixed
 
 
+# --- Desktop shell: CSV export disposition switches on X-Slowbooks-Desktop -
+def test_csv_export_default_is_attachment(authed_client):
+    """Browser/Docker install: unchanged direct-download behavior."""
+    resp = authed_client.get("/api/csv/export/customers")
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"].startswith("attachment")
+
+
+def test_csv_export_desktop_header_is_inline(authed_client):
+    """Desktop shell: WebView2 intercepts an "attachment" response as a
+    native download even when fetched from the page's own JS, so
+    desktop_shim.js's fetch() never gets the response back ("Failed to
+    fetch" despite a 200 in the server log). Serving "inline" for this one
+    header lets that fetch() complete normally."""
+    resp = authed_client.get(
+        "/api/csv/export/customers", headers={"X-Slowbooks-Desktop": "1"}
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"].startswith("inline")
+
+
 # --- HIGH: dev encryption key + real DB must fail hard even in debug -----
 def test_dev_key_with_real_db_fails_even_in_debug(monkeypatch):
     import app.main as m

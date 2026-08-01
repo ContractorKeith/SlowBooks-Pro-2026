@@ -81,11 +81,51 @@ function closeSearchDropdown() {
  *   filter:     optional {id, rowSelector, options: [[value, label], ...]}
  *               status dropdown; filtering is client-side via filterRows()
  *   empty:      raw HTML rendered inside .empty-state when items is empty
- *   columns:    array of header labels; use {label, cls} for styled columns
+ *   columns:    array of header labels; use {label, cls} for styled columns.
+ *               Add `key` to make a column sortable: the value at
+ *               item[key] is compared numerically when both sides parse
+ *               as numbers, otherwise as case-insensitive strings.
  *   items:      the fetched rows
  *   row:        item => '<tr ...>...</tr>' (page keeps escaping/actions)
+ *   sort:       optional {id, column, direction} enabling click-to-sort
+ *               on columns that carry a `key`. `column`/`direction` set
+ *               the initial order ('asc'|'desc', default 'asc').
  */
-function renderListPage({ title, headerHtml = '', filter = null, empty, columns, items, row }) {
+const _listSortState = {};
+
+function _listSortCompare(a, b, key) {
+    const av = a?.[key], bv = b?.[key];
+    const an = parseFloat(av), bn = parseFloat(bv);
+    if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+    return String(av ?? '').toLowerCase().localeCompare(String(bv ?? '').toLowerCase());
+}
+
+function _listTableHtml(state) {
+    const { columns, items, row, sort } = state;
+    let rows = items;
+    if (sort && sort.column) {
+        const sign = sort.direction === 'desc' ? -1 : 1;
+        rows = items.slice().sort((a, b) => sign * _listSortCompare(a, b, sort.column));
+    }
+    const ths = columns.map(c => {
+        const col = typeof c === 'string' ? { label: c } : c;
+        const cls = [col.cls || ''];
+        let arrow = '', click = '';
+        if (sort && col.key) {
+            cls.push('sortable');
+            if (sort.column === col.key) {
+                cls.push('sort-active');
+                arrow = ` <span class="sort-arrow">${sort.direction === 'asc' ? '▲' : '▼'}</span>`;
+            }
+            click = ` onclick="sortListRows('${sort.id}', '${col.key}')"`;
+        }
+        return `<th class="${cls.filter(Boolean).join(' ')}"${click}>${col.label}${arrow}</th>`;
+    }).join('');
+    return `<table>
+        <thead><tr>${ths}</tr></thead><tbody>${rows.map(row).join('')}</tbody></table>`;
+}
+
+function renderListPage({ title, headerHtml = '', filter = null, empty, columns, items, row, sort = null }) {
     let html = `
         <div class="page-header">
             <h2>${title}</h2>
@@ -106,11 +146,31 @@ function renderListPage({ title, headerHtml = '', filter = null, empty, columns,
     if (items.length === 0) {
         return html + `<div class="empty-state">${empty}</div>`;
     }
-    const ths = columns
-        .map(c => (typeof c === 'string' ? `<th>${c}</th>` : `<th class="${c.cls}">${c.label}</th>`))
-        .join('');
-    return html + `<div class="table-container"><table>
-        <thead><tr>${ths}</tr></thead><tbody>${items.map(row).join('')}</tbody></table></div>`;
+    if (sort) {
+        sort.direction = sort.direction || 'asc';
+        const state = { columns, items, row, sort, filter };
+        _listSortState[sort.id] = state;
+        return html + `<div class="table-container" id="${sort.id}-table">${_listTableHtml(state)}</div>`;
+    }
+    const state = { columns, items, row, sort: null };
+    return html + `<div class="table-container">${_listTableHtml(state)}</div>`;
+}
+
+function sortListRows(sortId, key) {
+    const state = _listSortState[sortId];
+    if (!state) return;
+    if (state.sort.column === key) {
+        state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.sort.column = key;
+        // Date-like columns feel more natural newest-first on first
+        // click; everything else (text, money) defaults to ascending.
+        state.sort.direction = /(^|_)date$/.test(key) ? 'desc' : 'asc';
+    }
+    const wrap = document.getElementById(`${sortId}-table`);
+    if (!wrap) return;
+    wrap.innerHTML = _listTableHtml(state);
+    if (state.filter) filterRows(state.filter.id, state.filter.rowSelector);
 }
 
 function filterRows(selectId, rowSelector) {
@@ -118,4 +178,76 @@ function filterRows(selectId, rowSelector) {
     $$(rowSelector).forEach(row => {
         row.style.display = (!status || row.dataset.status === status) ? '' : 'none';
     });
+}
+const COUNTRIES = [
+    { code: 'US', name: 'United States' },
+    { code: 'CA', name: 'Canada' },
+    { code: 'IE', name: 'Ireland' },
+    { code: 'GB', name: 'United Kingdom' },
+    { code: 'AU', name: 'Australia' },
+    { code: '-', name: '──────────', disabled: true },
+    { code: 'AR', name: 'Argentina' },
+    { code: 'AT', name: 'Austria' },
+    { code: 'BE', name: 'Belgium' },
+    { code: 'BR', name: 'Brazil' },
+    { code: 'BG', name: 'Bulgaria' },
+    { code: 'CL', name: 'Chile' },
+    { code: 'CN', name: 'China' },
+    { code: 'CO', name: 'Colombia' },
+    { code: 'HR', name: 'Croatia' },
+    { code: 'CZ', name: 'Czech Republic' },
+    { code: 'DK', name: 'Denmark' },
+    { code: 'EG', name: 'Egypt' },
+    { code: 'EE', name: 'Estonia' },
+    { code: 'FI', name: 'Finland' },
+    { code: 'FR', name: 'France' },
+    { code: 'DE', name: 'Germany' },
+    { code: 'GR', name: 'Greece' },
+    { code: 'HK', name: 'Hong Kong' },
+    { code: 'HU', name: 'Hungary' },
+    { code: 'IS', name: 'Iceland' },
+    { code: 'IN', name: 'India' },
+    { code: 'ID', name: 'Indonesia' },
+    { code: 'IL', name: 'Israel' },
+    { code: 'IT', name: 'Italy' },
+    { code: 'JP', name: 'Japan' },
+    { code: 'KE', name: 'Kenya' },
+    { code: 'LV', name: 'Latvia' },
+    { code: 'LT', name: 'Lithuania' },
+    { code: 'LU', name: 'Luxembourg' },
+    { code: 'MY', name: 'Malaysia' },
+    { code: 'MX', name: 'Mexico' },
+    { code: 'MA', name: 'Morocco' },
+    { code: 'NL', name: 'Netherlands' },
+    { code: 'NZ', name: 'New Zealand' },
+    { code: 'NG', name: 'Nigeria' },
+    { code: 'NO', name: 'Norway' },
+    { code: 'PK', name: 'Pakistan' },
+    { code: 'PE', name: 'Peru' },
+    { code: 'PH', name: 'Philippines' },
+    { code: 'PL', name: 'Poland' },
+    { code: 'PT', name: 'Portugal' },
+    { code: 'RO', name: 'Romania' },
+    { code: 'SA', name: 'Saudi Arabia' },
+    { code: 'SG', name: 'Singapore' },
+    { code: 'SK', name: 'Slovakia' },
+    { code: 'SI', name: 'Slovenia' },
+    { code: 'ZA', name: 'South Africa' },
+    { code: 'KR', name: 'South Korea' },
+    { code: 'ES', name: 'Spain' },
+    { code: 'SE', name: 'Sweden' },
+    { code: 'CH', name: 'Switzerland' },
+    { code: 'TW', name: 'Taiwan' },
+    { code: 'TH', name: 'Thailand' },
+    { code: 'TR', name: 'Turkey' },
+    { code: 'UA', name: 'Ukraine' },
+    { code: 'AE', name: 'United Arab Emirates' },
+    { code: 'UY', name: 'Uruguay' },
+    { code: 'VN', name: 'Vietnam' },
+];
+
+function countryOptions(selected) {
+    return COUNTRIES.map(c =>
+        `<option value="${c.code}"${c.disabled ? ' disabled' : ''}${c.code === selected ? ' selected' : ''}>${c.name}</option>`
+    ).join('');
 }

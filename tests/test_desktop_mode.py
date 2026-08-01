@@ -203,3 +203,59 @@ def test_sqlite_restore_still_validates_filenames(sqlite_live_db, db_session):
     result = backup_service.restore_backup(db_session, "../../etc/passwd")
     assert not result["success"]
     assert result["error"] == "Invalid filename"
+
+
+# ---------------------------------------------------------------------------
+# PickerApi.save_backup_file — copies a backup straight off disk into
+# Downloads, bypassing HTTP. WebView2 (ALLOW_DOWNLOADS on, needed for the
+# copy's implicit save step... actually no network involved at all here)
+# intercepts Content-Disposition: attachment responses as a native download
+# even when fetched from the page's own JS, so the backups Download link
+# can't go through the same fetch-then-save path CSV exports use.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def picker_api(sqlite_live_db, monkeypatch, tmp_path):
+    import desktop_launcher
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(desktop_launcher.Path, "home", lambda: fake_home)
+    return desktop_launcher.PickerApi(3001), fake_home
+
+
+def test_save_backup_file_copies_to_downloads(sqlite_live_db, db_session, picker_api):
+    _live, backup_dir = sqlite_live_db
+    api, fake_home = picker_api
+    created = backup_service.create_backup(db_session, notes="test")
+    assert created["success"]
+
+    result = api.save_backup_file(created["filename"])
+    assert result["success"], result
+    dest = fake_home / "Downloads" / created["filename"]
+    assert str(dest) == result["path"]
+    assert dest.read_bytes() == (backup_dir / created["filename"]).read_bytes()
+
+
+def test_save_backup_file_rejects_path_traversal(picker_api):
+    api, _fake_home = picker_api
+    result = api.save_backup_file("../../etc/passwd")
+    assert not result["success"]
+
+
+def test_save_backup_file_missing_file(picker_api):
+    api, _fake_home = picker_api
+    result = api.save_backup_file("slowbooks_99999999_999999.db")
+    assert not result["success"]
+
+
+def test_save_backup_file_avoids_overwrite(sqlite_live_db, db_session, picker_api):
+    _live, backup_dir = sqlite_live_db
+    api, fake_home = picker_api
+    created = backup_service.create_backup(db_session, notes="test")
+
+    first = api.save_backup_file(created["filename"])
+    second = api.save_backup_file(created["filename"])
+    assert first["success"] and second["success"]
+    assert first["path"] != second["path"]

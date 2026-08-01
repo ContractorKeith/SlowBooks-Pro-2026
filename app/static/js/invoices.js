@@ -79,6 +79,7 @@ const InvoicesPage = {
                 <button class="btn btn-secondary" onclick="InvoicesPage.duplicate(${inv.id})">Duplicate</button>
                 <button class="btn btn-secondary" onclick="InvoicesPage.emailInvoice(${inv.id})">Email Invoice</button>
                 <button class="btn btn-secondary" onclick="InvoicesPage.copyPaymentLink(${inv.id})">Copy Payment Link</button>
+                ${inv.checkout_provider && inv.status !== 'paid' && inv.status !== 'void' ? `<button class="btn btn-secondary" onclick="InvoicesPage.checkPaymentStatus(${inv.id}, '${inv.checkout_provider}')">Check Payment Status</button>` : ''}
                 ${inv.status === 'draft' ? `<button class="btn btn-primary" onclick="InvoicesPage.markSent(${inv.id})">Mark Sent</button>` : ''}
                 ${inv.status !== 'void' ? `<button class="btn btn-danger" onclick="InvoicesPage.void(${inv.id})">Void Invoice</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
@@ -116,9 +117,28 @@ const InvoicesPage = {
 
     async copyPaymentLink(id) {
         try {
-            const data = await API.get(`/stripe/payment-link/${id}`);
+            const data = await API.get(`/payments/payment-link/${id}`);
             await navigator.clipboard.writeText(data.url);
             toast('Payment link copied to clipboard');
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
+    // Desktop-mode fallback: webhooks can't reach 127.0.0.1, so poll the
+    // provider for the invoice's last checkout and record it if captured.
+    async checkPaymentStatus(id, provider) {
+        try {
+            const data = await API.post(`/payments/${provider || 'stripe'}/check-status/${id}`);
+            if (data.status === 'payment_recorded') {
+                toast('Payment received and recorded');
+                closeModal();
+                App.navigate('#/invoices');
+            } else if (data.status === 'already_processed') {
+                toast('Payment was already recorded');
+            } else if (data.status === 'no_checkout') {
+                toast('No checkout has been started for this invoice');
+            } else {
+                toast(`Not paid yet (provider status: ${data.provider_status || 'unknown'})`);
+            }
         } catch (err) { toast(err.message, 'error'); }
     },
 

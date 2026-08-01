@@ -18,8 +18,17 @@ const BillsPage = {
             },
             empty: `<p>No bills entered yet.</p>
                 <button class="btn btn-primary" onclick="BillsPage.showForm()" style="margin-top:10px;">+ Enter your first bill</button>`,
-            columns: ['Bill #', 'Vendor', 'Date', 'Due', 'Status',
-                { label: 'Total', cls: 'amount' }, { label: 'Balance', cls: 'amount' }, 'Actions'],
+            columns: [
+                { label: 'Bill #', key: 'bill_number' },
+                { label: 'Vendor', key: 'vendor_name' },
+                { label: 'Date', key: 'date' },
+                { label: 'Due', key: 'due_date' },
+                { label: 'Status', key: 'status' },
+                { label: 'Total', cls: 'amount', key: 'total' },
+                { label: 'Balance', cls: 'amount', key: 'balance_due' },
+                'Actions',
+            ],
+            sort: { id: 'bills', column: 'date', direction: 'desc' },
             items: bills,
             row: b => `<tr class="bill-row" data-status="${b.status}">
                     <td><strong>${escapeHtml(b.bill_number)}</strong></td>

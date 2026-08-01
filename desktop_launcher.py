@@ -34,6 +34,7 @@ re-executed with the internal --_serve flag (no separate Python needed).
 
 import argparse
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -471,6 +472,17 @@ window.addEventListener('pywebviewready', refresh);
 """
 
 
+def _safe_temp_filename(title: str, suffix: str) -> str:
+    """Derive a safe filename for a transient viewer file from a title
+    string the caller does not fully control (a document's own title,
+    e.g. an invoice number). No path separators, no traversal, ASCII
+    letters/digits/dash/underscore only, bounded length."""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", title or "document").strip("-")
+    if not slug:
+        slug = "document"
+    return slug[:80] + suffix
+
+
 class PickerApi:
     """js_api bridge, available as window.pywebview.api on both the company
     picker AND the main app window (the same Window object is reused --
@@ -483,7 +495,7 @@ class PickerApi:
     producing endless console spam ('AccessibilityObject.Bounds.Empty...
     maximum recursion depth exceeded', 'CoreWebView2 can only be accessed
     from the UI thread') on every page load. Underscore names are skipped
-    by pywebview's get_functions(), so only the four methods are exposed.
+    by pywebview's get_functions(), so only the methods below are exposed.
     """
 
     def __init__(self, port: int, log_fh=None):
@@ -491,47 +503,103 @@ class PickerApi:
         self._server: subprocess.Popen | None = None
         self._log_fh = log_fh
 
-    def open_document(self, url: str) -> dict:
-        """Open a same-origin document (invoice/estimate PDF, print
-        preview, CSV export, ...) in a new native window.
+    def open_document_html(self, title: str, html: str) -> dict:
+        """Show already-fetched, already-authenticated HTML (an invoice/
+        estimate print-preview page) in a new native window.
 
-        The app sends Content-Security-Policy: frame-ancestors 'none' --
-        deliberate anti-clickjacking -- which forbids framing the app
-        even from itself, so an <iframe> overlay renders "This content
-        is blocked." A second top-level window sidesteps that (a
-        navigation, not a frame) and stays authenticated: every window
-        pywebview creates in this process shares one WebView2
-        UserDataFolder (see webview.platforms.winforms' module-level
-        cache_dir), so it carries the same session cookie as the main
-        window. Chromium's built-in viewer renders PDFs inline with its
-        own print/save controls; print-preview HTML pages call
-        window.print() themselves, which opens WebView2's native print
-        dialog in that window.
+        Why the caller fetches the content itself rather than handing over
+        a URL for a fresh window to load: a fresh pywebview window is a
+        SEPARATE top-level browsing context, and field testing showed it
+        does NOT reliably carry the main window's session cookie (still
+        got {"detail":"Not authenticated"} even though windows in this
+        process nominally share one WebView2 profile). desktop_shim.js
+        instead fetches the URL from the already-authenticated page's own
+        JavaScript -- exactly like the app's normal API calls, which is
+        why those always work -- and hands the finished content over here
+        to display. No further authenticated network request is needed.
 
-        The URL is resolved and validated against this app's own origin
-        server-side (not just by the caller in JS) before opening it.
+        An <iframe> overlay was tried before this and rejected outright:
+        the app sends Content-Security-Policy: frame-ancestors 'none'
+        (deliberate anti-clickjacking), so framing renders "This content
+        is blocked" even same-origin, even from the app itself. A new
+        top-level window sidesteps that; it isn't a frame.
         """
-        from urllib.parse import urljoin, urlparse
+        try:
+            import webview
 
-        origin = f"http://127.0.0.1:{self._port}"
-        full_url = urljoin(origin + "/", url)
-        parsed = urlparse(full_url)
-        if (
-            parsed.scheme != "http"
-            or parsed.hostname != "127.0.0.1"
-            or parsed.port != self._port
-        ):
-            return {"success": False, "error": "Refusing to open a non-local URL"}
+            webview.create_window(title or "SlowBooks Pro 2026", html=html)
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True}
+
+    def open_document_pdf(self, title: str, base64_data: str) -> dict:
+        """Show an already-fetched PDF (base64-encoded by the caller) in a
+        new native window, via a local temp file. Chromium's built-in PDF
+        viewer renders file:// URLs with its own print/save/zoom controls,
+        and a local file needs no authentication at all -- sidestepping
+        the same cross-window-cookie problem open_document_html's
+        docstring describes.
+        """
+        import base64
+        import tempfile
 
         try:
             import webview
 
-            webview.create_window(
-                "SlowBooks Pro 2026", full_url, width=900, height=1100
-            )
+            data = base64.b64decode(base64_data)
+            temp_dir = Path(tempfile.gettempdir()) / "SlowBooksProDocs"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_path = temp_dir / _safe_temp_filename(title, ".pdf")
+            temp_path.write_bytes(data)
+            webview.create_window(title or "SlowBooks Pro 2026", temp_path.as_uri())
         except Exception as exc:
             return {"success": False, "error": str(exc)}
         return {"success": True}
+
+    def save_backup_file(self, filename: str) -> dict:
+        """Copy a backup file straight from disk into the user's Downloads
+        folder -- no HTTP request at all.
+
+        Field test: fetching /api/backups/download/<file> from this page's
+        own JS (the same pattern open_document_pdf/_html use) came back
+        "Failed to fetch" even though the server logged a 200 for the exact
+        same request. Root cause: that endpoint serves
+        media_type="application/octet-stream" with Content-Disposition:
+        attachment, and WebView2 (with ALLOW_DOWNLOADS on, needed elsewhere
+        for the Save-As dialog on this same window) intercepts that at the
+        network layer as a native download -- even when the request was
+        made via fetch() from a page's own script, not a real click or
+        navigation. The response never reaches the page's fetch() promise.
+        A CSV export sidesteps this by switching to Content-Disposition:
+        inline (browser-renderable text, so it's no longer download-
+        flagged); an octet-stream binary has no such option. Since the
+        desktop app and the backup file are on the same machine, this
+        skips HTTP for the backup case entirely.
+        """
+        try:
+            import shutil
+
+            from app.services.backup_service import BACKUP_DIR, _safe_backup_filename
+
+            safe_name = _safe_backup_filename(filename)
+            if safe_name is None:
+                return {"success": False, "error": "Invalid backup filename"}
+            src = (BACKUP_DIR / safe_name).resolve()
+            if not src.is_relative_to(BACKUP_DIR.resolve()) or not src.exists():
+                return {"success": False, "error": "Backup file not found"}
+
+            downloads = Path.home() / "Downloads"
+            downloads.mkdir(parents=True, exist_ok=True)
+            dest = downloads / src.name
+            stem, suffix = src.stem, src.suffix
+            n = 1
+            while dest.exists():
+                dest = downloads / f"{stem} ({n}){suffix}"
+                n += 1
+            shutil.copy2(src, dest)
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "path": str(dest)}
 
     def list_companies(self) -> dict:
         from app.services import company_service
