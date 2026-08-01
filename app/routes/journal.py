@@ -124,6 +124,7 @@ def create_manual_journal_entry(
             lines,
             source_type="manual",
             reference=data.reference or "",
+            class_id=data.class_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

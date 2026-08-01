@@ -99,6 +99,7 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
                 total=total,
                 balance_due=total,
                 notes=rec.notes,
+                class_id=rec.class_id,
             )
             nested = db.begin_nested()
             db.add(candidate)
@@ -173,6 +174,7 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
                 source_type="invoice",
                 source_id=invoice.id,
                 reference=invoice_number,
+                class_id=invoice.class_id,
             )
             invoice.transaction_id = txn.id
 

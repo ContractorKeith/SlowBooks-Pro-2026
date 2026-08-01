@@ -128,6 +128,7 @@ const EstimatesPage = {
             lines: [],
         };
         if (id) est = await API.get(`/estimates/${id}`);
+        const classGroup = await classFormGroupHtml(est.class_id);
         if (est.lines.length === 0) est.lines = [{ item_id: '', description: '', quantity: 1, rate: 0 }];
 
         EstimatesPage.lineCount = est.lines.length;
@@ -259,6 +260,7 @@ const EstimatesPage = {
             expiration_date: form.expiration_date.value || null,
             tax_rate: (parseFloat(form.tax_rate.value) || 0) / 100,
             notes: form.notes.value || null,
+            class_id: classIdFromForm(form),
             lines,
         };
 

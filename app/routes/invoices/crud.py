@@ -123,6 +123,7 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
             total=total,
             balance_due=total,
             notes=data.notes,
+            class_id=data.class_id,
             **cust_fields,
         )
         db.add(invoice)
@@ -216,6 +217,7 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
             journal_lines,
             source_type="invoice",
             source_id=invoice.id,
+            class_id=invoice.class_id,
             reference=invoice_number,
         )
         invoice.transaction_id = txn.id

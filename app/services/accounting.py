@@ -86,6 +86,7 @@ def create_journal_entry(
     source_id: int = None,
     reference: str = None,
     bypass_closing_date: bool = False,
+    class_id: int = None,
 ) -> Transaction:
     """Create a balanced journal entry.
 
@@ -129,6 +130,7 @@ def create_journal_entry(
         source_type=source_type,
         source_id=source_id,
         reference=reference,
+        class_id=class_id,
     )
     db.add(txn)
     db.flush()

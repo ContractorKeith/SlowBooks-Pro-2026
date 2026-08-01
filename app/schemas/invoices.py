@@ -54,6 +54,7 @@ class InvoiceCreate(BaseModel):
     ship_zip: Optional[str] = None
     tax_rate: Decimal = Decimal("0")
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: list[InvoiceLineCreate] = []
 
     @field_validator("lines")
@@ -73,6 +74,7 @@ class InvoiceUpdate(BaseModel):
     status: Optional[InvoiceStatus] = None
     tax_rate: Optional[Decimal] = None
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: Optional[list[InvoiceLineCreate]] = None
 
 
@@ -102,6 +104,7 @@ class InvoiceResponse(BaseModel):
     amount_paid: Decimal
     balance_due: Decimal
     notes: Optional[str]
+    class_id: Optional[int] = None
     payment_token: Optional[str] = None
     checkout_provider: Optional[str] = None
     lines: list[InvoiceLineResponse] = []

@@ -105,6 +105,7 @@ const BillsPage = {
         ]);
         BillsPage._items = items;
         BillsPage.lineCount = 1;
+        const classGroup = await classFormGroupHtml();
 
         BillsPage._vendors = vendors;
         const vendorOpts = vendors.map(v => `<option value="${v.id}">${escapeHtml(v.name)}</option>`).join('');
@@ -124,6 +125,7 @@ const BillsPage = {
                             ${['Net 15','Net 30','Net 45','Net 60','Due on Receipt'].map(t =>
                                 `<option ${t==='Net 30'?'selected':''}>${t}</option>`).join('')}
                         </select></div>
+                    ${classGroup}
                 </div>
                 <h3 style="margin:12px 0 8px;font-size:14px;">Line Items</h3>
                 <table class="line-items-table">
@@ -181,6 +183,7 @@ const BillsPage = {
                 date: form.date.value,
                 terms: form.terms.value,
                 notes: form.notes.value || null,
+                class_id: classIdFromForm(form),
                 lines,
             });
             toast('Bill saved');

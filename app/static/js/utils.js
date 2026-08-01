@@ -251,3 +251,26 @@ function countryOptions(selected) {
         `<option value="${c.code}"${c.disabled ? ' disabled' : ''}${c.code === selected ? ' selected' : ''}>${c.name}</option>`
     ).join('');
 }
+
+// ---------------------------------------------------------------------------
+// Class tracking dimension — shared dropdown for entry forms.
+// Returns a labeled form-group; the system-default class ("Uncategorized")
+// lists first and is preselected when no selectedId is given. Archived
+// classes are excluded (historical rows keep them; new entries can't).
+// ---------------------------------------------------------------------------
+async function classFormGroupHtml(selectedId) {
+    let classes = [];
+    try { classes = await API.get('/classes'); } catch (e) { return ''; }
+    if (!classes.length) return '';
+    const opts = classes.map(c =>
+        `<option value="${c.id}" ${selectedId ? (c.id === selectedId ? 'selected' : '') : (c.is_system_default ? 'selected' : '')}>${escapeHtml(c.name)}</option>`
+    ).join('');
+    return `<div class="form-group"><label>Class</label>
+        <select name="class_id">${opts}</select></div>`;
+}
+
+// Normalize a form's class_id string to int-or-null for the API payload.
+function classIdFromForm(form) {
+    const v = form.class_id ? form.class_id.value : '';
+    return v ? parseInt(v) : null;
+}

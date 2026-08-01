@@ -12,6 +12,7 @@ class CCChargeCreate(BaseModel):
     amount: Decimal
     memo: Optional[str] = None
     reference: Optional[str] = None
+    class_id: Optional[int] = None
 
 
 class CCChargeResponse(BaseModel):

@@ -57,6 +57,10 @@ const ReportsPage = {
                     <div class="card-header">Profit & Loss</div>
                     <p style="font-size:13px; color:var(--gray-500);">Income vs expenses for a period</p>
                 </div>
+                <div class="card" style="cursor:pointer" onclick="ReportsPage.profitLossByClass()">
+                    <div class="card-header">P&L by Class</div>
+                    <p style="font-size:13px; color:var(--gray-500);">Income vs expenses split by class</p>
+                </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.balanceSheet()">
                     <div class="card-header">Balance Sheet</div>
                     <p style="font-size:13px; color:var(--gray-500);">Assets, liabilities, and equity</p>
@@ -781,4 +785,35 @@ const ReportsPage = {
             toast(`Generated ${result.generated} letters, emailed ${result.emailed}`);
         } catch (err) { toast(err.message, 'error'); }
     },
+};
+
+// Class tracking: Profit & Loss split by the class dimension.
+ReportsPage.profitLossByClass = async function () {
+    await ReportsPage.openPeriodModal("P&L by Class", "this_year_to_date", async (_period, range) => {
+        const data = await API.get(`/reports/profit-loss-by-class?start_date=${range.start}&end_date=${range.end}`);
+        const rows = data.classes.map(c => `<tr>
+            <td>${escapeHtml(c.class_name)}</td>
+            <td class="amount">${formatCurrency(c.income)}</td>
+            <td class="amount">${formatCurrency(c.cogs)}</td>
+            <td class="amount">${formatCurrency(c.gross_profit)}</td>
+            <td class="amount">${formatCurrency(c.expenses)}</td>
+            <td class="amount" style="font-weight:700;">${formatCurrency(c.net_income)}</td>
+        </tr>`).join('');
+        return `
+            <div style="font-size:11px; color:var(--gray-500); margin-bottom:8px;">
+                ${escapeHtml(data.start_date)} — ${escapeHtml(data.end_date)}
+            </div>
+            <div class="table-container"><table>
+                <thead><tr><th>Class</th><th class="amount">Income</th><th class="amount">COGS</th>
+                <th class="amount">Gross Profit</th><th class="amount">Expenses</th><th class="amount">Net Income</th></tr></thead>
+                <tbody>${rows.length ? rows : '<tr><td colspan="6">No activity in this period</td></tr>'}</tbody>
+                <tfoot><tr style="font-weight:700; background:var(--gray-50);">
+                    <td>Total</td>
+                    <td class="amount">${formatCurrency(data.total_income)}</td>
+                    <td></td><td></td>
+                    <td class="amount">${formatCurrency(data.total_expenses)}</td>
+                    <td class="amount">${formatCurrency(data.total_net_income)}</td>
+                </tr></tfoot>
+            </table></div>`;
+    });
 };

@@ -72,6 +72,7 @@ def void_invoice(invoice_id: int, db: Session = Depends(get_db)):
                 reverse_lines,
                 source_type="invoice_void",
                 source_id=invoice.id,
+                class_id=invoice.class_id,
                 reference=invoice.invoice_number,
             )
 
@@ -217,6 +218,7 @@ def apply_late_fees(db: Session = Depends(get_db)):
             journal_lines,
             source_type="late_fee",
             source_id=inv.id,
+            class_id=inv.class_id,
         )
 
         # Update invoice totals (add to subtotal too so total == subtotal + tax_amount)
@@ -271,6 +273,7 @@ def duplicate_invoice(invoice_id: int, db: Session = Depends(get_db)):
         total=original.total,
         balance_due=original.total,
         notes=original.notes,
+        class_id=original.class_id,
     )
     db.add(new_invoice)
     db.flush()
@@ -341,6 +344,7 @@ def duplicate_invoice(invoice_id: int, db: Session = Depends(get_db)):
             journal_lines,
             source_type="invoice",
             source_id=new_invoice.id,
+            class_id=new_invoice.class_id,
             reference=new_number,
         )
         new_invoice.transaction_id = txn.id
