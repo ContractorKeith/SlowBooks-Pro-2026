@@ -401,6 +401,7 @@ const ReportsPage = {
     async profitLoss(prefill) {
         await ReportsPage.openPeriodModal("Profit & Loss", "this_year_to_date", async (_period, range) => {
             const data = await API.get(`/reports/profit-loss?start_date=${range.start}&end_date=${range.end}`);
+            const pdfBtn = `<div style="text-align:right; margin-bottom:6px;"><button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/profit-loss/pdf?start_date=${range.start}&end_date=${range.end}','_blank')">Save PDF</button></div>`;
             // Build the onclick payload outside the template so we can
             // HTML-escape the embedded double quotes from JSON.stringify().
             // Otherwise the inner " breaks the outer onclick="…" attribute.
@@ -416,7 +417,7 @@ const ReportsPage = {
                         </td><td class="amount">${formatCurrency(Math.abs(i.amount))}</td></tr>`
                 ).join("");
             };
-            return `
+            return `${pdfBtn}
                 <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(data.start_date)} &mdash; ${formatDate(data.end_date)}</p>
                 <div class="table-container"><table>
                     <thead><tr><th>Account</th><th class="amount">Amount</th></tr></thead>
@@ -439,6 +440,7 @@ const ReportsPage = {
     async balanceSheet(prefill) {
         await ReportsPage.openPeriodModal("Balance Sheet", "this_year_to_date", async (_period, params) => {
             const data = await API.get(`/reports/balance-sheet?as_of_date=${params.as_of_date}`);
+            const pdfBtn = `<div style="text-align:right; margin-bottom:6px;"><button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/balance-sheet/pdf?as_of_date=${params.as_of_date}','_blank')">Save PDF</button></div>`;
             const drillCall = (i) => escapeHtml(
                 `ReportsPage.openDrillDown(${i.account_id},${JSON.stringify(i.account_name)},null,${JSON.stringify(params.as_of_date)})`
             );
@@ -448,7 +450,7 @@ const ReportsPage = {
                        onclick="${drillCall(i)}">${escapeHtml(i.account_name)}</a>
                     </td><td class="amount">${formatCurrency(Math.abs(i.amount))}</td></tr>`
             ).join("") || `<tr><td colspan="2" style="color:var(--gray-400);">None</td></tr>`;
-            return `
+            return `${pdfBtn}
                 <p style="margin-bottom:12px; color:var(--gray-500);">As of ${formatDate(data.as_of_date)}</p>
                 <div class="table-container"><table>
                     <thead><tr><th>Account</th><th class="amount">Amount</th></tr></thead>
