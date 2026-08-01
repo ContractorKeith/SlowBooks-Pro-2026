@@ -13,7 +13,7 @@ import csv
 import io
 import logging
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -311,7 +311,16 @@ def import_assets_csv(db: Session, csv_text: str) -> dict:
             db.add(asset)
             db.flush()
             imported += 1
-        except Exception as exc:
+        except (ValueError, InvalidOperation) as exc:
+            # Expected parse/validation failures carry safe, row-scoped
+            # messages the operator needs to fix their CSV.
             errors.append({"row": i, "message": str(exc)})
+        except Exception:
+            # Unexpected failures must not echo internals to the client
+            # (CodeQL py/stack-trace-exposure) — log the detail, return a
+            # generic row error.
+            logger.exception("Asset CSV import failed on row %s", i)
+            errors.append({"row": i, "message": "Unexpected error importing this row"})
+            db.rollback()
     db.commit()
     return {"imported": imported, "errors": errors}
