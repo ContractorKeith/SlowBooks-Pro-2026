@@ -7,6 +7,7 @@ from app.models.estimates import Estimate, EstimateLine
 from app.models.payments import Payment, PaymentAllocation
 from app.models.banking import BankAccount, BankTransaction, Reconciliation
 from app.models.settings import Settings
+from app.models.classes import TxnClass  # noqa: F401 — registers the table
 
 # Phase 1: Foundation
 from app.models.audit import AuditLog

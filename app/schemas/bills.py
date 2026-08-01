@@ -42,6 +42,7 @@ class BillCreate(BaseModel):
     po_id: Optional[int] = None
     tax_rate: float = 0
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: list[BillLineCreate] = []
 
     @field_validator("lines")
@@ -60,6 +61,7 @@ class BillUpdate(BaseModel):
     ref_number: Optional[str] = None
     tax_rate: Optional[float] = None
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: Optional[list[BillLineCreate]] = None
 
 
@@ -81,6 +83,7 @@ class BillResponse(BaseModel):
     amount_paid: Decimal = Decimal("0")
     balance_due: Decimal = Decimal("0")
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: list[BillLineResponse] = []
     created_at: Optional[datetime] = None
     model_config = {"from_attributes": True}
@@ -99,6 +102,7 @@ class BillPaymentCreate(BaseModel):
     check_number: Optional[str] = None
     pay_from_account_id: Optional[int] = None
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     allocations: list[BillPaymentAllocationCreate] = []
 
 
@@ -111,6 +115,7 @@ class BillPaymentResponse(BaseModel):
     method: Optional[str] = None
     check_number: Optional[str] = None
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     is_voided: bool = False
     created_at: Optional[datetime] = None
     model_config = {"from_attributes": True}

@@ -41,6 +41,9 @@ class Transaction(Base):
     )  # field 0x06 — maps to enum TxnTypeEnum
     source_id = Column(Integer, nullable=True)  # field 0x07, FK to source record ListID
 
+    # Class tracking dimension (QB-style); NULL groups with Uncategorized
+    class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lines = relationship(

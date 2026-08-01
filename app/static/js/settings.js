@@ -12,6 +12,7 @@ const SettingsPage = {
             SettingsPage.loadBackups();
             SettingsPage.loadEmailTemplates();
             SettingsPage.loadAiConfig();
+            SettingsPage.loadClasses();
             SettingsPage.scrollToFocus();
         }, 0);
         return `
@@ -254,6 +255,19 @@ const SettingsPage = {
                         <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.seedTemplates()">Seed Default Templates</button>
                     </div>
                     <div id="email-template-list"></div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Classes</h3>
+                    <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
+                        Track income and expenses by department, location, or line of
+                        business. Classes appear on entry forms and the P&amp;L by Class report.
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <input type="text" id="new-class-name" placeholder="New class name" style="width:220px;">
+                        <button type="button" class="btn btn-primary" onclick="SettingsPage.addClass()">Add Class</button>
+                    </div>
+                    <div id="classes-list"></div>
                 </div>
 
                 <div class="settings-section">
@@ -630,4 +644,57 @@ const SettingsPage = {
         const el = document.getElementById(target);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
+};
+
+
+// --- Class tracking management (Settings > Classes) ---------------------
+SettingsPage.loadClasses = async function () {
+    const el = document.getElementById('classes-list');
+    if (!el) return;
+    try {
+        const classes = await API.get('/classes?include_archived=true');
+        el.innerHTML = `<div class="table-container"><table>
+            <thead><tr><th>Name</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>` + classes.map(c => `<tr>
+                <td>${escapeHtml(c.name)}${c.is_system_default ? ' <span style="font-size:9px;color:var(--text-muted);">(default)</span>' : ''}</td>
+                <td>${c.is_archived ? 'Archived' : 'Active'}</td>
+                <td class="actions">
+                    ${c.is_system_default ? '' : `
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.renameClass(${c.id})">Rename</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.toggleArchiveClass(${c.id}, ${!c.is_archived})">${c.is_archived ? 'Unarchive' : 'Archive'}</button>`}
+                </td>
+            </tr>`).join('') + `</tbody></table></div>`;
+    } catch (err) {
+        el.innerHTML = `<div style="color:var(--danger); font-size:11px;">${escapeHtml(err.message)}</div>`;
+    }
+};
+
+SettingsPage.addClass = async function () {
+    const input = document.getElementById('new-class-name');
+    const name = (input?.value || '').trim();
+    if (!name) { toast('Enter a class name', 'error'); return; }
+    try {
+        await API.post('/classes', { name });
+        input.value = '';
+        toast('Class added');
+        SettingsPage.loadClasses();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+SettingsPage.renameClass = async function (id) {
+    const name = prompt('New class name:');
+    if (!name || !name.trim()) return;
+    try {
+        await API.put(`/classes/${id}`, { name: name.trim() });
+        toast('Class renamed');
+        SettingsPage.loadClasses();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+SettingsPage.toggleArchiveClass = async function (id, archive) {
+    try {
+        await API.put(`/classes/${id}`, { is_archived: archive });
+        toast(archive ? 'Class archived' : 'Class unarchived');
+        SettingsPage.loadClasses();
+    } catch (err) { toast(err.message, 'error'); }
 };

@@ -660,6 +660,39 @@ def import_transactions(db: Session, blocks: list) -> dict:
     return {"imported": counts, "errors": errors, "warnings": warnings}
 
 
+def _resolve_block_class(db: Session, trns_type: str, doc_ref: str, spls: list):
+    """Collapse SPL.CLASS values to a single class_id at the document level.
+
+    Classes here are header-level (Bill.class_id / Transaction.class_id),
+    so when the IIF supplies a CLASS column on SPL rows:
+      - All CLASS values absent/empty → None (reports group with
+        Uncategorized).
+      - One distinct CLASS across the block → strict lookup; a missing
+        class raises the same way a missing vendor or account does.
+      - Multiple distinct CLASS values → ValueError. Refusing beats
+        silently filing the whole document under the first class.
+    """
+    from app.services.classes_service import resolve_class_id
+
+    names = {(s.get("CLASS") or "").strip() for s in spls}
+    names.discard("")
+    if not names:
+        return None
+    if len(names) > 1:
+        raise ValueError(
+            f"{trns_type} {doc_ref}: multiple CLASS values {sorted(names)} in one "
+            f"block — classes apply per document; split the block or unify the CLASS"
+        )
+    name = names.pop()
+    class_id = resolve_class_id(db, name)
+    if class_id is None:
+        raise ValueError(
+            f"{trns_type} {doc_ref}: class '{name}' not found. Create it under "
+            f"Settings → Classes first, or correct the CLASS in the IIF file."
+        )
+    return class_id
+
+
 def _validate_block_balance(trns_type: str, trns: dict, spls: list) -> Decimal:
     """Sum-to-zero check shared by BILL and DEPOSIT.
 
@@ -736,9 +769,7 @@ def _import_bill(db: Session, trns: dict, spls: list) -> Bill:
     # Resolve all SPL expense accounts up front. Doing this BEFORE any
     # db.add() means a partial parse (one of three SPLs has a missing
     # account) raises cleanly without a half-created Bill row.
-    # TODO(class-tracking): SPL rows may carry a CLASS column; it's
-    # tolerated (ignored) today and gets wired to the Class dimension
-    # when class tracking lands.
+    block_class_id = _resolve_block_class(db, "BILL", doc_num, spls)
     spl_resolved = []
     for spl in spls:
         spl_acct_name = spl.get("ACCNT", "").strip()
@@ -769,6 +800,7 @@ def _import_bill(db: Session, trns: dict, spls: list) -> Bill:
         total=total,
         balance_due=total,
         notes=trns.get("MEMO", "").strip() or None,
+        class_id=block_class_id,
     )
     db.add(bill)
     db.flush()
@@ -813,6 +845,7 @@ def _import_bill(db: Session, trns: dict, spls: list) -> Bill:
             journal_lines,
             source_type="bill",
             source_id=bill.id,
+            class_id=block_class_id,
         )
         bill.transaction_id = txn.id
 
@@ -884,6 +917,10 @@ def _import_deposit(db: Session, trns: dict, spls: list) -> Transaction:
         spl_amount = _parse_decimal(spl.get("AMOUNT", ""))
         spl_resolved.append((spl, spl_acct, spl_amount))
 
+    block_class_id = _resolve_block_class(
+        db, "DEPOSIT", doc_num or bank_acct_name, spls
+    )
+
     memo = trns.get("MEMO", "").strip()
     description = memo or f"Deposit to {bank_acct.name}"
 
@@ -913,6 +950,7 @@ def _import_deposit(db: Session, trns: dict, spls: list) -> Transaction:
         journal_lines,
         source_type="deposit",
         reference=doc_num or None,
+        class_id=block_class_id,
     )
     db.flush()
     return txn

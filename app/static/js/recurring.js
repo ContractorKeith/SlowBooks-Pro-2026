@@ -50,6 +50,7 @@ const RecurringPage = {
         RecurringPage._items = items;
         RecurringPage._customers = customers;
 
+
         let rec = {
             customer_id: '',
             frequency: 'monthly',
@@ -61,6 +62,7 @@ const RecurringPage = {
             lines: [],
         };
         if (id) rec = await API.get(`/recurring/${id}`);
+        const classGroup = await classFormGroupHtml(rec.class_id);
         if (rec.lines.length === 0) rec.lines = [{ item_id: '', description: '', quantity: 1, rate: 0 }];
         RecurringPage.lineCount = rec.lines.length;
 
@@ -88,6 +90,7 @@ const RecurringPage = {
                         </select></div>
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="${(rec.tax_rate * 100) || 0}"></div>
+                    ${classGroup}
                 </div>
                 <h3 style="margin:12px 0 8px;font-size:14px;">Line Items</h3>
                 <table class="line-items-table">
@@ -156,6 +159,7 @@ const RecurringPage = {
             terms: form.terms.value,
             tax_rate: (parseFloat(form.tax_rate.value) || 0) / 100,
             notes: form.notes.value || null,
+            class_id: classIdFromForm(form),
             lines,
         };
         try {

@@ -36,6 +36,7 @@ class RecurringCreate(BaseModel):
     terms: str = "Net 30"
     tax_rate: float = 0
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: list[RecurringLineCreate] = []
 
     @field_validator("lines")
@@ -53,6 +54,7 @@ class RecurringUpdate(BaseModel):
     terms: Optional[str] = None
     tax_rate: Optional[float] = None
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: Optional[list[RecurringLineCreate]] = None
 
 
@@ -68,6 +70,7 @@ class RecurringResponse(BaseModel):
     terms: Optional[str] = None
     tax_rate: float = 0
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     invoices_created: int = 0
     lines: list[RecurringLineResponse] = []
     model_config = {"from_attributes": True}

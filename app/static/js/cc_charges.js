@@ -33,6 +33,7 @@ const CCChargesPage = {
 
     async showForm() {
         const accounts = await API.get('/accounts?account_type=expense');
+        const classGroup = await classFormGroupHtml();
         const acctOpts = accounts.map(a =>
             `<option value="${a.id}">${escapeHtml(a.account_number)} - ${escapeHtml(a.name)}</option>`
         ).join('');
@@ -50,6 +51,7 @@ const CCChargesPage = {
                         <input name="amount" type="number" step="0.01" required></div>
                     <div class="form-group"><label>Reference</label>
                         <input name="reference"></div>
+                    ${classGroup}
                     <div class="form-group full-width"><label>Memo</label>
                         <textarea name="memo"></textarea></div>
                 </div>
@@ -71,6 +73,7 @@ const CCChargesPage = {
                 amount: parseFloat(form.amount.value),
                 reference: form.reference.value || null,
                 memo: form.memo.value || null,
+                class_id: classIdFromForm(form),
             });
             toast('Credit card charge recorded');
             closeModal();

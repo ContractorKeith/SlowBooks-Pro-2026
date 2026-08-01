@@ -103,6 +103,7 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db)):
             tax_amount=tax_amount,
             total=total,
             notes=data.notes,
+            class_id=data.class_id,
         )
         db.add(estimate)
         try:
@@ -277,6 +278,7 @@ def convert_to_invoice(estimate_id: int, db: Session = Depends(get_db)):
         tax_amount=estimate.tax_amount,
         total=estimate.total,
         balance_due=estimate.total,
+        class_id=estimate.class_id,
         notes=estimate.notes,
     )
     db.add(invoice)
@@ -354,6 +356,7 @@ def convert_to_invoice(estimate_id: int, db: Session = Depends(get_db)):
             source_type="invoice",
             source_id=invoice.id,
             reference=invoice_number,
+            class_id=invoice.class_id,
         )
         invoice.transaction_id = txn.id
 

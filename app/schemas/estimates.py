@@ -42,6 +42,7 @@ class EstimateCreate(BaseModel):
     expiration_date: Optional[dt_date] = None
     tax_rate: Decimal = Decimal("0")
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: list[EstimateLineCreate] = []
 
     @field_validator("lines")
@@ -59,6 +60,7 @@ class EstimateUpdate(BaseModel):
     status: Optional[EstimateStatus] = None
     tax_rate: Optional[Decimal] = None
     notes: Optional[str] = None
+    class_id: Optional[int] = None
     lines: Optional[list[EstimateLineCreate]] = None
 
 
@@ -74,6 +76,7 @@ class EstimateResponse(BaseModel):
     tax_amount: Decimal
     total: Decimal
     notes: Optional[str]
+    class_id: Optional[int] = None
     converted_invoice_id: Optional[int]
     lines: list[EstimateLineResponse] = []
     customer_name: Optional[str] = None

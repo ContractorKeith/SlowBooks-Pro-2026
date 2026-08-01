@@ -94,6 +94,7 @@ def create_cc_charge(data: CCChargeCreate, db: Session = Depends(get_db)):
         journal_lines,
         source_type="cc_charge",
         reference=data.reference or "",
+        class_id=data.class_id,
     )
 
     db.commit()

@@ -69,6 +69,7 @@ const JournalPage = {
 
     async showForm() {
         const accounts = await API.get('/accounts');
+        const classGroup = await classFormGroupHtml();
         JournalPage._accounts = accounts;
         JournalPage._lineCount = 2;
 
@@ -83,6 +84,7 @@ const JournalPage = {
                         <input name="date" type="date" required value="${todayISO()}"></div>
                     <div class="form-group"><label>Reference</label>
                         <input name="reference"></div>
+                    ${classGroup}
                     <div class="form-group full-width"><label>Description *</label>
                         <input name="description" required></div>
                 </div>
@@ -179,6 +181,7 @@ const JournalPage = {
                 date: form.date.value,
                 description: form.description.value,
                 reference: form.reference.value || null,
+                class_id: classIdFromForm(form),
                 lines,
             });
             toast('Journal entry created');

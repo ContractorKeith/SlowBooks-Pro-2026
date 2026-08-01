@@ -26,6 +26,7 @@ class JournalEntryCreate(BaseModel):
     date: dt_date
     description: str
     reference: Optional[str] = None
+    class_id: Optional[int] = None
     lines: list[JournalLineCreate]
 
 
@@ -34,6 +35,7 @@ class JournalEntryResponse(BaseModel):
     date: dt_date
     description: str
     reference: str = ""
+    class_id: Optional[int] = None
     source_type: str = ""
     lines: list[JournalLineResponse] = []
     total_debit: float = 0

@@ -105,6 +105,7 @@ def create_credit_memo(data: CreditMemoCreate, db: Session = Depends(get_db)):
             total=total,
             balance_remaining=total,
             notes=data.notes,
+            class_id=data.class_id,
             status=CreditMemoStatus.ISSUED,
         )
         db.add(cm)
@@ -187,6 +188,7 @@ def create_credit_memo(data: CreditMemoCreate, db: Session = Depends(get_db)):
             journal_lines,
             source_type="credit_memo",
             source_id=cm.id,
+            class_id=cm.class_id,
         )
         cm.transaction_id = txn.id
 

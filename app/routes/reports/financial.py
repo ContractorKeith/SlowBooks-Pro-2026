@@ -445,3 +445,93 @@ def cash_flow(
         "total_financing": float(totals["financing"]),
         "net_change": float(net_change),
     }
+
+
+@router.get("/profit-loss-by-class")
+def profit_loss_by_class(
+    start_date: date = Query(default=None),
+    end_date: date = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """P&L split by the class dimension on each posted transaction.
+
+    Untagged transactions (class_id NULL) group with the system-default
+    "Uncategorized" class so every posting is accounted for and the
+    column totals reconcile with the plain Profit & Loss.
+    """
+    from app.models.classes import TxnClass
+    from app.services.classes_service import uncategorized_class_id
+
+    if not start_date:
+        start_date = date(date.today().year, 1, 1)
+    if not end_date:
+        end_date = date.today()
+
+    uncat_id = uncategorized_class_id(db)
+    db.commit()
+
+    pl_types = (AccountType.INCOME, AccountType.COGS, AccountType.EXPENSE)
+    rows = (
+        db.query(
+            sqlfunc.coalesce(Transaction.class_id, uncat_id).label("cls"),
+            Account.account_type,
+            sqlfunc.coalesce(sqlfunc.sum(TransactionLine.debit), 0),
+            sqlfunc.coalesce(sqlfunc.sum(TransactionLine.credit), 0),
+        )
+        .join(TransactionLine, TransactionLine.transaction_id == Transaction.id)
+        .join(Account, TransactionLine.account_id == Account.id)
+        .filter(
+            Account.account_type.in_(pl_types),
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+        )
+        .group_by("cls", Account.account_type)
+        .all()
+    )
+
+    class_names = {c.id: c.name for c in db.query(TxnClass).all()}
+    by_class: dict[int, dict] = {}
+    for cls_id, acct_type, dr, cr in rows:
+        bucket = by_class.setdefault(
+            cls_id,
+            {
+                "class_id": cls_id,
+                "class_name": class_names.get(cls_id, "Unknown"),
+                "income": Decimal("0"),
+                "cogs": Decimal("0"),
+                "expenses": Decimal("0"),
+            },
+        )
+        if acct_type == AccountType.INCOME:
+            bucket["income"] += cr - dr
+        elif acct_type == AccountType.COGS:
+            bucket["cogs"] += dr - cr
+        else:
+            bucket["expenses"] += dr - cr
+
+    columns = []
+    for bucket in sorted(
+        by_class.values(),
+        key=lambda b: (b["class_id"] != uncat_id, b["class_name"].lower()),
+    ):
+        income, cogs, expenses = bucket["income"], bucket["cogs"], bucket["expenses"]
+        columns.append(
+            {
+                "class_id": bucket["class_id"],
+                "class_name": bucket["class_name"],
+                "income": float(income),
+                "cogs": float(cogs),
+                "gross_profit": float(income - cogs),
+                "expenses": float(expenses),
+                "net_income": float(income - cogs - expenses),
+            }
+        )
+
+    return {
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "classes": columns,
+        "total_income": sum(c["income"] for c in columns),
+        "total_expenses": sum(c["expenses"] for c in columns),
+        "total_net_income": sum(c["net_income"] for c in columns),
+    }

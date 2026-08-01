@@ -36,6 +36,7 @@ const CreditMemosPage = {
         ]);
         CreditMemosPage._items = items;
         CreditMemosPage.lineCount = 1;
+        const classGroup = await classFormGroupHtml();
 
         const custOpts = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
         const itemOpts = items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
@@ -49,6 +50,7 @@ const CreditMemosPage = {
                         <input name="date" type="date" required value="${todayISO()}"></div>
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="0"></div>
+                    ${classGroup}
                 </div>
                 <h3 style="margin:12px 0 8px;font-size:14px;">Credit Lines</h3>
                 <table class="line-items-table">
@@ -103,6 +105,7 @@ const CreditMemosPage = {
                 date: form.date.value,
                 tax_rate: (parseFloat(form.tax_rate.value) || 0) / 100,
                 notes: form.notes.value || null,
+                class_id: classIdFromForm(form),
                 lines,
             });
             toast('Credit memo created');
