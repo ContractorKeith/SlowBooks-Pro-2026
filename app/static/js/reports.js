@@ -61,6 +61,10 @@ const ReportsPage = {
                     <div class="card-header">P&L by Class</div>
                     <p style="font-size:13px; color:var(--gray-500);">Income vs expenses split by class</p>
                 </div>
+                <div class="card" style="cursor:pointer" onclick="ReportsPage.fixedAssetReconciliation()">
+                    <div class="card-header">Fixed Asset Reconciliation</div>
+                    <p style="font-size:13px; color:var(--gray-500);">Register totals vs GL by asset type</p>
+                </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.balanceSheet()">
                     <div class="card-header">Balance Sheet</div>
                     <p style="font-size:13px; color:var(--gray-500);">Assets, liabilities, and equity</p>
@@ -816,4 +820,32 @@ ReportsPage.profitLossByClass = async function () {
                 </tr></tfoot>
             </table></div>`;
     });
+};
+
+// Fixed assets: register totals per type for GL reconciliation.
+ReportsPage.fixedAssetReconciliation = async function () {
+    const data = await API.get('/fixed-assets/reports/reconciliation');
+    const rows = data.types.map(t => `<tr>
+        <td>${escapeHtml(t.asset_type)}</td>
+        <td class="amount">${t.asset_count}</td>
+        <td class="amount">${formatCurrency(t.cost)}</td>
+        <td class="amount">${formatCurrency(t.accumulated_depreciation)}</td>
+        <td class="amount">${formatCurrency(t.book_value)}</td>
+    </tr>`).join('');
+    openModal('Fixed Asset Reconciliation', `
+        <div class="table-container"><table>
+            <thead><tr><th>Asset Type</th><th class="amount">Assets</th><th class="amount">Cost</th>
+            <th class="amount">Accum. Depr.</th><th class="amount">Book Value</th></tr></thead>
+            <tbody>${rows.length ? rows : '<tr><td colspan="5">No registered assets</td></tr>'}</tbody>
+            <tfoot><tr style="font-weight:700; background:var(--gray-50);">
+                <td>Total</td><td></td>
+                <td class="amount">${formatCurrency(data.total_cost)}</td>
+                <td class="amount">${formatCurrency(data.total_accumulated)}</td>
+                <td class="amount">${formatCurrency(data.total_book_value)}</td>
+            </tr></tfoot>
+        </table></div>
+        <div style="font-size:11px; color:var(--gray-500); margin-top:8px;">
+            Compare against the mapped fixed-asset and accumulated-depreciation
+            GL accounts — differences mean unposted acquisitions or manual GL edits.
+        </div>`);
 };
