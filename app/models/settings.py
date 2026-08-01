@@ -57,6 +57,9 @@ DEFAULT_SETTINGS = {
     "smtp_use_tls": "true",
     # Feature 15: Company Logo
     "company_logo_path": "",
+    # Opening-balance wizard readiness metadata
+    "chart_setup_source": "",
+    "chart_setup_ready_at": "",
     # Multi-currency: ISO code the general ledger is kept in
     "home_currency": "USD",
     # Stripe Online Payments

@@ -58,6 +58,8 @@ const App = {
         '/budgets':       { page: 'budgets',         label: 'Budget vs Actual',   render: () => BudgetsPage.render() },
         '/bank-rules':    { page: 'bank-rules',      label: 'Bank Rules',         render: () => BankRulesPage.render() },
         '/fixed-assets':  { page: 'fixed-assets',    label: 'Fixed Assets',       render: () => FixedAssetsPage.render() },
+        '/xero-import':   { page: 'xero-import',     label: 'Xero Import',        render: () => XeroImportPage.render() },
+        '/opening-balances': { page: 'opening-balances', label: 'Opening Balances', render: () => OpeningBalancesPage.render() },
     },
 
     async navigate(hash) {
