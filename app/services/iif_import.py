@@ -24,6 +24,8 @@ from app.models.items import Item, ItemType
 from app.models.invoices import Invoice, InvoiceLine, InvoiceStatus
 from app.models.payments import Payment, PaymentAllocation
 from app.models.estimates import Estimate, EstimateLine, EstimateStatus
+from app.models.bills import Bill, BillLine, BillStatus
+from app.models.transactions import Transaction
 from app.services.iif_common import IIF_TO_ACCOUNT_TYPE, IIF_TO_ITEM_TYPE
 from app.services.accounting import (
     _q,
@@ -589,9 +591,18 @@ def import_items(db: Session, rows: list) -> dict:
 def import_transactions(db: Session, blocks: list) -> dict:
     """Import transaction blocks (TRNS/SPL/ENDTRNS) from IIF.
 
-    Routes by TRNSTYPE: INVOICE, PAYMENT, ESTIMATE, GENERAL JOURNAL.
+    Routes by TRNSTYPE: INVOICE, PAYMENT, ESTIMATE, BILL, DEPOSIT.
+    Other types (GENERAL JOURNAL, etc.) are silently skipped — extend
+    the dispatch table here when adding support.
     """
-    counts = {"invoices": 0, "payments": 0, "estimates": 0}
+    counts = {
+        "invoices": 0,
+        "payments": 0,
+        "estimates": 0,
+        "bills": 0,
+        "deposits": 0,
+        "duplicates_skipped": 0,
+    }
     errors = []
     warnings = []
 
@@ -623,6 +634,20 @@ def import_transactions(db: Session, blocks: list) -> dict:
                 result = _import_estimate(db, trns, spls)
                 if result:
                     counts["estimates"] += 1
+            elif trns_type == "BILL":
+                result = _import_bill(db, trns, spls)
+                if result:
+                    counts["bills"] += 1
+                else:
+                    # None = (vendor, bill_number) already imported —
+                    # a deliberate dedup hit, not a silent drop.
+                    counts["duplicates_skipped"] += 1
+            elif trns_type == "DEPOSIT":
+                result = _import_deposit(db, trns, spls)
+                if result:
+                    counts["deposits"] += 1
+                else:
+                    counts["duplicates_skipped"] += 1
             # Skip other transaction types (GENERAL JOURNAL, etc.) for now
             sp.commit()
 
@@ -633,6 +658,264 @@ def import_transactions(db: Session, blocks: list) -> dict:
             )
 
     return {"imported": counts, "errors": errors, "warnings": warnings}
+
+
+def _validate_block_balance(trns_type: str, trns: dict, spls: list) -> Decimal:
+    """Sum-to-zero check shared by BILL and DEPOSIT.
+
+    Returns the parsed TRNS amount (raw, sign-preserving) so callers
+    don't have to parse it twice. Raises ValueError if the block doesn't
+    balance to within 1 cent — an unbalanced block usually means a
+    hand-edited IIF where the user dropped a line.
+    """
+    trns_amt = _parse_decimal(trns.get("AMOUNT", ""))
+    spl_total = sum((_parse_decimal(s.get("AMOUNT", "")) for s in spls), Decimal("0"))
+    residual = trns_amt + spl_total
+    if abs(residual) > Decimal("0.01"):
+        raise ValueError(
+            f"{trns_type} block does not sum to zero "
+            f"(TRNS={trns_amt}, SPL total={spl_total}, residual={residual}). "
+            f"Standard QB convention: TRNS and SPL amounts carry opposite signs."
+        )
+    return trns_amt
+
+
+def _import_bill(db: Session, trns: dict, spls: list) -> Bill:
+    """Create a Bill from IIF TRNS/SPL data.
+
+    QB IIF BILL convention: TRNS.AMOUNT is negative on the AP account,
+    each SPL.AMOUNT is positive on the expense account; together they
+    sum to zero.
+
+    Missing vendors and accounts SURFACE as errors rather than
+    auto-create — re-running the import after fixing the config is
+    preferred over silently creating unmatched-vendor bills the user
+    then has to clean up. (Deliberately stricter than _import_invoice's
+    auto-create-customer behavior: bills post expenses.)
+
+    Returns the created Bill, or None when the (vendor, bill_number)
+    pair was already imported (idempotent re-runs).
+    """
+    trns_amt = _validate_block_balance("BILL", trns, spls)
+
+    vendor_name = trns.get("NAME", "").strip()
+    if not vendor_name:
+        raise ValueError("BILL: missing vendor NAME on TRNS line")
+    vendor = db.query(Vendor).filter(Vendor.name == vendor_name).first()
+    if not vendor:
+        raise ValueError(
+            f"BILL: vendor '{vendor_name}' not found. Add the vendor in "
+            f"Vendors first, or correct the NAME in the IIF file."
+        )
+
+    ap_acct_name = trns.get("ACCNT", "").strip()
+    if not ap_acct_name:
+        raise ValueError(f"BILL ({vendor_name}): missing AP account ACCNT on TRNS line")
+    ap_account = _find_account(db, ap_acct_name)
+    if not ap_account:
+        raise ValueError(
+            f"BILL ({vendor_name}): AP account '{ap_acct_name}' not found. "
+            f"Add the account in the chart of accounts first."
+        )
+
+    doc_num = trns.get("DOCNUM", "").strip()
+    if not doc_num:
+        raise ValueError(
+            f"BILL ({vendor_name}): missing DOCNUM (bill_number is required)"
+        )
+
+    # Idempotent dedup: same (vendor, bill_number) pair.
+    existing = (
+        db.query(Bill)
+        .filter(Bill.vendor_id == vendor.id, Bill.bill_number == doc_num)
+        .first()
+    )
+    if existing:
+        return None
+
+    # Resolve all SPL expense accounts up front. Doing this BEFORE any
+    # db.add() means a partial parse (one of three SPLs has a missing
+    # account) raises cleanly without a half-created Bill row.
+    # TODO(class-tracking): SPL rows may carry a CLASS column; it's
+    # tolerated (ignored) today and gets wired to the Class dimension
+    # when class tracking lands.
+    spl_resolved = []
+    for spl in spls:
+        spl_acct_name = spl.get("ACCNT", "").strip()
+        if not spl_acct_name:
+            raise ValueError(f"BILL {doc_num}: SPL line missing ACCNT")
+        spl_acct = _find_account(db, spl_acct_name)
+        if not spl_acct:
+            raise ValueError(
+                f"BILL {doc_num}: expense account '{spl_acct_name}' not found"
+            )
+        spl_amount = _parse_decimal(spl.get("AMOUNT", ""))
+        spl_resolved.append((spl, spl_acct, spl_amount))
+
+    bill_date = _parse_iif_date(trns.get("DATE", "")) or date.today()
+    due_date = _parse_iif_date(trns.get("DUEDATE", ""))
+    total = _q(abs(trns_amt))
+
+    bill = Bill(
+        bill_number=doc_num,
+        vendor_id=vendor.id,
+        date=bill_date,
+        due_date=due_date,
+        terms=trns.get("TERMS", "").strip() or "Net 30",
+        status=BillStatus.UNPAID,
+        subtotal=total,
+        tax_rate=Decimal("0"),
+        tax_amount=Decimal("0"),
+        total=total,
+        balance_due=total,
+        notes=trns.get("MEMO", "").strip() or None,
+    )
+    db.add(bill)
+    db.flush()
+
+    journal_lines = []
+    for spl, spl_acct, spl_amount in spl_resolved:
+        amt = _q(abs(spl_amount))
+        memo = spl.get("MEMO", "").strip() or None
+        db.add(
+            BillLine(
+                bill_id=bill.id,
+                account_id=spl_acct.id,
+                description=memo,
+                quantity=Decimal("1"),
+                rate=amt,
+                amount=amt,
+            )
+        )
+        if amt > 0:
+            journal_lines.append(
+                {
+                    "account_id": spl_acct.id,
+                    "debit": amt,
+                    "credit": Decimal("0"),
+                    "description": memo or f"Bill {doc_num}",
+                }
+            )
+
+    if journal_lines and total > 0:
+        journal_lines.append(
+            {
+                "account_id": ap_account.id,
+                "debit": Decimal("0"),
+                "credit": total,
+                "description": f"Bill {doc_num} - {vendor_name}",
+            }
+        )
+        txn = create_journal_entry(
+            db,
+            bill_date,
+            f"IIF Import — Bill {doc_num} - {vendor_name}",
+            journal_lines,
+            source_type="bill",
+            source_id=bill.id,
+        )
+        bill.transaction_id = txn.id
+
+    db.flush()
+    return bill
+
+
+def _import_deposit(db: Session, trns: dict, spls: list) -> Transaction:
+    """Create a deposit (journal-only Transaction) from IIF TRNS/SPL.
+
+    QB IIF DEPOSIT convention: TRNS.AMOUNT positive on the bank account,
+    each SPL.AMOUNT negative on the income/source account; together they
+    sum to zero. Sign convention is the inverse of BILL.
+
+    There is no Deposit model — deposits are journal-only Transactions
+    with source_type='deposit', matching what the manual Make Deposits
+    route produces. The IIF DOCNUM lands in Transaction.reference so
+    re-imports dedupe correctly.
+
+    Returns the created Transaction, or None when an existing deposit
+    with matching (date, reference) already exists.
+    """
+    trns_amt = _validate_block_balance("DEPOSIT", trns, spls)
+
+    bank_acct_name = trns.get("ACCNT", "").strip()
+    if not bank_acct_name:
+        raise ValueError("DEPOSIT: missing bank account ACCNT on TRNS line")
+    bank_acct = _find_account(db, bank_acct_name)
+    if not bank_acct:
+        raise ValueError(
+            f"DEPOSIT: bank account '{bank_acct_name}' not found. "
+            f"Add the account in the chart of accounts first."
+        )
+
+    doc_num = trns.get("DOCNUM", "").strip()
+    deposit_date = _parse_iif_date(trns.get("DATE", "")) or date.today()
+    total = _q(abs(trns_amt))
+
+    # Idempotent dedup keyed on (date, reference) when DOCNUM is set.
+    # Without a DOCNUM, deposits aren't dedupable (you can legitimately
+    # have two deposits of the same amount on the same day from
+    # different sources), so re-runs without DOCNUM will double-import.
+    if doc_num:
+        existing = (
+            db.query(Transaction)
+            .filter(
+                Transaction.source_type == "deposit",
+                Transaction.reference == doc_num,
+                Transaction.date == deposit_date,
+            )
+            .first()
+        )
+        if existing:
+            return None
+
+    spl_resolved = []
+    for spl in spls:
+        spl_acct_name = spl.get("ACCNT", "").strip()
+        if not spl_acct_name:
+            raise ValueError(
+                f"DEPOSIT {doc_num or bank_acct_name}: SPL line missing ACCNT"
+            )
+        spl_acct = _find_account(db, spl_acct_name)
+        if not spl_acct:
+            raise ValueError(
+                f"DEPOSIT {doc_num or bank_acct_name}: source account "
+                f"'{spl_acct_name}' not found"
+            )
+        spl_amount = _parse_decimal(spl.get("AMOUNT", ""))
+        spl_resolved.append((spl, spl_acct, spl_amount))
+
+    memo = trns.get("MEMO", "").strip()
+    description = memo or f"Deposit to {bank_acct.name}"
+
+    journal_lines = [
+        {
+            "account_id": bank_acct.id,
+            "debit": total,
+            "credit": Decimal("0"),
+            "description": description,
+        }
+    ]
+    for spl, spl_acct, spl_amount in spl_resolved:
+        spl_memo = spl.get("MEMO", "").strip() or None
+        journal_lines.append(
+            {
+                "account_id": spl_acct.id,
+                "debit": Decimal("0"),
+                "credit": _q(abs(spl_amount)),
+                "description": spl_memo or description,
+            }
+        )
+
+    txn = create_journal_entry(
+        db,
+        deposit_date,
+        f"IIF Import — {description}",
+        journal_lines,
+        source_type="deposit",
+        reference=doc_num or None,
+    )
+    db.flush()
+    return txn
 
 
 def _import_invoice(db: Session, trns: dict, spls: list) -> Invoice:
@@ -1166,6 +1449,8 @@ def import_all(db: Session, content: str) -> dict:
         "invoices": 0,
         "payments": 0,
         "estimates": 0,
+        "bills": 0,
+        "deposits": 0,
         "errors": [],
         "warnings": [],
     }
@@ -1204,6 +1489,9 @@ def import_all(db: Session, content: str) -> dict:
         result["invoices"] = counts.get("invoices", 0)
         result["payments"] = counts.get("payments", 0)
         result["estimates"] = counts.get("estimates", 0)
+        result["bills"] = counts.get("bills", 0)
+        result["deposits"] = counts.get("deposits", 0)
+        result["duplicates_skipped"] = counts.get("duplicates_skipped", 0)
         result["errors"].extend(r["errors"])
         result["warnings"].extend(r.get("warnings", []))
 

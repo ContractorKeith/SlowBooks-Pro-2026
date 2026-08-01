@@ -215,8 +215,8 @@ const CustomersPage = {
 
     async showForm(id = null) {
         let c = { name: '', company: '', email: '', phone: '', mobile: '', fax: '', website: '',
-            bill_address1: '', bill_address2: '', bill_city: '', bill_state: '', bill_zip: '',
-            ship_address1: '', ship_address2: '', ship_city: '', ship_state: '', ship_zip: '',
+            bill_address1: '', bill_address2: '', bill_city: '', bill_state: '', bill_zip: '', bill_country: 'US',
+            ship_address1: '', ship_address2: '', ship_city: '', ship_state: '', ship_zip: '', ship_country: 'US',
             terms: 'Net 30', credit_limit: '', tax_id: '', is_taxable: true, notes: '' };
         if (id) c = await API.get(`/customers/${id}`);
 
@@ -252,10 +252,12 @@ const CustomersPage = {
                         <input name="bill_address2" value="${escapeHtml(c.bill_address2 || '')}"></div>
                     <div class="form-group"><label>City</label>
                         <input name="bill_city" value="${escapeHtml(c.bill_city || '')}"></div>
-                    <div class="form-group"><label>State</label>
+                    <div class="form-group"><label>State / County</label>
                         <input name="bill_state" value="${escapeHtml(c.bill_state || '')}"></div>
-                    <div class="form-group"><label>ZIP</label>
+                    <div class="form-group"><label>ZIP / Postcode</label>
                         <input name="bill_zip" value="${escapeHtml(c.bill_zip || '')}"></div>
+                    <div class="form-group"><label>Country</label>
+                        <select name="bill_country">${countryOptions(c.bill_country || 'US')}</select></div>
                 </div>
                 <h3 style="margin:16px 0 8px; font-size:14px; color:var(--gray-600);">Shipping Address</h3>
                 <div class="form-grid">
@@ -265,10 +267,12 @@ const CustomersPage = {
                         <input name="ship_address2" value="${escapeHtml(c.ship_address2 || '')}"></div>
                     <div class="form-group"><label>City</label>
                         <input name="ship_city" value="${escapeHtml(c.ship_city || '')}"></div>
-                    <div class="form-group"><label>State</label>
+                    <div class="form-group"><label>State / County</label>
                         <input name="ship_state" value="${escapeHtml(c.ship_state || '')}"></div>
-                    <div class="form-group"><label>ZIP</label>
+                    <div class="form-group"><label>ZIP / Postcode</label>
                         <input name="ship_zip" value="${escapeHtml(c.ship_zip || '')}"></div>
+                    <div class="form-group"><label>Country</label>
+                        <select name="ship_country">${countryOptions(c.ship_country || 'US')}</select></div>
                 </div>
                 <div class="form-grid" style="margin-top:16px;">
                     <div class="form-group"><label>Tax ID</label>

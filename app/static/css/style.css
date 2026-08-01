@@ -493,6 +493,24 @@ thead th {
 
 thead th:last-child { border-right: none; }
 
+thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+thead th.sortable:hover {
+    background: linear-gradient(180deg, #d8dee8 0%, #c0cad4 100%);
+}
+thead th.sort-active {
+    color: var(--text-primary);
+    font-weight: 800;
+    background: linear-gradient(180deg, #d4dde6 0%, #b8c4d0 100%);
+}
+thead th .sort-arrow {
+    font-size: 9px;
+    margin-left: 2px;
+    color: var(--qb-blue);
+}
+
 tbody td {
     padding: 3px 10px;
     border-bottom: 1px solid #e8ecf0;

@@ -44,7 +44,7 @@ const VendorsPage = {
 
     async showForm(id = null) {
         let v = { name:'', company:'', email:'', phone:'', fax:'', website:'',
-            address1:'', address2:'', city:'', state:'', zip:'',
+            address1:'', address2:'', city:'', state:'', zip:'', country:'US',
             terms:'Net 30', tax_id:'', account_number:'', default_expense_account_id:'',
             is_1099_vendor:false, vendor_1099_type:'', notes:'' };
         if (id) v = await API.get(`/vendors/${id}`);
@@ -76,10 +76,12 @@ const VendorsPage = {
                         <input name="address2" value="${escapeHtml(v.address2 || '')}"></div>
                     <div class="form-group"><label>City</label>
                         <input name="city" value="${escapeHtml(v.city || '')}"></div>
-                    <div class="form-group"><label>State</label>
+                    <div class="form-group"><label>State / County</label>
                         <input name="state" value="${escapeHtml(v.state || '')}"></div>
-                    <div class="form-group"><label>ZIP</label>
+                    <div class="form-group"><label>ZIP / Postcode</label>
                         <input name="zip" value="${escapeHtml(v.zip || '')}"></div>
+                    <div class="form-group"><label>Country</label>
+                        <select name="country">${countryOptions(v.country || 'US')}</select></div>
                 </div>
                 <div class="form-grid" style="margin-top:16px;">
                     <div class="form-group"><label>Terms</label>
