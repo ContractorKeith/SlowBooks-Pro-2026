@@ -5,7 +5,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -21,59 +21,61 @@ from app.services.csv_import import import_customers, import_vendors, import_ite
 
 router = APIRouter(prefix="/api/csv", tags=["csv"])
 
+# Set by desktop_shim.js on every fetch() it makes on behalf of a same-origin
+# link click. text/csv is browser-renderable, so a normal browser install
+# (Docker/LAN, multiple users) keeps getting Content-Disposition: attachment
+# for a direct download. The desktop shell needs the opposite: WebView2 (with
+# ALLOW_DOWNLOADS on) intercepts an "attachment" response at the network
+# layer as a native download even when the request came from the page's own
+# fetch() rather than a real click -- the response never reaches the page's
+# fetch() promise, which surfaces as a "Failed to fetch" error even though
+# the server logs a normal 200. Serving "inline" instead lets that fetch()
+# complete normally; the shim's own JS handles the actual save from there.
+_DESKTOP_HEADER = "X-Slowbooks-Desktop"
 
-@router.get("/export/customers")
-def csv_export_customers(db: Session = Depends(get_db)):
-    csv_data = export_customers(db)
+
+def _csv_response(csv_data: str, filename: str, request: Request) -> Response:
+    disposition = "inline" if request.headers.get(_DESKTOP_HEADER) else "attachment"
     return Response(
         content=csv_data,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=customers.csv"},
+        headers={"Content-Disposition": f"{disposition}; filename={filename}"},
     )
+
+
+@router.get("/export/customers")
+def csv_export_customers(request: Request, db: Session = Depends(get_db)):
+    csv_data = export_customers(db)
+    return _csv_response(csv_data, "customers.csv", request)
 
 
 @router.get("/export/vendors")
-def csv_export_vendors(db: Session = Depends(get_db)):
+def csv_export_vendors(request: Request, db: Session = Depends(get_db)):
     csv_data = export_vendors(db)
-    return Response(
-        content=csv_data,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=vendors.csv"},
-    )
+    return _csv_response(csv_data, "vendors.csv", request)
 
 
 @router.get("/export/items")
-def csv_export_items(db: Session = Depends(get_db)):
+def csv_export_items(request: Request, db: Session = Depends(get_db)):
     csv_data = export_items(db)
-    return Response(
-        content=csv_data,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=items.csv"},
-    )
+    return _csv_response(csv_data, "items.csv", request)
 
 
 @router.get("/export/invoices")
 def csv_export_invoices(
+    request: Request,
     date_from: date = Query(default=None),
     date_to: date = Query(default=None),
     db: Session = Depends(get_db),
 ):
     csv_data = export_invoices(db, date_from, date_to)
-    return Response(
-        content=csv_data,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=invoices.csv"},
-    )
+    return _csv_response(csv_data, "invoices.csv", request)
 
 
 @router.get("/export/accounts")
-def csv_export_accounts(db: Session = Depends(get_db)):
+def csv_export_accounts(request: Request, db: Session = Depends(get_db)):
     csv_data = export_accounts(db)
-    return Response(
-        content=csv_data,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=chart_of_accounts.csv"},
-    )
+    return _csv_response(csv_data, "chart_of_accounts.csv", request)
 
 
 @router.post("/import/customers")
