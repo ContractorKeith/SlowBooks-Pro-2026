@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.models.settings import Settings
 from app.services.payments.base import CheckoutSession, PaymentProvider, PaymentResult
 from app.services.payments.paypal import PayPalProvider
+from app.services.payments.square import SquareProvider
 from app.services.payments.stripe import StripeProvider
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "PaymentResult",
     "StripeProvider",
     "PayPalProvider",
+    "SquareProvider",
     "get_provider",
     "provider_settings",
     "enabled_providers",
@@ -31,6 +33,7 @@ __all__ = [
 _REGISTRY: dict[str, PaymentProvider] = {
     "stripe": StripeProvider(),
     "paypal": PayPalProvider(),
+    "square": SquareProvider(),
 }
 
 

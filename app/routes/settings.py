@@ -30,6 +30,8 @@ SECRET_KEYS = frozenset(
         "stripe_secret_key",
         "stripe_webhook_secret",
         "paypal_client_secret",
+        "square_access_token",
+        "square_webhook_signature_key",
         "qbo_client_secret",
         "qbo_access_token",
         "qbo_refresh_token",
