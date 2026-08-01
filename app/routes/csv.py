@@ -18,6 +18,7 @@ from app.services.csv_export import (
     export_accounts,
 )
 from app.services.csv_import import import_customers, import_vendors, import_items
+from app.services.upload_limits import read_limited
 
 router = APIRouter(prefix="/api/csv", tags=["csv"])
 
@@ -80,7 +81,7 @@ def csv_export_accounts(db: Session = Depends(get_db)):
 async def csv_import_customers(
     file: UploadFile = File(...), db: Session = Depends(get_db)
 ):
-    content = (await file.read()).decode("utf-8-sig")
+    content = (await read_limited(file, label="CSV file")).decode("utf-8-sig")
     result = import_customers(db, content)
     return result
 
@@ -89,13 +90,13 @@ async def csv_import_customers(
 async def csv_import_vendors(
     file: UploadFile = File(...), db: Session = Depends(get_db)
 ):
-    content = (await file.read()).decode("utf-8-sig")
+    content = (await read_limited(file, label="CSV file")).decode("utf-8-sig")
     result = import_vendors(db, content)
     return result
 
 
 @router.post("/import/items")
 async def csv_import_items(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    content = (await file.read()).decode("utf-8-sig")
+    content = (await read_limited(file, label="CSV file")).decode("utf-8-sig")
     result = import_items(db, content)
     return result
