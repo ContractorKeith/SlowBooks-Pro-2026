@@ -126,6 +126,7 @@ const BillsPage = {
                                 `<option ${t==='Net 30'?'selected':''}>${t}</option>`).join('')}
                         </select></div>
                     ${classGroup}
+                    ${currencyFormGroupsHtml()}
                 </div>
                 <h3 style="margin:12px 0 8px;font-size:14px;">Line Items</h3>
                 <table class="line-items-table">
@@ -184,6 +185,7 @@ const BillsPage = {
                 terms: form.terms.value,
                 notes: form.notes.value || null,
                 class_id: classIdFromForm(form),
+                ...currencyPayloadFromForm(form),
                 lines,
             });
             toast('Bill saved');

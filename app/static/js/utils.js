@@ -274,3 +274,35 @@ function classIdFromForm(form) {
     const v = form.class_id ? form.class_id.value : '';
     return v ? parseInt(v) : null;
 }
+
+// ---------------------------------------------------------------------------
+// Multi-currency: currency + exchange-rate inputs for document forms.
+// Selecting a foreign currency prefills the rate from /api/fx/rate
+// (Bank of Canada feed); the operator can always override.
+// ---------------------------------------------------------------------------
+const CURRENCIES = ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN', 'INR', 'CNY'];
+
+function currencyFormGroupsHtml(selected, rate) {
+    const sel = (selected || 'USD').toUpperCase();
+    const opts = CURRENCIES.map(c => `<option ${c === sel ? 'selected' : ''}>${c}</option>`).join('');
+    return `<div class="form-group"><label>Currency</label>
+            <select name="currency" onchange="prefillFxRate(this)">${opts}</select></div>
+        <div class="form-group"><label>Exchange Rate</label>
+            <input name="exchange_rate" type="number" step="0.00000001" value="${rate || 1}"></div>`;
+}
+
+async function prefillFxRate(select) {
+    const form = select.closest('form');
+    const rateInput = form?.querySelector('[name=exchange_rate]');
+    if (!rateInput) return;
+    try {
+        const data = await API.get(`/fx/rate?from_currency=${select.value}`);
+        if (data.rate) rateInput.value = data.rate;
+    } catch (e) { /* operator enters the rate manually */ }
+}
+
+function currencyPayloadFromForm(form) {
+    const currency = form.currency ? form.currency.value : null;
+    const rate = form.exchange_rate ? parseFloat(form.exchange_rate.value) : null;
+    return { currency: currency || null, exchange_rate: rate || null };
+}

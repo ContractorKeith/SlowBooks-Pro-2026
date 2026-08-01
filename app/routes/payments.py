@@ -73,6 +73,15 @@ def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
     # Reject non-positive amounts at the boundary; otherwise create_journal_entry
     # raises ValueError on the AR/bank line, which the framework surfaces as a
     # 500. Refunds belong in a credit memo, not a negative-amount payment.
+    from app.services.currency import (
+        document_currency,
+        fx_gain_loss_account_id,
+        resolve_rate,
+        to_home,
+    )
+
+    pay_currency, pay_rate = resolve_rate(db, data.currency, data.exchange_rate)
+
     if data.amount <= 0:
         raise HTTPException(
             status_code=400,
@@ -91,6 +100,8 @@ def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
 
     payment = Payment(
         customer_id=data.customer_id,
+        currency=pay_currency,
+        exchange_rate=pay_rate,
         date=data.date,
         amount=data.amount,
         method=data.method,
@@ -102,6 +113,9 @@ def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
     db.add(payment)
     db.flush()
 
+    # Home-currency value of A/R relieved per allocation (at each
+    # invoice's booked rate) — the FX gain/loss basis.
+    ar_home_credits: list[Decimal] = []
     # Apply allocations to invoices
     for alloc_data in data.allocations:
         # Lock the invoice row for the read-check-write so two concurrent
@@ -124,6 +138,19 @@ def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
                 detail=f"Allocation {alloc_data.amount} exceeds invoice {invoice.invoice_number} balance {invoice.balance_due}",
             )
 
+        inv_currency = document_currency(invoice, db)
+        if inv_currency != pay_currency:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Payment currency {pay_currency} does not match invoice "
+                    f"{invoice.invoice_number} currency {inv_currency}; pay each "
+                    f"currency with a separate payment"
+                ),
+            )
+        ar_home_credits.append(
+            to_home(alloc_data.amount, invoice.exchange_rate or Decimal("1"))
+        )
         alloc = PaymentAllocation(
             payment_id=payment.id,
             invoice_id=alloc_data.invoice_id,
@@ -153,20 +180,40 @@ def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
     deposit_id = payment.deposit_to_account_id or get_undeposited_funds_id(db)
 
     if ar_id and deposit_id:
+        # Cash received, in home currency at the payment-date rate.
+        cash_home = to_home(data.amount, pay_rate)
+        # A/R relieved at each invoice's BOOKED rate; any unallocated
+        # remainder (a prepayment credit) has no booking rate yet, so it
+        # relieves at the payment rate.
+        unallocated = Decimal(str(data.amount)) - Decimal(str(alloc_total))
+        ar_home = sum(ar_home_credits, Decimal("0")) + to_home(unallocated, pay_rate)
         journal_lines = [
             {
                 "account_id": deposit_id,
-                "debit": Decimal(str(data.amount)),
+                "debit": cash_home,
                 "credit": Decimal("0"),
                 "description": f"Payment from {customer.name}",
             },
             {
                 "account_id": ar_id,
                 "debit": Decimal("0"),
-                "credit": Decimal(str(data.amount)),
+                "credit": ar_home,
                 "description": f"Payment from {customer.name}",
             },
         ]
+        # Realized FX: cash settled at a different rate than the invoice
+        # was booked at. Credit = gain, debit = loss (expense account).
+        residual = cash_home - ar_home
+        if residual != 0:
+            fx_id = fx_gain_loss_account_id(db)
+            journal_lines.append(
+                {
+                    "account_id": fx_id,
+                    "debit": -residual if residual < 0 else Decimal("0"),
+                    "credit": residual if residual > 0 else Decimal("0"),
+                    "description": f"Realized FX on payment from {customer.name}",
+                }
+            )
         txn = create_journal_entry(
             db,
             data.date,

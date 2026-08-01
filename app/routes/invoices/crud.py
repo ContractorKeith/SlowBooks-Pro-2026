@@ -108,10 +108,16 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
     # MAX+1 (no row-level lock), so two concurrent creates can both compute
     # the same number and one will hit the invoices.invoice_number UNIQUE
     # constraint at flush. The constraint is the safety net; this is the UX.
+    from app.services.currency import convert_lines, resolve_rate
+
+    doc_currency, doc_rate = resolve_rate(db, data.currency, data.exchange_rate)
+
     for _ in range(10):
         invoice_number = next_invoice_number(db)
         invoice = Invoice(
             invoice_number=invoice_number,
+            currency=doc_currency,
+            exchange_rate=doc_rate,
             customer_id=cust_id,
             date=data.date,
             due_date=due_date,
@@ -214,7 +220,7 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
             db,
             data.date,
             f"Invoice #{invoice_number} - {cust_name}",
-            journal_lines,
+            convert_lines(journal_lines, doc_rate),
             source_type="invoice",
             source_id=invoice.id,
             class_id=invoice.class_id,
