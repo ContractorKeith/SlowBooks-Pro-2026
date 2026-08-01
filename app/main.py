@@ -16,6 +16,7 @@
 # that had our licensed copy died in 2024. We just want to print invoices.
 # ============================================================================
 
+import re as _re
 import time as _time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -68,7 +69,7 @@ from app.routes import bank_import, tax, backups
 from app.routes import companies, employees, payroll
 
 # Phase 7: Online Payments
-from app.routes import stripe_payments, public
+from app.routes import provider_payments, public
 
 # Phase 8: QuickBooks Online
 from app.routes import qbo
@@ -296,14 +297,26 @@ _AUTH_EXEMPT_EXACT = {
     "/health",
     "/analytics",  # redirect to SPA hash route
     "/favicon.ico",
-    "/api/stripe/webhook",  # Stripe auth via signature, not session
+    "/api/stripe/webhook",  # legacy alias — Stripe auth via signature
 }
+# Provider payment routes that are public by design:
+#   - webhook: the provider's signature is the authentication
+#   - create-checkout-session: called from the unauthenticated /pay/{token}
+#     page; the payment_token is the capability (and the route is
+#     rate-limited). check-status is NOT here — it stays session-gated.
+_AUTH_EXEMPT_RE = _re.compile(
+    r"^/api/payments/[a-z0-9_]+/(webhook|create-checkout-session)$"
+)
 
 
 @app.middleware("http")
 async def require_session(request: Request, call_next):
     path = request.url.path
-    if path in _AUTH_EXEMPT_EXACT or path.startswith(_AUTH_EXEMPT_PREFIXES):
+    if (
+        path in _AUTH_EXEMPT_EXACT
+        or path.startswith(_AUTH_EXEMPT_PREFIXES)
+        or _AUTH_EXEMPT_RE.match(path)
+    ):
         return await call_next(request)
     if request.session.get("authenticated") is not True:
         return JSONResponse(
@@ -385,7 +398,8 @@ app.include_router(companies.router)
 app.include_router(employees.router)
 app.include_router(payroll.router)
 # Phase 7: Online Payments
-app.include_router(stripe_payments.router)
+app.include_router(provider_payments.router)
+app.include_router(provider_payments.legacy_stripe_router)
 app.include_router(public.router)
 # Phase 8: QuickBooks Online
 app.include_router(qbo.router)

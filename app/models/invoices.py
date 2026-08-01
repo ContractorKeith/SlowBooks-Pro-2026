@@ -75,7 +75,7 @@ class Invoice(Base):
     notes = Column(Text, nullable=True)
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
 
-    # Stripe online payments
+    # Online payments (Stripe / any registered provider)
     payment_token = Column(
         String(36),
         unique=True,
@@ -84,6 +84,11 @@ class Invoice(Base):
         default=lambda: str(uuid.uuid4()),
     )
     stripe_checkout_session_id = Column(String(255), nullable=True)
+    # Most recent checkout attempt: which provider, and its session/order id.
+    # checkout_external_id is indexed because providers without metadata
+    # passthrough (Square) resolve the invoice by this id on webhook/poll.
+    checkout_provider = Column(String(20), nullable=True)
+    checkout_external_id = Column(String(255), nullable=True, index=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
