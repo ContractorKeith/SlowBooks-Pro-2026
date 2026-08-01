@@ -247,7 +247,12 @@ def test_collector_finds_something():
 # - One-shot seeds run once during setup, not from the running SPA
 # - Legacy paths superseded by newer endpoints (kept for backwards compat)
 _INTENTIONAL_BACKEND_ONLY: set[tuple[str, str]] = {
-    ("POST", "/api/stripe/webhook"),
+    ("POST", "/api/stripe/webhook"),  # legacy alias for provider webhook
+    # Provider payment routes without SPA callers: webhooks fire from the
+    # provider's servers; create-checkout-session is called from the
+    # public /pay/{token} page (a Jinja template, outside the JS scan).
+    ("POST", "/api/payments/{provider_name}/webhook"),
+    ("POST", "/api/payments/{provider_name}/create-checkout-session"),
     ("GET", "/api/qbo/callback"),
     ("POST", "/api/deductions/types/seed-standard"),
     ("POST", "/api/payroll/gross-up"),
@@ -293,9 +298,6 @@ _INTENTIONAL_BACKEND_ONLY: set[tuple[str, str]] = {
     # Backup restore — dangerous; deliberately not exposed in the SPA.
     # Run via CLI: `python -m app.services.backup restore <file>`.
     ("POST", "/api/backups/restore"),
-    # Stripe checkout — billing/upgrade flow not surfaced yet (product is
-    # currently a single-tier release). Webhook handler already on this list.
-    ("POST", "/api/stripe/create-checkout-session"),
     # Employee self-service "submit timecard" — meant to be called from
     # the employee portal, not the admin TimeEntriesPage (which uses
     # /approve and /reject). Portal time-entry UI is future work.

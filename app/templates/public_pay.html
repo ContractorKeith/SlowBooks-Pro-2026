@@ -119,6 +119,12 @@
             <div class="status-box status-success">
                 Payment received — thank you!
             </div>
+            {% elif payment_pending %}
+            <div class="status-box status-paid">
+                Your payment is being confirmed. If you completed checkout,
+                it will be recorded shortly — you can refresh this page to
+                check again.
+            </div>
             {% elif payment_status == 'cancelled' %}
             <div class="status-box status-cancelled">
                 Payment was cancelled. You can try again below.
@@ -155,22 +161,26 @@
             </div>
             {% endif %}
 
-            {% if stripe_enabled and inv.balance_due|float > 0 and inv.status.value not in ['paid', 'void'] and payment_status != 'success' %}
-            <button id="pay-btn" class="pay-btn" onclick="startCheckout()">
-                Pay ${{ "%.2f"|format(inv.balance_due|float) }}
+            {% if providers and inv.balance_due|float > 0 and inv.status.value not in ['paid', 'void'] and payment_status != 'success' %}
+            {% for p in providers %}
+            <button id="pay-btn-{{ p.name }}" class="pay-btn" data-provider="{{ p.name }}"
+                    onclick="startCheckout('{{ p.name }}')">
+                Pay ${{ "%.2f"|format(inv.balance_due|float) }}{% if providers|length > 1 %} with {{ p.display_name }}{% endif %}
             </button>
+            {% endfor %}
             {% endif %}
         </div>
         <div class="pay-footer">Powered by Slowbooks Pro 2026</div>
     </div>
 
     <script>
-    async function startCheckout() {
-        var btn = document.getElementById('pay-btn');
+    async function startCheckout(provider) {
+        var btn = document.getElementById('pay-btn-' + provider);
+        var original = btn.textContent;
         btn.disabled = true;
-        btn.textContent = 'Redirecting to Stripe...';
+        btn.textContent = 'Redirecting...';
         try {
-            var resp = await fetch('/api/stripe/create-checkout-session', {
+            var resp = await fetch('/api/payments/' + provider + '/create-checkout-session', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({payment_token: '{{ token }}'})
@@ -181,12 +191,12 @@
             } else {
                 alert(data.detail || 'Failed to start checkout');
                 btn.disabled = false;
-                btn.textContent = 'Pay ${{ "%.2f"|format(inv.balance_due|float) }}';
+                btn.textContent = original;
             }
         } catch (e) {
             alert('Error: ' + e.message);
             btn.disabled = false;
-            btn.textContent = 'Pay ${{ "%.2f"|format(inv.balance_due|float) }}';
+            btn.textContent = original;
         }
     }
     </script>

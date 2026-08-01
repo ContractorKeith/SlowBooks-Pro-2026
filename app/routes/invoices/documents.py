@@ -84,9 +84,12 @@ def email_invoice(
 
         pdf_bytes = generate_invoice_pdf(inv, company)
 
-        # Build pay URL if Stripe is enabled and invoice has a payment token
+        # Build pay URL if any payment provider is enabled and the invoice
+        # has a payment token
+        from app.services.payments import enabled_providers
+
         pay_url = None
-        if company.get("stripe_enabled") == "true" and inv.payment_token:
+        if inv.payment_token and enabled_providers(db):
             base_url = str(request.base_url).rstrip("/")
             pay_url = f"{base_url}/pay/{inv.payment_token}"
 
