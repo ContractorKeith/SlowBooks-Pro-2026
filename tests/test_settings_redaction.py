@@ -77,3 +77,17 @@ def test_non_secret_settings_pass_through(client):
     got = client.get("/api/settings").json()
     assert got["company_name"] == "Acme"
     assert got["invoice_prefix"] == "INV-"
+
+
+def test_paypal_client_secret_is_masked_on_get(client):
+    _set_settings(client, paypal_client_secret="pp-secret-REAL")
+    got = client.get("/api/settings").json()
+    assert got["paypal_client_secret"] == SECRET_PLACEHOLDER
+
+
+def test_paypal_placeholder_roundtrip_preserves_secret(client, db_session):
+    from app.services.settings_service import get_setting_raw
+
+    _set_settings(client, paypal_client_secret="pp-secret-REAL")
+    _set_settings(client, paypal_client_secret=SECRET_PLACEHOLDER)
+    assert get_setting_raw(db_session, "paypal_client_secret") == "pp-secret-REAL"

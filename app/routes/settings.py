@@ -29,6 +29,7 @@ SECRET_KEYS = frozenset(
         "smtp_password",
         "stripe_secret_key",
         "stripe_webhook_secret",
+        "paypal_client_secret",
         "qbo_client_secret",
         "qbo_access_token",
         "qbo_refresh_token",
