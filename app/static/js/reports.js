@@ -61,6 +61,10 @@ const ReportsPage = {
                     <div class="card-header">P&L by Class</div>
                     <p style="font-size:13px; color:var(--gray-500);">Income vs expenses split by class</p>
                 </div>
+                <div class="card" style="cursor:pointer" onclick="ReportsPage.financialStatementsPdf()">
+                    <div class="card-header">Financial Statements Pack (PDF)</div>
+                    <p style="font-size:13px; color:var(--gray-500);">P&L + Balance Sheet + Trial Balance, one audit-ready PDF</p>
+                </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.fixedAssetReconciliation()">
                     <div class="card-header">Fixed Asset Reconciliation</div>
                     <p style="font-size:13px; color:var(--gray-500);">Register totals vs GL by asset type</p>
@@ -848,4 +852,15 @@ ReportsPage.fixedAssetReconciliation = async function () {
             Compare against the mapped fixed-asset and accumulated-depreciation
             GL accounts — differences mean unposted acquisitions or manual GL edits.
         </div>`);
+};
+
+// Financial statements pack — one PDF with P&L, Balance Sheet, Trial Balance.
+ReportsPage.financialStatementsPdf = async function () {
+    await ReportsPage.openPeriodModal("Financial Statements Pack", "this_year_to_date", async (_period, range) => {
+        window.open(`/api/reports/financial-statements/pdf?start_date=${range.start}&end_date=${range.end}`, '_blank');
+        return `<div style="font-size:12px;">The statements pack opened in a new tab —
+            P&L and Trial Balance for ${escapeHtml(range.start)} — ${escapeHtml(range.end)},
+            Balance Sheet as of ${escapeHtml(range.end)}. Paper size follows
+            Settings → Report PDF Paper Size.</div>`;
+    });
 };

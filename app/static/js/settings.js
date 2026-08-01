@@ -79,6 +79,11 @@ const SettingsPage = {
                             <textarea name="invoice_notes">${escapeHtml(s.invoice_notes || '')}</textarea></div>
                         <div class="form-group full-width"><label>Invoice Footer</label>
                             <input name="invoice_footer" value="${escapeHtml(s.invoice_footer || '')}"></div>
+                        <div class="form-group"><label>Report PDF Paper Size</label>
+                            <select name="pdf_paper_size">
+                                <option value="letter" ${s.pdf_paper_size !== 'a4' ? 'selected' : ''}>US Letter</option>
+                                <option value="a4" ${s.pdf_paper_size === 'a4' ? 'selected' : ''}>A4</option>
+                            </select></div>
                     </div>
                 </div>
 

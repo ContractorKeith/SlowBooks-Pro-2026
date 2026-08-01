@@ -235,3 +235,22 @@ def generate_check_pdf(check_data: dict, company_settings: dict) -> bytes:
     check_data["amount_words"] = _amount_to_words(check_data.get("amount", 0))
     html_str = template.render(check=check_data, company=company_settings)
     return HTML(string=html_str, url_fetcher=_safe_url_fetcher).write_pdf()
+
+
+def generate_report_pdf(sections: list, company_settings: dict) -> bytes:
+    """Render one or more financial-report sections into a single PDF.
+
+    sections: [{title, period, columns: [...], rows: [{cells, style}]}]
+    Paper size comes from the pdf_paper_size setting (letter | a4) so US
+    and international installs both print natively.
+    """
+    from datetime import date
+
+    template = _jinja_env.get_template("report_pdf.html")
+    html_str = template.render(
+        sections=sections,
+        company=company_settings,
+        paper_size=(company_settings.get("pdf_paper_size") or "letter").lower(),
+        generated_on=date.today().isoformat(),
+    )
+    return HTML(string=html_str, url_fetcher=_safe_url_fetcher).write_pdf()
