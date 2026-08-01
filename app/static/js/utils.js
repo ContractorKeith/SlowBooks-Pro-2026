@@ -81,11 +81,51 @@ function closeSearchDropdown() {
  *   filter:     optional {id, rowSelector, options: [[value, label], ...]}
  *               status dropdown; filtering is client-side via filterRows()
  *   empty:      raw HTML rendered inside .empty-state when items is empty
- *   columns:    array of header labels; use {label, cls} for styled columns
+ *   columns:    array of header labels; use {label, cls} for styled columns.
+ *               Add `key` to make a column sortable: the value at
+ *               item[key] is compared numerically when both sides parse
+ *               as numbers, otherwise as case-insensitive strings.
  *   items:      the fetched rows
  *   row:        item => '<tr ...>...</tr>' (page keeps escaping/actions)
+ *   sort:       optional {id, column, direction} enabling click-to-sort
+ *               on columns that carry a `key`. `column`/`direction` set
+ *               the initial order ('asc'|'desc', default 'asc').
  */
-function renderListPage({ title, headerHtml = '', filter = null, empty, columns, items, row }) {
+const _listSortState = {};
+
+function _listSortCompare(a, b, key) {
+    const av = a?.[key], bv = b?.[key];
+    const an = parseFloat(av), bn = parseFloat(bv);
+    if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+    return String(av ?? '').toLowerCase().localeCompare(String(bv ?? '').toLowerCase());
+}
+
+function _listTableHtml(state) {
+    const { columns, items, row, sort } = state;
+    let rows = items;
+    if (sort && sort.column) {
+        const sign = sort.direction === 'desc' ? -1 : 1;
+        rows = items.slice().sort((a, b) => sign * _listSortCompare(a, b, sort.column));
+    }
+    const ths = columns.map(c => {
+        const col = typeof c === 'string' ? { label: c } : c;
+        const cls = [col.cls || ''];
+        let arrow = '', click = '';
+        if (sort && col.key) {
+            cls.push('sortable');
+            if (sort.column === col.key) {
+                cls.push('sort-active');
+                arrow = ` <span class="sort-arrow">${sort.direction === 'asc' ? '▲' : '▼'}</span>`;
+            }
+            click = ` onclick="sortListRows('${sort.id}', '${col.key}')"`;
+        }
+        return `<th class="${cls.filter(Boolean).join(' ')}"${click}>${col.label}${arrow}</th>`;
+    }).join('');
+    return `<table>
+        <thead><tr>${ths}</tr></thead><tbody>${rows.map(row).join('')}</tbody></table>`;
+}
+
+function renderListPage({ title, headerHtml = '', filter = null, empty, columns, items, row, sort = null }) {
     let html = `
         <div class="page-header">
             <h2>${title}</h2>
@@ -106,11 +146,31 @@ function renderListPage({ title, headerHtml = '', filter = null, empty, columns,
     if (items.length === 0) {
         return html + `<div class="empty-state">${empty}</div>`;
     }
-    const ths = columns
-        .map(c => (typeof c === 'string' ? `<th>${c}</th>` : `<th class="${c.cls}">${c.label}</th>`))
-        .join('');
-    return html + `<div class="table-container"><table>
-        <thead><tr>${ths}</tr></thead><tbody>${items.map(row).join('')}</tbody></table></div>`;
+    if (sort) {
+        sort.direction = sort.direction || 'asc';
+        const state = { columns, items, row, sort, filter };
+        _listSortState[sort.id] = state;
+        return html + `<div class="table-container" id="${sort.id}-table">${_listTableHtml(state)}</div>`;
+    }
+    const state = { columns, items, row, sort: null };
+    return html + `<div class="table-container">${_listTableHtml(state)}</div>`;
+}
+
+function sortListRows(sortId, key) {
+    const state = _listSortState[sortId];
+    if (!state) return;
+    if (state.sort.column === key) {
+        state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.sort.column = key;
+        // Date-like columns feel more natural newest-first on first
+        // click; everything else (text, money) defaults to ascending.
+        state.sort.direction = /(^|_)date$/.test(key) ? 'desc' : 'asc';
+    }
+    const wrap = document.getElementById(`${sortId}-table`);
+    if (!wrap) return;
+    wrap.innerHTML = _listTableHtml(state);
+    if (state.filter) filterRows(state.filter.id, state.filter.rowSelector);
 }
 
 function filterRows(selectId, rowSelector) {
