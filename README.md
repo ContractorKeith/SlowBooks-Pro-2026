@@ -34,6 +34,47 @@ The codebase is annotated with "decompilation" comments referencing `QBW32.EXE` 
 
 ## What's New
 
+**Online payments: Stripe, PayPal, and Square (v2.2)** — One provider
+abstraction, three processors. Enable any combination and the customer
+pay page shows a button per provider; every payment posts through one
+idempotent recorder (DR Undeposited Funds / CR A/R). Desktop installs
+record payments too — no webhook required — via verified capture on the
+customer's return plus a "Check Payment Status" button on the invoice.
+See [docs/setup-stripe.md](docs/setup-stripe.md),
+[docs/setup-paypal.md](docs/setup-paypal.md),
+[docs/setup-square.md](docs/setup-square.md).
+
+**Class tracking** — The QuickBooks class dimension (department /
+location / line of business) on invoices, bills, journals, deposits, and
+more, with a **P&L by Class** report whose totals reconcile exactly with
+the plain P&L. Classes are managed in Settings; IIF imports map
+`SPL.CLASS` automatically.
+
+**Multi-currency** — Foreign-currency invoices and bills booked at a
+per-document exchange rate (auto-prefilled from the Bank of Canada feed,
+always overridable), a single-currency home ledger so every report stays
+exact, and realized FX gain/loss posted automatically when payments
+settle at a different rate.
+
+**Fixed assets** — Asset register with per-type account mappings,
+straight-line or declining-balance depreciation runs (one journal per
+asset), disposal with gain/loss, CSV import, and a reconciliation report.
+
+**Migrate from Xero** — Upload Xero CSV exports (Chart of Accounts +
+General Ledger + Trial Balance); a dry-run verifies every journal
+balances and cross-checks the trial balance before anything is written.
+Pairs with the new **Opening Balances wizard** for guided setup without
+journal-entry knowledge.
+
+**Financial-report PDFs** — Print the P&L, Balance Sheet, or the
+one-click **Financial Statements Pack** (P&L + Balance Sheet + Trial
+Balance, page-numbered), in US Letter or A4.
+
+**Bank CSV import** — Chase checking, Chase credit, and PayPal statement
+exports auto-detected by header signature, with dedup that survives
+re-imports and overlapping date ranges without dropping legitimate
+same-day duplicates.
+
 **Native Windows desktop app (v2.1)** — A real installer, code-signed via
 Azure Trusted Signing, that runs SlowBooks as a normal desktop app in its
 own window: no Docker, no Python install, no database server. Each company
@@ -82,8 +123,8 @@ Full feature catalog (300+ entries across every module) lives in **[docs/feature
 
 ![Invoice editor seeded with IRS Pub 583 mock data](screenshots/invoices.png)
 
-- **Banking** — Bank register with running balance, deposits, credit-card charges, check printing (3-per-page), full reconciliation workflow, OFX/QFX import with FITID dedup.
-- **Reports & tax** — P&L, Balance Sheet, A/R & A/P Aging, General Ledger, Sales Tax with pay-to-government flow, Customer Statements, Schedule C export.
+- **Banking** — Bank register with running balance, deposits, credit-card charges, check printing (3-per-page), full reconciliation workflow, OFX/QFX import with FITID dedup, CSV import for Chase and PayPal exports with content-based dedup, and auto-categorization bank rules shared by every importer.
+- **Reports & tax** — P&L (plain and by Class), Balance Sheet, Trial Balance, A/R & A/P Aging, General Ledger, Cash Flow, Sales Tax with pay-to-government flow, Customer Statements, Schedule C export — plus printable PDFs and the Financial Statements Pack.
 - **Payroll & HR** — Full module with tax forms; see **[docs/payroll-hr-module.md](docs/payroll-hr-module.md)**.
 - **Analytics + AI** — Real-time BI layer with 8 metrics and a 90-day cash forecast; optional BYOK AI Insights layer. Full feature reference in [docs/features.md](docs/features.md#analytics).
 - **Inventory** — Perpetual-inventory ledger, automatic COGS, weighted-average cost, reorder points, valuation, manual adjustments.
@@ -94,9 +135,11 @@ Full feature catalog (300+ entries across every module) lives in **[docs/feature
 
 ![Duplicate detection warning on customer create](screenshots/duplicate-detection.png)
 
-- **Online payments** — Stripe Checkout integration. See **[docs/setup-stripe.md](docs/setup-stripe.md)**.
+- **Online payments** — Stripe, PayPal, and Square behind one provider abstraction, with desktop-mode payment recording. Setup guides: [Stripe](docs/setup-stripe.md), [PayPal](docs/setup-paypal.md), [Square](docs/setup-square.md).
 - **QuickBooks Online sync** — OAuth + bidirectional sync. See **[docs/setup-qbo.md](docs/setup-qbo.md)**.
-- **QB2003 interop** — IIF import/export with type-mapping, validation, and round-trip safety.
+- **QB2003 interop** — IIF import/export with type-mapping, validation, round-trip safety, and INVOICE/PAYMENT/ESTIMATE/BILL/DEPOSIT transaction blocks (classes included).
+- **Fixed assets** — Register, depreciation runs, disposal with gain/loss, CSV import, reconciliation report.
+- **Migration onramps** — Xero CSV import with dry-run verification; Opening Balances wizard; QuickBooks IIF.
 
 ---
 
@@ -142,6 +185,8 @@ For backups, restore, key rotation, and monitoring see **[docs/operations.md](do
 | [docs/wiring-audit.md](docs/wiring-audit.md) | Frontend ↔ backend disconnect audit methodology and findings |
 | [docs/setup-qbo.md](docs/setup-qbo.md) | QuickBooks Online OAuth + sync setup |
 | [docs/setup-stripe.md](docs/setup-stripe.md) | Stripe payment processing setup |
+| [docs/setup-paypal.md](docs/setup-paypal.md) | PayPal payment processing setup |
+| [docs/setup-square.md](docs/setup-square.md) | Square payment processing setup |
 | [SECURITY.md](SECURITY.md) | Public security policy and responsible disclosure |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor flow |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
@@ -150,7 +195,7 @@ For backups, restore, key rotation, and monitoring see **[docs/operations.md](do
 
 ## Tech Stack
 
-Python 3.13 + FastAPI on PostgreSQL 17 (SQLite for tests and for the desktop app, one file per company) with SQLAlchemy 2.0 and Alembic migrations. Vanilla HTML/CSS/JS single-page app — no framework, no build step. WeasyPrint + Jinja2 for PDFs. Self-hosted Chart.js for analytics (no CDN; LAN-deployable). Stripe Checkout for online payments. python-quickbooks + intuit-oauth for QBO sync. Runs on port 3001 by default.
+Python 3.13 + FastAPI on PostgreSQL 17 (SQLite for tests and for the desktop app, one file per company) with SQLAlchemy 2.0 and Alembic migrations. Vanilla HTML/CSS/JS single-page app — no framework, no build step. WeasyPrint + Jinja2 for PDFs. Self-hosted Chart.js for analytics (no CDN; LAN-deployable). Stripe, PayPal, and Square for online payments (hosted checkout only — card data never touches the app). python-quickbooks + intuit-oauth for QBO sync. Runs on port 3001 by default.
 
 The Windows desktop build is the same codebase frozen with PyInstaller (pywebview/WebView2 window, in-process Alembic, bundled Pango for PDFs), built and code-signed in CI via Azure Trusted Signing on every release tag.
 
@@ -180,5 +225,8 @@ You can use, modify, and run Slowbooks Pro for any personal, educational, or int
 - [VonHoltenCodes](https://github.com/VonHoltenCodes) — Creator
 - [PNWImport](https://github.com/PNWImport) — Security hardening (auth, CORS, path traversal, atomic writes, non-root Docker, rate limiting), analytics engine, AI insights with 7-provider support, Cloudflare Worker gateway, inventory ledger, drill-down reports, fuzzy duplicate detection, saved reports, payroll/HR module, tax-form audit chain, reseller-permit module, customer details popout
 - [jake-378](https://github.com/jake-378) — Backup UI fixes, report period selectors, invoice terms autofill, date validation fixes
-- [moshgrossman](https://github.com/moshgrossman) — Native Windows desktop mode groundwork: SQLite file-per-company with manifest, company picker, desktop launcher, SQLite-compatible migrations, print/PDF window handling
+- [moshgrossman](https://github.com/moshgrossman) — Native Windows desktop mode groundwork: SQLite file-per-company with manifest, company picker, desktop launcher, SQLite-compatible migrations, print/PDF window handling; desktop download/save fixes (native save dialogs for CSV/PDF/backups, download-link interception)
 - [WC3D](https://github.com/WC3D) — Jinja2 XSS security fix
+- [Alex Jordan (@LayoverLogic)](https://github.com/LayoverLogic) — Security hardening (company-DB creation quoting, DOM debug-string cleanup), IIF BILL/DEPOSIT import, class tracking design, multi-currency design with the Bank of Canada FX service, sortable list columns, country dropdowns
+- [amazon1148](https://github.com/amazon1148) — CSV bank import with auto-detection for Chase and PayPal statement formats
+- [Joel Macklow (@joelmacklow)](https://github.com/joelmacklow) — Fixed assets, Xero import with dry-run, opening-balance wizard, report PDF pipeline, and security regression-suite concepts, specified in his NZ localization fork
