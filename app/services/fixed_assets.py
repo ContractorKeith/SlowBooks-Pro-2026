@@ -287,38 +287,69 @@ def import_assets_csv(db: Session, csv_text: str) -> dict:
     imported = 0
     errors = []
     for i, row in enumerate(reader, start=2):
+        # Row messages are CONSTRUCTED, never str(exc): CodeQL
+        # (py/stack-trace-exposure) treats any exception text flowing to
+        # the response as internals disclosure, builtin messages included.
+        type_name = (row.get("asset_type") or "").strip()
+        atype = (
+            db.query(FixedAssetType).filter(FixedAssetType.name == type_name).first()
+        )
+        if not atype:
+            errors.append({"row": i, "message": f"asset type '{type_name}' not found"})
+            continue
+
+        name = (row.get("name") or "").strip()
+        if not name:
+            errors.append({"row": i, "message": "name is required"})
+            continue
+
+        raw_date = (row.get("purchase_date") or "").strip()
         try:
-            type_name = (row.get("asset_type") or "").strip()
-            atype = (
-                db.query(FixedAssetType)
-                .filter(FixedAssetType.name == type_name)
-                .first()
+            purchase_date = date.fromisoformat(raw_date)
+        except ValueError:
+            errors.append(
+                {
+                    "row": i,
+                    "message": f"invalid purchase_date {raw_date!r} (expected YYYY-MM-DD)",
+                }
             )
-            if not atype:
-                raise ValueError(f"asset type '{type_name}' not found")
-            purchase_date = date.fromisoformat((row.get("purchase_date") or "").strip())
-            asset = FixedAsset(
-                asset_number=next_asset_number(db),
-                name=(row.get("name") or "").strip(),
-                asset_type_id=atype.id,
-                purchase_date=purchase_date,
-                purchase_price=_q(Decimal(row.get("purchase_price") or "0")),
-                salvage_value=_q(Decimal(row.get("salvage_value") or "0")),
-                description=(row.get("description") or "").strip() or None,
+            continue
+
+        amounts = {}
+        bad_amount = False
+        for field in ("purchase_price", "salvage_value"):
+            raw = (row.get(field) or "0").strip() or "0"
+            try:
+                amounts[field] = _q(Decimal(raw))
+            except InvalidOperation:
+                errors.append(
+                    {
+                        "row": i,
+                        "message": f"invalid {field} {raw!r} (expected a number)",
+                    }
+                )
+                bad_amount = True
+        if bad_amount:
+            continue
+
+        try:
+            db.add(
+                FixedAsset(
+                    asset_number=next_asset_number(db),
+                    name=name,
+                    asset_type_id=atype.id,
+                    purchase_date=purchase_date,
+                    purchase_price=amounts["purchase_price"],
+                    salvage_value=amounts["salvage_value"],
+                    description=(row.get("description") or "").strip() or None,
+                )
             )
-            if not asset.name:
-                raise ValueError("name is required")
-            db.add(asset)
             db.flush()
             imported += 1
-        except (ValueError, InvalidOperation) as exc:
-            # Expected parse/validation failures carry safe, row-scoped
-            # messages the operator needs to fix their CSV.
-            errors.append({"row": i, "message": str(exc)})
         except Exception:
-            # Unexpected failures must not echo internals to the client
-            # (CodeQL py/stack-trace-exposure) — log the detail, return a
-            # generic row error.
+            # Unexpected failures: log the detail server-side, return a
+            # generic row error, roll back so one bad row can't poison
+            # the batch.
             logger.exception("Asset CSV import failed on row %s", i)
             errors.append({"row": i, "message": "Unexpected error importing this row"})
             db.rollback()
