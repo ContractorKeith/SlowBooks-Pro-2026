@@ -7,6 +7,79 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.2.0 — The fork-integration release
+
+The largest single release since 2.0: work mined from four community
+forks (with per-commit attribution), two new payment processors, and
+five major accounting features.
+
+**Online payments — Stripe, PayPal, Square**
+- Payment-provider abstraction with one shared, idempotent recorder
+  (row-locked; a webhook and a status poll can never double-record).
+- PayPal (Checkout Orders v2) and Square (Payment Links) join Stripe;
+  enable any combination and the pay page shows a button per processor.
+- Desktop installs record payments without webhooks: verified capture
+  on the customer's return + a "Check Payment Status" button.
+- Fixed: the public Pay button 401'd (checkout route was never
+  session-exempt) and the success banner trusted a URL query param —
+  it now renders only after provider-verified capture.
+- Fixed (found in live sandbox testing): Square leaves paid
+  payment-link orders in state OPEN; polling now recognizes them.
+
+**Class tracking**
+- QuickBooks-style class dimension on invoices, bills, estimates,
+  credit memos, recurring, journals, deposits, and cc charges;
+  managed in Settings; immutable "Uncategorized" system default.
+- P&L by Class report whose totals reconcile exactly with the plain
+  P&L; IIF SPL.CLASS resolves on import.
+
+**Multi-currency**
+- Foreign-currency invoices and bills booked at per-document rates
+  (Bank of Canada feed prefill, always overridable); the ledger stays
+  single-currency so every report and invariant holds exactly.
+- Realized FX gain/loss posts automatically on BOTH sides: customer
+  payments (A/R) and bill payments (A/P).
+- Cross-currency allocations rejected with clear errors; online
+  checkout guarded to home-currency invoices.
+
+**Fixed assets**
+- Register with per-type account mappings, straight-line and
+  declining-balance depreciation runs (one journal per asset, salvage
+  floor, idempotent re-runs), disposal with gain/loss, CSV import,
+  and a reconciliation report.
+
+**Migration onramps**
+- Xero CSV import (chart + general ledger + trial balance) gated by a
+  dry-run that verifies every journal balances and cross-checks the
+  trial balance before anything is written.
+- Opening Balances wizard: guided setup, normal-side posting rules,
+  optional auto-balance to equity.
+
+**Banking & interop**
+- Bank CSV import for Chase checking/credit and PayPal exports,
+  auto-detected by header signature, with content-derived dedup that
+  survives re-imports without dropping legitimate same-day duplicates.
+- IIF BILL and DEPOSIT transaction blocks (previously silently
+  discarded), with strict vendor/account matching and
+  duplicates-skipped reporting.
+
+**Reports**
+- Printable P&L and Balance Sheet PDFs plus the one-click Financial
+  Statements Pack (P&L + Balance Sheet + Trial Balance, page-numbered),
+  US Letter or A4 via a new setting.
+
+**Hardening**
+- Auth-contract regression suite: every API route proven to 401
+  unauthenticated or match a justified-public pattern (295 combos).
+- Upload size caps on all import endpoints; CREATE DATABASE identifier
+  quoting; decompilation debug strings scrubbed from the DOM with a
+  regression scan; version-stable ruff lint gate.
+
+**Community**
+Work in this release originates from the forks of Alex Jordan
+(@LayoverLogic), Joel Macklow (@joelmacklow), @moshgrossman, and
+@amazon1148 — authorship preserved per commit. Thank you.
+
 ### v2.1.1 — Windows field fixes (first-machine feedback)
 
 - **Session cookie now reaches every native window and download.**
