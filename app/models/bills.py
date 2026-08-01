@@ -115,6 +115,9 @@ class BillPayment(Base):
     check_number = Column(String(50), nullable=True)
     pay_from_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     notes = Column(Text, nullable=True)
+    # Multi-currency: payment currency + rate it settled at (GL is home)
+    currency = Column(String(3), nullable=True)
+    exchange_rate = Column(Numeric(18, 8), nullable=True)
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     is_voided = Column(Boolean, default=False, nullable=False)
 

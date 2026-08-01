@@ -247,3 +247,145 @@ def test_foreign_bill_posts_home_gl(client, db_session, seed_accounts):
     )
     lines = db_session.query(TransactionLine).filter_by(transaction_id=txn.id).all()
     assert sum(ln.debit or 0 for ln in lines) == Decimal("220.00")
+
+
+# ── A/P realized FX (bill payments) ──────────────────────────────────────
+
+
+@pytest.fixture
+def eur_bill(client, db_session, seed_accounts):
+    from app.models.contacts import Vendor
+
+    vendor = Vendor(name="Euro AP Supplier", is_active=True)
+    db_session.add(vendor)
+    db_session.commit()
+    expense = (
+        db_session.query(Account).filter(Account.name == "Office Supplies").first()
+    ) or db_session.query(Account).first()
+    resp = client.post(
+        "/api/bills",
+        json={
+            "vendor_id": vendor.id,
+            "bill_number": "EUR-AP-1",
+            "date": "2026-07-01",
+            "currency": "EUR",
+            "exchange_rate": "1.10",
+            "lines": [
+                {
+                    "account_id": expense.id,
+                    "description": "supplies",
+                    "quantity": 1,
+                    "rate": 100,
+                }
+            ],
+        },
+    )
+    assert resp.status_code in (200, 201), resp.text
+    return resp.json()
+
+
+def test_cross_currency_bill_payment_rejected(client, eur_bill):
+    resp = client.post(
+        "/api/bill-payments",
+        json={
+            "vendor_id": eur_bill["vendor_id"],
+            "date": "2026-07-10",
+            "amount": 100,
+            "currency": "USD",
+            "allocations": [{"bill_id": eur_bill["id"], "amount": 100}],
+        },
+    )
+    assert resp.status_code == 400
+    assert "does not match" in resp.json()["detail"]
+
+
+def _bill_payment_fx_lines(db_session):
+    fx_acct = db_session.query(Account).filter(Account.account_number == "6999").first()
+    txn = (
+        db_session.query(Transaction)
+        .filter(Transaction.source_type == "bill_payment")
+        .order_by(Transaction.id.desc())
+        .first()
+    )
+    lines = db_session.query(TransactionLine).filter_by(transaction_id=txn.id).all()
+    assert sum(ln.debit or 0 for ln in lines) == sum(ln.credit or 0 for ln in lines)
+    if fx_acct is None:
+        return []  # FX account never created — no FX activity at all
+    return [ln for ln in lines if ln.account_id == fx_acct.id]
+
+
+def test_bill_payment_realizes_fx_gain(client, db_session, eur_bill):
+    """Bill booked at 1.10 (A/P 110 home); settled at 1.05 (cash 105)
+    → 5.00 gain (credit) — paying cheaper than booked."""
+    resp = client.post(
+        "/api/bill-payments",
+        json={
+            "vendor_id": eur_bill["vendor_id"],
+            "date": "2026-07-10",
+            "amount": 100,
+            "currency": "EUR",
+            "exchange_rate": "1.05",
+            "allocations": [{"bill_id": eur_bill["id"], "amount": 100}],
+        },
+    )
+    assert resp.status_code in (200, 201), resp.text
+    fx_lines = _bill_payment_fx_lines(db_session)
+    assert len(fx_lines) == 1
+    assert fx_lines[0].credit == Decimal("5.00")
+
+    bill = client.get(f"/api/bills/{eur_bill['id']}").json()
+    assert bill["status"] == "paid"
+    assert Decimal(str(bill["balance_due"])) == Decimal("0.00")
+
+
+def test_bill_payment_realizes_fx_loss(client, db_session, eur_bill):
+    resp = client.post(
+        "/api/bill-payments",
+        json={
+            "vendor_id": eur_bill["vendor_id"],
+            "date": "2026-07-10",
+            "amount": 100,
+            "currency": "EUR",
+            "exchange_rate": "1.20",
+            "allocations": [{"bill_id": eur_bill["id"], "amount": 100}],
+        },
+    )
+    assert resp.status_code in (200, 201), resp.text
+    fx_lines = _bill_payment_fx_lines(db_session)
+    assert fx_lines[0].debit == Decimal("10.00")
+
+
+def test_home_currency_bill_payment_has_no_fx_line(client, db_session, seed_accounts):
+    from app.models.contacts import Vendor
+
+    vendor = Vendor(name="Home AP Vendor", is_active=True)
+    db_session.add(vendor)
+    db_session.commit()
+    expense = db_session.query(Account).first()
+    bill = client.post(
+        "/api/bills",
+        json={
+            "vendor_id": vendor.id,
+            "bill_number": "USD-AP-1",
+            "date": "2026-07-01",
+            "lines": [
+                {
+                    "account_id": expense.id,
+                    "description": "x",
+                    "quantity": 1,
+                    "rate": 50,
+                }
+            ],
+        },
+    ).json()
+    resp = client.post(
+        "/api/bill-payments",
+        json={
+            "vendor_id": vendor.id,
+            "date": "2026-07-10",
+            "amount": 50,
+            "allocations": [{"bill_id": bill["id"], "amount": 50}],
+        },
+    )
+    assert resp.status_code in (200, 201), resp.text
+    assert _bill_payment_fx_lines(db_session) == []

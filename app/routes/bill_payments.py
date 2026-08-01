@@ -42,6 +42,15 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
+    from app.services.currency import (
+        document_currency,
+        fx_gain_loss_account_id,
+        resolve_rate,
+        to_home,
+    )
+
+    pay_currency, pay_rate = resolve_rate(db, data.currency, data.exchange_rate)
+
     alloc_total = sum(a.amount for a in data.allocations)
     if alloc_total > data.amount:
         raise HTTPException(status_code=400, detail="Allocations exceed payment amount")
@@ -54,10 +63,15 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
         check_number=data.check_number,
         pay_from_account_id=data.pay_from_account_id,
         notes=data.notes,
+        currency=pay_currency,
+        exchange_rate=pay_rate,
     )
     db.add(payment)
     db.flush()
 
+    # Home-currency value of A/P relieved per allocation (at each bill's
+    # booked rate) — the realized-FX basis, mirroring the A/R side.
+    ap_home_debits: list[Decimal] = []
     for alloc_data in data.allocations:
         bill = db.query(Bill).filter(Bill.id == alloc_data.bill_id).first()
         if not bill:
@@ -68,6 +82,20 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=400, detail="Allocation exceeds bill balance"
             )
+
+        bill_currency = document_currency(bill, db)
+        if bill_currency != pay_currency:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Payment currency {pay_currency} does not match bill "
+                    f"{bill.bill_number} currency {bill_currency}; pay each "
+                    f"currency with a separate payment"
+                ),
+            )
+        ap_home_debits.append(
+            to_home(alloc_data.amount, bill.exchange_rate or Decimal("1"))
+        )
 
         db.add(
             BillPaymentAllocation(
@@ -93,20 +121,40 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
         bank_id = checking.id if checking else None
 
     if ap_id and bank_id:
+        # Cash paid, in home currency at the payment-date rate; A/P
+        # relieved at each bill's BOOKED rate. Unallocated remainder (a
+        # vendor prepayment) has no booking rate yet, so it relieves at
+        # the payment rate.
+        cash_home = to_home(data.amount, pay_rate)
+        unallocated = Decimal(str(data.amount)) - Decimal(str(alloc_total))
+        ap_home = sum(ap_home_debits, Decimal("0")) + to_home(unallocated, pay_rate)
         journal_lines = [
             {
                 "account_id": ap_id,
-                "debit": Decimal(str(data.amount)),
+                "debit": ap_home,
                 "credit": Decimal("0"),
                 "description": f"Bill payment to {vendor.name}",
             },
             {
                 "account_id": bank_id,
                 "debit": Decimal("0"),
-                "credit": Decimal(str(data.amount)),
+                "credit": cash_home,
                 "description": f"Bill payment to {vendor.name}",
             },
         ]
+        # Realized FX: settling A/P cheaper than booked = gain (credit),
+        # dearer = loss (debit). Mirror of the customer-payment side.
+        residual = ap_home - cash_home
+        if residual != 0:
+            fx_id = fx_gain_loss_account_id(db)
+            journal_lines.append(
+                {
+                    "account_id": fx_id,
+                    "debit": -residual if residual < 0 else Decimal("0"),
+                    "credit": residual if residual > 0 else Decimal("0"),
+                    "description": f"Realized FX on bill payment to {vendor.name}",
+                }
+            )
         txn = create_journal_entry(
             db,
             data.date,
