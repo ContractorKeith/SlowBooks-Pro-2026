@@ -62,6 +62,12 @@ DEFAULT_SETTINGS = {
     "stripe_publishable_key": "",
     "stripe_secret_key": "",
     "stripe_webhook_secret": "",
+    # PayPal Online Payments
+    "paypal_enabled": "false",
+    "paypal_environment": "sandbox",  # sandbox | live
+    "paypal_client_id": "",
+    "paypal_client_secret": "",
+    "paypal_webhook_id": "",
     # QuickBooks Online Integration
     "qbo_enabled": "false",
     "qbo_client_id": "",

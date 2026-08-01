@@ -124,12 +124,14 @@ const SettingsPage = {
                 </div>
 
                 <div class="settings-section">
-                    <h3>Online Payments (Stripe)</h3>
+                    <h3>Online Payments</h3>
                     <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
-                        Accept online payments via Stripe Checkout. Customers can pay invoices directly from emailed links.
+                        Accept online payments on emailed invoice links. Enable any combination of
+                        providers — the customer pay page shows one button per enabled provider.
                     </div>
+                    <h4 style="margin:8px 0 4px; font-size:12px;">Stripe</h4>
                     <div class="form-grid">
-                        <div class="form-group"><label>Enable Online Payments</label>
+                        <div class="form-group"><label>Stripe Payments</label>
                             <select name="stripe_enabled">
                                 <option value="false" ${s.stripe_enabled !== 'true' ? 'selected' : ''}>Disabled</option>
                                 <option value="true" ${s.stripe_enabled === 'true' ? 'selected' : ''}>Enabled</option>
@@ -140,6 +142,26 @@ const SettingsPage = {
                             <input name="stripe_secret_key" type="password" value="${escapeHtml(s.stripe_secret_key || '')}" placeholder="sk_..."></div>
                         <div class="form-group"><label>Webhook Secret</label>
                             <input name="stripe_webhook_secret" type="password" value="${escapeHtml(s.stripe_webhook_secret || '')}" placeholder="whsec_..."></div>
+                    </div>
+                    <h4 style="margin:12px 0 4px; font-size:12px;">PayPal</h4>
+                    <div class="form-grid">
+                        <div class="form-group"><label>PayPal Payments</label>
+                            <select name="paypal_enabled">
+                                <option value="false" ${s.paypal_enabled !== 'true' ? 'selected' : ''}>Disabled</option>
+                                <option value="true" ${s.paypal_enabled === 'true' ? 'selected' : ''}>Enabled</option>
+                            </select></div>
+                        <div class="form-group"><label>Environment</label>
+                            <select name="paypal_environment">
+                                <option value="sandbox" ${s.paypal_environment !== 'live' ? 'selected' : ''}>Sandbox</option>
+                                <option value="live" ${s.paypal_environment === 'live' ? 'selected' : ''}>Live</option>
+                            </select></div>
+                        <div class="form-group"><label>Client ID</label>
+                            <input name="paypal_client_id" value="${escapeHtml(s.paypal_client_id || '')}"></div>
+                        <div class="form-group"><label>Client Secret</label>
+                            <input name="paypal_client_secret" type="password" value="${escapeHtml(s.paypal_client_secret || '')}"></div>
+                        <div class="form-group"><label>Webhook ID</label>
+                            <input name="paypal_webhook_id" value="${escapeHtml(s.paypal_webhook_id || '')}"
+                                placeholder="From the PayPal developer dashboard"></div>
                     </div>
                 </div>
 

@@ -80,7 +80,7 @@
     function arrayBufferToBase64(buffer) {
         let binary = '';
         const bytes = new Uint8Array(buffer);
-        const chunkSize = 0x8000; // avoid call-stack limits on String.fromCharCode
+        const chunkSize = 32768; // avoid call-stack limits on String.fromCharCode
         for (let i = 0; i < bytes.length; i += chunkSize) {
             binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
         }
