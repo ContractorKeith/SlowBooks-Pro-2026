@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.banking import BankAccount
 from app.services.ofx_import import parse_ofx, import_transactions
 from app.services.bank_csv_import import parse_csv, import_csv_transactions
+from app.services.upload_limits import read_limited
 
 router = APIRouter(prefix="/api/bank-import", tags=["bank_import"])
 
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/api/bank-import", tags=["bank_import"])
 @router.post("/preview")
 async def preview_ofx(file: UploadFile = File(...)):
     """Parse OFX/QFX file and return preview of transactions."""
-    content = await file.read()
+    content = await read_limited(file, label="Bank file")
     try:
         # Try UTF-8 first, fall back to latin-1
         text = content.decode("utf-8")
@@ -49,7 +50,7 @@ async def import_ofx(
     if not ba:
         raise HTTPException(status_code=404, detail="Bank account not found")
 
-    content = await file.read()
+    content = await read_limited(file, label="Bank file")
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
@@ -63,7 +64,7 @@ async def import_ofx(
 @router.post("/preview-csv")
 async def preview_csv(file: UploadFile = File(...)):
     """Parse CSV bank statement and return preview of transactions."""
-    content = await file.read()
+    content = await read_limited(file, label="CSV file")
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -116,7 +117,7 @@ async def import_csv(
     if not ba:
         raise HTTPException(status_code=404, detail="Bank account not found")
 
-    content = await file.read()
+    content = await read_limited(file, label="CSV file")
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:

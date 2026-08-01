@@ -29,6 +29,7 @@ from app.services.iif_export import (
     export_estimates,
 )
 from app.services.iif_import import import_all, validate_iif
+from app.services.upload_limits import read_limited
 
 router = APIRouter(prefix="/api/iif", tags=["iif"])
 
@@ -128,7 +129,7 @@ async def import_iif(file: UploadFile = File(...), db: Session = Depends(get_db)
     if not file.filename.lower().endswith(".iif"):
         raise HTTPException(400, "File must have .iif extension")
 
-    content = await file.read()
+    content = await read_limited(file, label="IIF file")
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
@@ -150,7 +151,7 @@ async def validate_iif_file(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".iif"):
         raise HTTPException(400, "File must have .iif extension")
 
-    content = await file.read()
+    content = await read_limited(file, label="IIF file")
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:

@@ -40,6 +40,7 @@ from app.schemas.payroll import (
 from app.services.encryption import encrypt
 from app.services.nacha_export import validate_routing_number
 from app.services.onboarding import seed_onboarding_tasks
+from app.services.upload_limits import read_limited
 
 # Portal tokens get a 1-year hard expiry on top of the 90-day idle window
 # enforced in app/routes/portal.py. Hard expiry forces periodic re-issuance
@@ -387,7 +388,7 @@ async def upload_employee_document(
             status_code=400, detail=f"MIME type '{file.content_type}' not allowed"
         )
 
-    content = await file.read()
+    content = await read_limited(file, label="Import file")
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 50MB)")
 
