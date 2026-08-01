@@ -108,7 +108,8 @@ async def import_csv(
     """Import CSV bank transactions into a bank account.
 
     Auto-detects format (Chase checking, Chase credit, PayPal).
-    Deduplicates by (date, amount) to prevent re-import.
+    Deduplicates by content-derived import_id (re-imports and overlapping
+    exports skip; legitimate same-day duplicates still import).
     Auto-applies bank rules after import.
     """
     ba = db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()

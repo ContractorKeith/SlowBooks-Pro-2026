@@ -10,15 +10,17 @@
 # ============================================================================
 
 import csv
+import hashlib
 import io
 import logging
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.banking import BankTransaction
+from app.services.bank_rules_engine import apply_bank_rules
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +107,7 @@ def parse_chase_checking(reader: csv.DictReader) -> list[dict]:
         try:
             txn_date = parse_date(date_str)
             amount = Decimal(amount_str)
-        except (ValueError, Exception) as e:
+        except (ValueError, InvalidOperation) as e:
             logger.warning("Skipping chase checking row: %s", e)
             continue
 
@@ -142,7 +144,7 @@ def parse_chase_credit(reader: csv.DictReader) -> list[dict]:
         try:
             txn_date = parse_date(date_str)
             amount = Decimal(amount_str)
-        except (ValueError, Exception) as e:
+        except (ValueError, InvalidOperation) as e:
             logger.warning("Skipping chase credit row: %s", e)
             continue
 
@@ -151,9 +153,9 @@ def parse_chase_credit(reader: csv.DictReader) -> list[dict]:
                 "date": txn_date,
                 "amount": amount,  # already signed: negative=charge, positive=payment/return
                 "payee": description,
-                "description": f"{category} - {description}"
-                if category
-                else description,
+                "description": (
+                    f"{category} - {description}" if category else description
+                ),
                 "check_number": None,
                 "import_id": f"cc_{txn_date.isoformat()}_{amount}",
                 "category": category,
@@ -193,7 +195,7 @@ def parse_paypal(reader: csv.DictReader) -> list[dict]:
             txn_date = parse_date(date_str)
             gross = Decimal(gross_str)
             fee = Decimal(fee_str) if fee_str else Decimal("0.00")
-        except (ValueError, Exception) as e:
+        except (ValueError, InvalidOperation) as e:
             logger.warning("Skipping PayPal row: %s", e)
             continue
 
@@ -238,7 +240,6 @@ def parse_paypal_new(reader: csv.DictReader) -> list[dict]:
         description = (row.get("Description") or "").strip()
         gross_str = (row.get("Gross") or "").strip()
         fee_str = (row.get("Fee") or "").strip()
-        from_email = (row.get("From Email Address") or "").strip()
 
         if not date_str or not gross_str:
             continue
@@ -247,7 +248,7 @@ def parse_paypal_new(reader: csv.DictReader) -> list[dict]:
             txn_date = parse_date(date_str)
             gross = Decimal(gross_str)
             fee = Decimal(fee_str) if fee_str else Decimal("0.00")
-        except (ValueError, Exception) as e:
+        except (ValueError, InvalidOperation) as e:
             logger.warning("Skipping PayPal row: %s", e)
             continue
 
@@ -326,6 +327,42 @@ def parse_csv(csv_text: str) -> dict:
 # ── Import into DB ───────────────────────────────────────────────────────
 
 
+_IMPORT_ID_PREFIX = {
+    "chase_checking": "chk",
+    "chase_credit": "cc",
+    "paypal": "pp",
+    "paypal_new": "pp",
+}
+
+
+def assign_import_ids(fmt: str, transactions: list[dict]) -> None:
+    """Assign a deterministic, collision-safe import_id to each parsed row.
+
+    CSVs have no FITID, so the id is derived from the row's content:
+    (date, amount, payee|description digest) plus an occurrence counter for
+    rows that are otherwise identical within the same file. This makes
+    re-importing the same file (or an overlapping date-range export) skip
+    every row it already imported, WITHOUT dropping legitimate duplicates —
+    two identical same-day charges get occurrence 0 and 1, so both import,
+    and both are recognized on a re-import.
+
+    Overwrites any import_id the parser attached (the parser-level ids
+    were (date, amount) only — the very collision this exists to fix).
+    """
+    prefix = _IMPORT_ID_PREFIX.get(fmt, "csv")
+    occurrences: dict[tuple, int] = {}
+    for txn in transactions:
+        digest = hashlib.sha256(
+            f"{txn.get('payee', '')}|{txn.get('description', '')}".encode()
+        ).hexdigest()[:12]
+        key = (txn["date"], txn["amount"], digest)
+        n = occurrences.get(key, 0)
+        occurrences[key] = n + 1
+        txn["import_id"] = (
+            f"{prefix}_{txn['date'].isoformat()}_{txn['amount']}_{digest}_{n}"
+        )
+
+
 def import_csv_transactions(
     db: Session,
     bank_account_id: int,
@@ -334,26 +371,24 @@ def import_csv_transactions(
 ) -> dict:
     """Parse CSV and import into BankTransaction records.
 
-    Dedup strategy (CSVs have no FITID): match on (date, amount) within the
-    same bank account. This prevents re-import of the same file.
+    Dedup strategy: content-derived import_id (see assign_import_ids),
+    mirroring the FITID dedup in ofx_import.import_transactions.
     """
     result = parse_csv(csv_text)
     if result["error"]:
         return {"imported": 0, "skipped": 0, "errors": [result["error"]], "total": 0}
 
     transactions = result["transactions"]
+    assign_import_ids(result["format"], transactions)
     imported = 0
     skipped = 0
-    errors = []
 
     for txn in transactions:
-        # Dedup by (date, amount) for this account
         existing = (
             db.query(BankTransaction)
             .filter(
                 BankTransaction.bank_account_id == bank_account_id,
-                BankTransaction.date == txn["date"],
-                BankTransaction.amount == txn["amount"],
+                BankTransaction.import_id == txn["import_id"],
             )
             .first()
         )
@@ -361,82 +396,37 @@ def import_csv_transactions(
             skipped += 1
             continue
 
-        try:
-            bt = BankTransaction(
-                bank_account_id=bank_account_id,
-                date=txn["date"],
-                amount=txn["amount"],
-                payee=(txn.get("payee", "") or "")[:200],
-                description=(txn.get("description", "") or "")[:500],
-                check_number=txn.get("check_number"),
-                import_id=txn.get("import_id"),
-                import_source=f"csv_{result['format']}",
-                match_status="unmatched",
-            )
-            db.add(bt)
-            imported += 1
-        except Exception as e:
-            logger.exception("Failed to import bank CSV transaction")
-            errors.append(str(e))
+        description = (txn.get("description", "") or "")[:500]
+        fee = txn.get("fee")
+        if fee:
+            # Surface the PayPal fee so the bookkeeper sees it when
+            # categorizing (amount is Gross; the fee nets against it).
+            description = f"{description} (fee {fee})"[:500]
+
+        bt = BankTransaction(
+            bank_account_id=bank_account_id,
+            date=txn["date"],
+            amount=txn["amount"],
+            payee=(txn.get("payee", "") or "")[:200],
+            description=description,
+            check_number=txn.get("check_number"),
+            import_id=txn["import_id"],
+            import_source=f"csv_{result['format']}",
+            match_status="unmatched",
+        )
+        db.add(bt)
+        imported += 1
 
     db.commit()
 
-    # Auto-apply bank rules (same logic as ofx_import.import_transactions)
+    # Auto-apply bank rules (shared engine with the OFX importer)
     if imported > 0:
-        _apply_bank_rules(db, bank_account_id)
+        apply_bank_rules(db, bank_account_id)
 
     return {
         "imported": imported,
         "skipped": skipped,
-        "errors": errors,
+        "errors": [],
         "total": len(transactions),
         "format": result["format"],
     }
-
-
-def _apply_bank_rules(db: Session, bank_account_id: int) -> None:
-    """Auto-categorize unmatched transactions by bank rules."""
-    try:
-        from app.models.bank_rules import BankRule
-
-        rules = (
-            db.query(BankRule)
-            .filter(BankRule.is_active)
-            .order_by(BankRule.priority.desc())
-            .all()
-        )
-        if not rules:
-            return
-
-        unmatched = (
-            db.query(BankTransaction)
-            .filter(
-                BankTransaction.bank_account_id == bank_account_id,
-                BankTransaction.match_status == "unmatched",
-            )
-            .all()
-        )
-
-        auto_matched = 0
-        for txn in unmatched:
-            payee = (txn.payee or "").lower()
-            for rule in rules:
-                pattern = rule.pattern.lower()
-                hit = False
-                if rule.rule_type == "contains" and pattern in payee:
-                    hit = True
-                elif rule.rule_type == "starts_with" and payee.startswith(pattern):
-                    hit = True
-                elif rule.rule_type == "exact" and payee == pattern:
-                    hit = True
-                if hit:
-                    if rule.account_id:
-                        txn.category_account_id = rule.account_id
-                    txn.match_status = "auto"
-                    auto_matched += 1
-                    break
-
-        if auto_matched > 0:
-            db.commit()
-    except ImportError:
-        pass  # bank_rules model not available
