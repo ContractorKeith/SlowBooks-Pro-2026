@@ -46,7 +46,7 @@ const BankingPage = {
                 <div class="btn-group">
                     <button class="btn btn-secondary" onclick="App.navigate('#/banking')">Back</button>
                     <button class="btn btn-primary" onclick="BankingPage.showTxnForm(${bankAccountId})">+ Transaction</button>
-                    <button class="btn btn-secondary" onclick="BankingPage.showOFXImport(${bankAccountId})">Import OFX/QFX</button>
+                    <button class="btn btn-secondary" onclick="BankingPage.showOFXImport(${bankAccountId})">Import OFX/QFX/CSV</button>
                     <button class="btn btn-secondary" onclick="BankingPage.startReconcile(${bankAccountId})">Reconcile</button>
                 </div>
             </div>
@@ -266,13 +266,13 @@ const BankingPage = {
         } catch (err) { toast(err.message, 'error'); }
     },
 
-    // Feature 18: OFX/QFX Import
+    // Feature 18: OFX/QFX Import (+ CSV: Chase checking/credit, PayPal)
     async showOFXImport(bankAccountId) {
-        openModal('Import OFX/QFX File', `
+        openModal('Import Bank File', `
             <form onsubmit="BankingPage.previewOFX(event, ${bankAccountId})">
                 <div class="form-group">
-                    <label>Select OFX or QFX file from your bank</label>
-                    <input type="file" name="file" accept=".ofx,.qfx" required id="ofx-file">
+                    <label>Select an OFX/QFX file, or a CSV export (Chase checking, Chase credit, PayPal)</label>
+                    <input type="file" name="file" accept=".ofx,.qfx,.csv" required id="ofx-file">
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -282,30 +282,38 @@ const BankingPage = {
             <div id="ofx-preview" style="margin-top:12px;"></div>`);
     },
 
+    _isCsvFile(file) {
+        return /\.csv$/i.test(file.name || '');
+    },
+
     async previewOFX(e, bankAccountId) {
         e.preventDefault();
         const file = $('#ofx-file').files[0];
         if (!file) return;
+        const isCsv = BankingPage._isCsvFile(file);
         const formData = new FormData();
         formData.append('file', file);
         try {
-            const resp = await fetch('/api/bank-import/preview', { method: 'POST', body: formData });
+            const endpoint = isCsv ? '/api/bank-import/preview-csv' : '/api/bank-import/preview';
+            const resp = await fetch(endpoint, { method: 'POST', body: formData });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.detail || 'Parse failed');
+            if (isCsv && data.error) throw new Error(data.error);
             BankingPage._ofxData = data;
             let rows = data.transactions.map((t, i) => `<tr>
                 <td>${escapeHtml(t.date || '')}</td>
                 <td>${escapeHtml(t.payee || '')}</td>
                 <td class="amount" style="${t.amount >= 0 ? 'color:var(--success)' : 'color:var(--danger)'}">${formatCurrency(t.amount)}</td>
-                <td>${escapeHtml(t.fitid || '')}</td>
+                <td>${escapeHtml(isCsv ? (t.description || '') : (t.fitid || ''))}</td>
             </tr>`).join('');
             $('#ofx-preview').innerHTML = `
                 <div style="margin-bottom:8px; font-size:11px;">
                     <strong>${data.transactions.length}</strong> transactions found.
+                    ${isCsv && data.format ? `Format: ${escapeHtml(data.format)}` : ''}
                     ${data.account_id ? `Account: ${escapeHtml(data.account_id)}` : ''}
                 </div>
                 <div class="table-container" style="max-height:300px; overflow-y:auto;"><table>
-                    <thead><tr><th>Date</th><th>Payee</th><th class="amount">Amount</th><th>FITID</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Payee</th><th class="amount">Amount</th><th>${isCsv ? 'Description' : 'FITID'}</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>
                 <div class="form-actions" style="margin-top:12px;">
@@ -318,12 +326,17 @@ const BankingPage = {
 
     async confirmOFXImport(bankAccountId) {
         try {
+            const file = $('#ofx-file').files[0];
+            const isCsv = BankingPage._isCsvFile(file);
             const formData = new FormData();
-            formData.append('file', $('#ofx-file').files[0]);
-            const resp = await fetch(`/api/bank-import/import/${bankAccountId}`, { method: 'POST', body: formData });
+            formData.append('file', file);
+            const endpoint = isCsv
+                ? `/api/bank-import/import-csv/${bankAccountId}`
+                : `/api/bank-import/import/${bankAccountId}`;
+            const resp = await fetch(endpoint, { method: 'POST', body: formData });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.detail || 'Import failed');
-            toast(`Imported ${data.imported} transactions (${data.skipped_duplicates} duplicates skipped)`);
+            toast(`Imported ${data.imported} transactions (${data.skipped} duplicates skipped)`);
             closeModal();
             BankingPage.viewRegister(bankAccountId);
         } catch (err) { toast(err.message, 'error'); }
