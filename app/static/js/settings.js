@@ -163,6 +163,28 @@ const SettingsPage = {
                             <input name="paypal_webhook_id" value="${escapeHtml(s.paypal_webhook_id || '')}"
                                 placeholder="From the PayPal developer dashboard"></div>
                     </div>
+                    <h4 style="margin:12px 0 4px; font-size:12px;">Square</h4>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Square Payments</label>
+                            <select name="square_enabled">
+                                <option value="false" ${s.square_enabled !== 'true' ? 'selected' : ''}>Disabled</option>
+                                <option value="true" ${s.square_enabled === 'true' ? 'selected' : ''}>Enabled</option>
+                            </select></div>
+                        <div class="form-group"><label>Environment</label>
+                            <select name="square_environment">
+                                <option value="sandbox" ${s.square_environment !== 'production' ? 'selected' : ''}>Sandbox</option>
+                                <option value="production" ${s.square_environment === 'production' ? 'selected' : ''}>Production</option>
+                            </select></div>
+                        <div class="form-group"><label>Access Token</label>
+                            <input name="square_access_token" type="password" value="${escapeHtml(s.square_access_token || '')}"></div>
+                        <div class="form-group"><label>Location ID</label>
+                            <input name="square_location_id" value="${escapeHtml(s.square_location_id || '')}"></div>
+                        <div class="form-group"><label>Webhook Signature Key</label>
+                            <input name="square_webhook_signature_key" type="password" value="${escapeHtml(s.square_webhook_signature_key || '')}"></div>
+                        <div class="form-group"><label>Webhook Notification URL</label>
+                            <input name="square_notification_url" value="${escapeHtml(s.square_notification_url || '')}"
+                                placeholder="Exact URL registered in the Square dashboard"></div>
+                    </div>
                 </div>
 
                 <div class="settings-section">

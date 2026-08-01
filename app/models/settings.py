@@ -68,6 +68,15 @@ DEFAULT_SETTINGS = {
     "paypal_client_id": "",
     "paypal_client_secret": "",
     "paypal_webhook_id": "",
+    # Square Online Payments
+    "square_enabled": "false",
+    "square_environment": "sandbox",  # sandbox | production
+    "square_access_token": "",
+    "square_location_id": "",
+    "square_webhook_signature_key": "",
+    # Square signs webhooks over the EXACT notification URL registered in
+    # its dashboard; set this to that URL (required for webhook verification)
+    "square_notification_url": "",
     # QuickBooks Online Integration
     "qbo_enabled": "false",
     "qbo_client_id": "",
