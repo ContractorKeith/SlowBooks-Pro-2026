@@ -25,7 +25,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Patterns that look like decomp-heritage debug info. Tuned to be
 # specific enough that legitimate code (CSS hex colors, etc.) doesn't
 # false-positive — we don't match # colors, we don't match short

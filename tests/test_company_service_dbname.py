@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 from app.services.company_service import _VALID_DB_NAME, create_company
 
-
 HOSTILE_NAMES = [
     'evil"; DROP DATABASE postgres; --',
     "evil'; DROP DATABASE postgres; --",

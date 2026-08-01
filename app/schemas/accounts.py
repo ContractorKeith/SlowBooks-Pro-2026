@@ -52,6 +52,7 @@ class AccountResponse(BaseModel):
     def null_balance_to_zero(cls, v):
         # legacy/imported rows can carry NULL balances; don't 500 on read
         return Decimal("0") if v is None else v
+
     updated_at: datetime
 
     model_config = {"from_attributes": True}
