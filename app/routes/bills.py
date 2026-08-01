@@ -100,8 +100,14 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
 
     subtotal, tax_amount, total = compute_line_totals(data.lines, data.tax_rate)
 
+    from app.services.currency import convert_lines, resolve_rate
+
+    doc_currency, doc_rate = resolve_rate(db, data.currency, data.exchange_rate)
+
     bill = Bill(
         bill_number=data.bill_number,
+        currency=doc_currency,
+        exchange_rate=doc_rate,
         vendor_id=data.vendor_id,
         date=data.date,
         due_date=due_date,
@@ -230,7 +236,7 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
             db,
             data.date,
             f"Bill {data.bill_number} - {vendor.name}",
-            journal_lines,
+            convert_lines(journal_lines, doc_rate),
             source_type="bill",
             source_id=bill.id,
             class_id=bill.class_id,

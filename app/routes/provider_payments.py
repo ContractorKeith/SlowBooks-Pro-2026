@@ -76,6 +76,16 @@ def create_checkout(
         raise HTTPException(status_code=400, detail="Invoice is already paid or void")
     if invoice.balance_due <= 0:
         raise HTTPException(status_code=400, detail="No balance due")
+    from app.services.currency import document_currency, home_currency
+
+    if document_currency(invoice, db) != home_currency(db):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Online checkout is only available for home-currency invoices; "
+                "record this payment manually"
+            ),
+        )
 
     base_url = str(request.base_url).rstrip("/")
     checkout = provider.create_checkout(invoice, settings, base_url)

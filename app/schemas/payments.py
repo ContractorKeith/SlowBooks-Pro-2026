@@ -27,6 +27,8 @@ class PaymentCreate(BaseModel):
     reference: Optional[str] = None
     deposit_to_account_id: Optional[int] = None
     notes: Optional[str] = None
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
     allocations: list[PaymentAllocationCreate] = []
 
 

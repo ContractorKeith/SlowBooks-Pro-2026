@@ -62,6 +62,10 @@ class Bill(Base):
     # Class tracking dimension (QB-style); NULL groups with Uncategorized
     class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
 
+    # Multi-currency: document currency + rate it was booked at (GL is home)
+    currency = Column(String(3), nullable=True)
+    exchange_rate = Column(Numeric(18, 8), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

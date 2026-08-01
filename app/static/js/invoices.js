@@ -236,6 +236,7 @@ const InvoicesPage = {
                     <div class="form-group"><label>PO #</label>
                         <input name="po_number" value="${escapeHtml(inv.po_number || '')}"></div>
                     ${classGroup}
+                    ${currencyFormGroupsHtml(inv.currency, inv.exchange_rate)}
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="${(inv.tax_rate * 100) || 0}"
                             oninput="InvoicesPage.recalc()"></div>
@@ -414,6 +415,7 @@ const InvoicesPage = {
             terms: form.terms.value,
             po_number: form.po_number.value || null,
             class_id: classIdFromForm(form),
+            ...currencyPayloadFromForm(form),
             tax_rate: (parseFloat(form.tax_rate.value) || 0) / 100,
             notes: form.notes.value || null,
             lines,

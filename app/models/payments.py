@@ -42,6 +42,10 @@ class Payment(Base):
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     is_voided = Column(Boolean, default=False)
 
+    # Multi-currency: document currency + rate it was booked at (GL is home)
+    currency = Column(String(3), nullable=True)
+    exchange_rate = Column(Numeric(18, 8), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     customer = relationship("Customer", backref="payments")
