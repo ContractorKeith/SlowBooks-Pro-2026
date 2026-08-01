@@ -77,12 +77,19 @@ const App = {
             $('#page-content').innerHTML = html;
             App.setStatus(`${route.label} — Ready`);
         } catch (err) {
+            // Server-side detail (err.message and stack) goes to console
+            // for devs; the DOM gets a clean user-facing error with a
+            // recovery action. Avoid leaking framework / decompilation
+            // internals into the rendered page (S1 audit finding).
             console.error(err);
             $('#page-content').innerHTML = `<div class="empty-state">
-                <p><strong>Error 0x8004:</strong> ${escapeHtml(err.message)}</p>
-                <p style="font-size:10px; color:var(--text-muted);">CQBView::OnActivate() failed at offset 0x00042A10</p>
+                <h3>Couldn't load this page</h3>
+                <p>${escapeHtml(err.message || 'An unexpected error occurred.')}</p>
+                <p style="margin-top:12px;">
+                    <a href="#/" class="btn btn-secondary">Return to Dashboard</a>
+                </p>
             </div>`;
-            App.setStatus('Error — see console for details');
+            App.setStatus('Error loading page');
         }
     },
 
