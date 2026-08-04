@@ -59,6 +59,7 @@ const App = {
         '/bank-rules':    { page: 'bank-rules',      label: 'Bank Rules',         render: () => BankRulesPage.render() },
         '/fixed-assets':  { page: 'fixed-assets',    label: 'Fixed Assets',       render: () => FixedAssetsPage.render() },
         '/xero-import':   { page: 'xero-import',     label: 'Xero Import',        render: () => XeroImportPage.render() },
+        '/myob-import':   { page: 'myob-import',     label: 'MYOB Import',        render: () => MYOBImportPage.render() },
         '/opening-balances': { page: 'opening-balances', label: 'Opening Balances', render: () => OpeningBalancesPage.render() },
     },
 
