@@ -187,6 +187,7 @@ For backups, restore, key rotation, and monitoring see **[docs/operations.md](do
 | [docs/setup-stripe.md](docs/setup-stripe.md) | Stripe payment processing setup |
 | [docs/setup-paypal.md](docs/setup-paypal.md) | PayPal payment processing setup |
 | [docs/setup-square.md](docs/setup-square.md) | Square payment processing setup |
+| [docs/migrate-from-myob.md](docs/migrate-from-myob.md) | Migrating from MYOB — export walkthrough + dry-run flow |
 | [SECURITY.md](SECURITY.md) | Public security policy and responsible disclosure |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor flow |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
