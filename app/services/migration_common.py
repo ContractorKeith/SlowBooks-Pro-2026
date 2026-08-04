@@ -233,3 +233,41 @@ def run_import_bundle(
 
     db.commit()
     return {**verdict, "imported_accounts": created, "imported_journals": posted}
+
+
+def build_code_map(accounts: list[dict]) -> dict[str, str]:
+    """{account code → account name} from parsed COA specs, tolerating
+    dashed and flat code forms (MYOB '1-1100' vs '11100', Sage IDs)."""
+    mapping: dict[str, str] = {}
+    for spec in accounts:
+        code = (spec.get("code") or "").strip()
+        if code:
+            mapping[code] = spec["name"]
+            mapping[code.replace("-", "")] = spec["name"]
+    return mapping
+
+
+# Filename fragments shared by every source's bundle classifier; dialects
+# can extend (e.g. Wave/GnuCash "transactions" exports are the GL).
+BASE_FILE_KINDS = (
+    ("chart", "coa"),
+    ("account", "coa"),
+    ("general", "gl"),
+    ("ledger", "gl"),
+    ("journal", "gl"),
+    ("transaction", "gl"),
+    ("trial", "tb"),
+)
+
+
+def make_classifier(extra_kinds: tuple = ()):
+    kinds = tuple(extra_kinds) + BASE_FILE_KINDS
+
+    def classify_filename(name: str) -> str | None:
+        lowered = (name or "").lower()
+        for fragment, kind in kinds:
+            if fragment in lowered:
+                return kind
+        return None
+
+    return classify_filename

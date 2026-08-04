@@ -139,7 +139,7 @@ Full feature catalog (300+ entries across every module) lives in **[docs/feature
 - **QuickBooks Online sync** — OAuth + bidirectional sync. See **[docs/setup-qbo.md](docs/setup-qbo.md)**.
 - **QB2003 interop** — IIF import/export with type-mapping, validation, round-trip safety, and INVOICE/PAYMENT/ESTIMATE/BILL/DEPOSIT transaction blocks (classes included).
 - **Fixed assets** — Register, depreciation runs, disposal with gain/loss, CSV import, reconciliation report.
-- **Migration onramps** — Xero and MYOB imports with dry-run verification; Opening Balances wizard; QuickBooks IIF.
+- **Migration onramps** — one Migrate Data page for Xero, MYOB, Sage 50, Wave, Zoho Books, and GnuCash, all dry-run-verified; Opening Balances wizard; QuickBooks IIF.
 
 ---
 

@@ -46,7 +46,7 @@ def _files(**named):
 def test_dry_run_passes_and_mutates_nothing(client, db_session, seed_accounts):
     before = db_session.query(Account).count()
     resp = client.post(
-        "/api/myob-import/dry-run",
+        "/api/migration/myob/dry-run",
         files=_files(
             **{
                 "AccountsList.TXT": COA_TXT,
@@ -68,7 +68,7 @@ def test_number_only_gl_row_resolves_through_chart(client, seed_accounts):
     """The GJ000001 credit row carries only account number 4-1000 — it
     must resolve to Sales Income via the bundled chart."""
     resp = client.post(
-        "/api/myob-import/dry-run",
+        "/api/migration/myob/dry-run",
         files=_files(**{"accounts.txt": COA_TXT, "journal.txt": GL_TXT}),
     )
     data = resp.json()
@@ -78,7 +78,7 @@ def test_number_only_gl_row_resolves_through_chart(client, seed_accounts):
 def test_unknown_account_number_flagged(client, seed_accounts):
     bad_gl = GL_TXT.replace("4-1000", "9-9999")
     resp = client.post(
-        "/api/myob-import/dry-run",
+        "/api/migration/myob/dry-run",
         files=_files(**{"accounts.txt": COA_TXT, "journal.txt": bad_gl}),
     )
     data = resp.json()
@@ -89,7 +89,7 @@ def test_unknown_account_number_flagged(client, seed_accounts):
 def test_dry_run_flags_unbalanced_journal(client, seed_accounts):
     bad_gl = GL_TXT.replace('"1,650.00"\t\n', '"1,600.00"\t\n', 1)
     resp = client.post(
-        "/api/myob-import/dry-run",
+        "/api/migration/myob/dry-run",
         files=_files(**{"accounts.txt": COA_TXT, "journal.txt": bad_gl}),
     )
     data = resp.json()
@@ -100,7 +100,7 @@ def test_dry_run_flags_unbalanced_journal(client, seed_accounts):
 def test_dry_run_flags_tb_mismatch(client, seed_accounts):
     bad_tb = TB_TXT.replace('"1,430.00"', '"1,400.00"')
     resp = client.post(
-        "/api/myob-import/dry-run",
+        "/api/migration/myob/dry-run",
         files=_files(
             **{"accounts.txt": COA_TXT, "journal.txt": GL_TXT, "trial.txt": bad_tb}
         ),
@@ -112,7 +112,7 @@ def test_dry_run_flags_tb_mismatch(client, seed_accounts):
 
 def test_import_creates_accounts_and_journals(client, db_session, seed_accounts):
     resp = client.post(
-        "/api/myob-import/import",
+        "/api/migration/myob/import",
         files=_files(
             **{
                 "accounts.txt": COA_TXT,
@@ -154,7 +154,7 @@ def test_import_refuses_when_dry_run_fails(client, db_session, seed_accounts):
     before = db_session.query(Transaction).count()
     bad_gl = GL_TXT.replace('"1,650.00"\t\n', '"1,600.00"\t\n', 1)
     resp = client.post(
-        "/api/myob-import/import",
+        "/api/migration/myob/import",
         files=_files(**{"accounts.txt": COA_TXT, "journal.txt": bad_gl}),
     )
     data = resp.json()

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.models.accounts import AccountType
 from app.services.migration_common import (
+    build_code_map,
     dry_run_bundle,
     field,
     parse_amount,
@@ -113,14 +114,7 @@ def _code_to_name_map(coa_text: str | None) -> dict[str, str]:
     if not coa_text:
         return {}
     accounts, _ = parse_coa(coa_text)
-    mapping = {}
-    for spec in accounts:
-        if spec["code"]:
-            # MYOB shows numbers both flat ("11100") and dashed ("1-1100")
-            code = spec["code"].strip()
-            mapping[code] = spec["name"]
-            mapping[code.replace("-", "")] = spec["name"]
-    return mapping
+    return build_code_map(accounts)
 
 
 def make_parse_gl(coa_text: str | None):
