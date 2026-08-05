@@ -314,6 +314,7 @@ def build_code_map(accounts: list[dict]) -> dict[str, str]:
 BASE_FILE_KINDS = (
     ("chart", "coa"),
     ("account", "coa"),
+    ("acct", "coa"),  # real users type "acct_tree"
     ("general", "gl"),
     ("ledger", "gl"),
     ("journal", "gl"),
