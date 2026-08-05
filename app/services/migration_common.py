@@ -113,6 +113,7 @@ def dry_run_bundle(db: Session, bundle: dict, parsers: dict, source_label: str) 
     errors.extend(gl_errors)
 
     known = {a["name"].lower() for a in accounts}
+    known |= {strip_code_suffix(a["name"]) for a in accounts}
     known |= {a.name.lower() for a in db.query(Account).all()}
 
     simulated: dict[str, Decimal] = {}
@@ -135,16 +136,40 @@ def dry_run_bundle(db: Session, bundle: dict, parsers: dict, source_label: str) 
                 simulated.get(name, Decimal("0")) + row["debit"] - row["credit"]
             )
 
+    opening_balances: list[dict] = []
     if "tb" in bundle and "tb" in parsers:
         tb, tb_errors = parsers["tb"](bundle["tb"])
         errors.extend(tb_errors)
+        residuals = []
         for name, expected in tb.items():
             got = simulated.get(name, Decimal("0"))
-            if _q(got - expected) != 0:
-                errors.append(
-                    f"Trial balance mismatch for {name!r}: GL nets {_q(got)}, "
-                    f"trial balance says {_q(expected)}"
+            diff = _q(expected - got)
+            if diff != 0:
+                residuals.append((name, diff))
+        if residuals:
+            # Opening balances are entered as account setup in the source
+            # system, so they never appear in a journal export — the
+            # fingerprint is per-account residuals that NET TO ZERO
+            # (typically offset through a "historical balancing" account).
+            # That case is resolvable: import synthesizes one balanced
+            # opening journal. Residuals that DON'T net to zero mean data
+            # is genuinely missing and stay hard errors.
+            if abs(sum(d for _, d in residuals)) <= Decimal("0.01"):
+                opening_balances = [
+                    {"account": name, "amount": float(diff)} for name, diff in residuals
+                ]
+                warnings.append(
+                    f"Trial balance differs from the journals on "
+                    f"{len(residuals)} account(s) by amounts that net to zero "
+                    f"— treated as opening balances; import will post one "
+                    f"balanced opening journal for the difference"
                 )
+            else:
+                for name, diff in residuals:
+                    errors.append(
+                        f"Trial balance mismatch for {name!r}: GL nets "
+                        f"{_q(tb[name] - diff)}, trial balance says {_q(tb[name])}"
+                    )
     else:
         warnings.append("No trial balance file supplied — balance verification skipped")
 
@@ -154,6 +179,7 @@ def dry_run_bundle(db: Session, bundle: dict, parsers: dict, source_label: str) 
         "warnings": warnings,
         "accounts": len(accounts),
         "journals": len(journals),
+        "opening_balances": opening_balances,
     }
 
 
@@ -190,11 +216,47 @@ def run_import_bundle(
         created += 1
 
     journals, _ = parsers["gl"](bundle["gl"])
+
+    # Synthesized opening balances (see dry_run_bundle): one balanced
+    # journal dated the day before the earliest imported transaction.
+    if verdict.get("opening_balances"):
+        from datetime import timedelta
+
+        first_date = min(group[0]["date"] for group in journals if group)
+        ob_lines = []
+        for entry in verdict["opening_balances"]:
+            amount = _q(Decimal(str(entry["amount"])))
+            acct = by_name.get(entry["account"])
+            if acct is None or amount == 0:
+                continue
+            ob_lines.append(
+                {
+                    "account_id": acct.id,
+                    "debit": amount if amount > 0 else Decimal("0"),
+                    "credit": -amount if amount < 0 else Decimal("0"),
+                    "description": f"Opening balance — {acct.name}",
+                }
+            )
+        if ob_lines:
+            create_journal_entry(
+                db,
+                first_date - timedelta(days=1),
+                f"{source_label} migration — opening balances",
+                ob_lines,
+                source_type="opening_balance",
+                reference="OPENING",
+            )
+
     posted = 0
     for group in journals:
         lines = []
         for row in group:
-            acct = by_name[strip_code_suffix(row["account"])]
+            # Exact name first (disambiguated duplicates keep their code
+            # suffix); the stripped form covers "Name (Code)" GL exports.
+            acct = (
+                by_name.get(row["account"].lower())
+                or by_name[strip_code_suffix(row["account"])]
+            )
             debit = _q(row["debit"])
             credit = _q(row["credit"])
             # MYOB (and hand-edited files) express contra lines as a
@@ -271,3 +333,22 @@ def make_classifier(extra_kinds: tuple = ()):
         return None
 
     return classify_filename
+
+
+def skip_report_preamble(
+    csv_text: str, required: tuple[str, ...] = ("debit", "credit")
+) -> str:
+    """Drop report-style preamble (company address, title, period, print
+    date) before the actual column header row.
+
+    MYOB (and friends) export REPORTS with a decorative header block; the
+    real table starts at the first line whose cells include all the
+    required tokens. Returns the text from that line on — or unchanged
+    when no such line exists (plain table exports)."""
+    lines = csv_text.splitlines()
+    for idx, line in enumerate(lines):
+        delimiter = "\t" if "\t" in line else ","
+        cells = {c.strip().lstrip("﻿").lower() for c in line.split(delimiter)}
+        if all(any(tok in cell for cell in cells) for tok in required):
+            return "\n".join(lines[idx:])
+    return csv_text

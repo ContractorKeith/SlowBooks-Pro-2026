@@ -23,8 +23,11 @@ Tab-separated `.TXT` exports and comma `.CSV` exports both import.
    want to bring across (e.g. 01/01/2000 to today). Save as
    `Journal.TXT`.
    *Some versions split journals by type (Sales, Purchases, Disbursements
-   …). Export each and upload them together — or run the General Ledger
-   detail report instead and export it.*
+   …) or offer an "All" export. Upload EITHER the single All file OR the
+   per-type files together — never both, or every transaction counts
+   twice (the dry-run's trial-balance check will catch it, loudly).
+   Journal types with no transactions simply won't export — that's fine;
+   upload the ones you have.*
 3. **Trial balance** — `Reports → Index to Reports → Accounts → Trial
    Balance`, set the same period end, then `Export → CSV` (or
    tab-separated text). Save as `TrialBalance.TXT`.
@@ -61,6 +64,17 @@ created (existing same-named accounts are reused), every journal posts
 through the standard double-entry engine, and the Opening Balances
 wizard is marked ready.
 
+## Opening balances
+
+Opening balances are entered as account setup in MYOB, so they never
+appear in a journal export. When the dry-run sees trial-balance
+differences that **net to zero** (MYOB offsets them through the
+Historical Balancing account), it treats them as opening balances and
+the import posts one balanced opening journal dated the day before your
+earliest transaction. Differences that don't net to zero remain errors —
+that means journals are actually missing (usually a truncated date
+range).
+
 ## Quirks handled automatically
 
 - Tab-separated classic exports and comma CSVs (detected per file)
@@ -70,6 +84,17 @@ wizard is marked ready.
 - Lines carrying only an **account number** (dashed `1-1100` or flat)
 - Contra lines expressed as a **negative amount** in one column
 - `($1,234.00)`-style accounting negatives
+- Report-style trial balance exports (address block and period header
+  skipped; YTD columns preferred over single-month movement)
+- Reused journal IDs (MYOB stamps every electronic payment `EP`) —
+  grouped by ID + date + memo
+- Duplicate account names under different numbers (imported as
+  `Name (code)` so both survive)
+
+All of the above were validated against MYOB's own **Clearwater** sample
+company: 101 accounts and 328 journals import with the ledger balanced
+to the cent and every account reconciling exactly to MYOB's trial
+balance.
 
 If your export uses a column heading the importer doesn't recognize, the
 dry-run lists it — send the header row to the project and it's a

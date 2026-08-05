@@ -57,7 +57,23 @@ async def bundle_from_uploads(files: list[UploadFile], classify) -> dict:
             text = content.decode("utf-8-sig")
         except UnicodeDecodeError:
             text = content.decode("latin-1")
-        bundle[kind] = text
+        if kind in bundle:
+            # Multiple files of one kind (MYOB exports journals per type):
+            # concatenate, dropping the duplicate header row — which must
+            # match the first file's, or the files aren't the same table.
+            first_header = bundle[kind].split("\n", 1)[0].strip()
+            header, _, body = text.partition("\n")
+            if header.strip() != first_header:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{file.filename} has different columns than the other "
+                        f"{kind} file(s); export them with the same settings"
+                    ),
+                )
+            bundle[kind] = bundle[kind].rstrip("\n") + "\n" + body
+        else:
+            bundle[kind] = text
     if unrecognized:
         raise HTTPException(
             status_code=400,

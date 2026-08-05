@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.models.accounts import AccountType
 from app.services.migration_common import (
     build_code_map,
+    skip_report_preamble,
     dry_run_bundle,
     field,
     parse_amount,
@@ -107,6 +108,17 @@ def parse_coa(csv_text: str) -> tuple[list[dict], list[str]]:
                 "description": field(row, "description") or None,
             }
         )
+
+    # MYOB allows the same name under different account numbers (Clearwater
+    # ships two postable "Wages & Salaries"). Disambiguate with the code so
+    # both import as distinct accounts; the engine strips the suffix when
+    # cross-checking against the trial balance (which carries names only).
+    seen: dict[str, int] = {}
+    for spec in accounts:
+        seen[spec["name"].lower()] = seen.get(spec["name"].lower(), 0) + 1
+    for spec in accounts:
+        if seen[spec["name"].lower()] > 1 and spec["code"]:
+            spec["name"] = f"{spec['name']} ({spec['code']})"
     return accounts, errors
 
 
@@ -164,7 +176,13 @@ def make_parse_gl(coa_text: str | None):
 
         journals: dict = {}
         for row in rows:
-            key = row["journal"] or f"{row['date'].isoformat()}|{row['reference']}"
+            # MYOB reuses ID No. across transactions ("EP" for every
+            # electronic payment; blank for many journals), so the number
+            # alone under-groups. The transaction memo is repeated on
+            # every line of a transaction, so (number, date, memo) is the
+            # stable grouping key; same-day rows sharing all three (e.g.
+            # one pay run's paycheques) merge into one balanced batch.
+            key = f"{row['journal']}|{row['date'].isoformat()}|{row['description']}"
             journals.setdefault(key, []).append(row)
         return list(journals.values()), errors
 
@@ -172,14 +190,19 @@ def make_parse_gl(coa_text: str | None):
 
 
 def parse_tb(csv_text: str) -> tuple[dict, list[str]]:
+    # MYOB's trial balance is a REPORT export: company address block,
+    # title, period, and print date precede the table.
+    csv_text = skip_report_preamble(csv_text)
     balances, errors = {}, []
     for i, row in enumerate(sniff_reader(csv_text), start=2):
         name = field(row, "account name", "account", "name")
-        if not name:
+        if not name or name.lower().rstrip(":").strip() in ("total", "grand total"):
             continue
         try:
-            debit = parse_amount(field(row, "debit", "ytd debit", "debit amount"))
-            credit = parse_amount(field(row, "credit", "ytd credit", "credit amount"))
+            # Prefer YTD columns: the period Debit/Credit pair only covers
+            # the report month, but the journals span the whole year.
+            debit = parse_amount(field(row, "ytd debit", "debit", "debit amount"))
+            credit = parse_amount(field(row, "ytd credit", "credit", "credit amount"))
         except ValueError as exc:
             errors.append(f"TB row {i}: {exc}")
             continue
