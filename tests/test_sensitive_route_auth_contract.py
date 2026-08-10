@@ -43,9 +43,25 @@ def _fill_params(path: str) -> str:
     return re.sub(r"\{[^}]+\}", "1", path)
 
 
+def _iter_app_routes(routes):
+    """Yield concrete routes across FastAPI versions.
+
+    FastAPI 0.141 wraps each include_router() in an _IncludedRouter that
+    carries no .path itself — the real APIRoutes live on its
+    .original_router. Older versions put routes directly in app.routes.
+    Duck-typed so both shapes work.
+    """
+    for route in routes:
+        if hasattr(route, "path"):
+            yield route
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            yield from _iter_app_routes(inner.routes)
+
+
 def _api_routes():
     out = []
-    for route in app.routes:
+    for route in _iter_app_routes(app.routes):
         path = getattr(route, "path", "")
         methods = getattr(route, "methods", None) or set()
         if not path.startswith("/api/"):
@@ -62,6 +78,13 @@ def _is_exempt(path: str) -> bool:
     if filled in _AUTH_EXEMPT_EXACT or filled.startswith(_AUTH_EXEMPT_PREFIXES):
         return True
     return bool(_AUTH_EXEMPT_RE and _AUTH_EXEMPT_RE.match(filled))
+
+
+def test_route_table_is_not_empty():
+    """A FastAPI upgrade that changes the route-table shape must fail
+    loudly here, not silently empty the parametrized contract below
+    (which pytest reports as a single skip)."""
+    assert len(_api_routes()) > 100
 
 
 @pytest.mark.parametrize("method,path", _api_routes())
