@@ -13,14 +13,14 @@
 #
 # Usage:
 #   scripts/publish-latest.sh [vX.Y.Z]          # default: newest v* tag
-#   SSH_HOST=starbase1 scripts/publish-latest.sh # WAN alias when off-LAN
+#   SSH_HOST=starbase2-lan is the default; SB2 is LAN-only — publish on-LAN
 # ============================================================================
 set -euo pipefail
 
 TAG="${1:-$(git tag -l 'v*' --sort=-v:refname | head -1)}"
 [ -n "$TAG" ] || { echo "ERROR: no v* tag found and none given" >&2; exit 1; }
 VER="${TAG#v}"
-SSH_HOST="${SSH_HOST:-starbase1-lan}"
+SSH_HOST="${SSH_HOST:-starbase2-lan}"
 WEBROOT="/var/www/dl.slowbookspro.com"
 
 TMP="$(mktemp -d)"
