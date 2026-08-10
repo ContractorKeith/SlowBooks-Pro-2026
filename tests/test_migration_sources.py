@@ -205,3 +205,41 @@ def test_generic_import_records_chart_source(client, seed_accounts):
     _import(client, "zoho", **{"chart.csv": ZOHO_COA, "journal.csv": ZOHO_GL})
     status = client.get("/api/opening-balances/status").json()
     assert status["chart_setup_source"] == "zoho_import"
+
+
+def test_wave_trial_balance_report_shape(client, seed_accounts):
+    """Real Wave TB exports are reports: BOM + title preamble, UPPERCASE
+    headers, section rows without amounts, and Total rows — captured from
+    an actual Wave export."""
+    wave_tb = (
+        "﻿Trial Balance\n"
+        "TRENTON Lee Von Holten\n"
+        "As of 2026-08-09\n"
+        "Report Type: Accrual (Paid & Unpaid)\n"
+        '""\n'
+        "ACCOUNT NUMBER,ACCOUNTS,DEBIT,CREDIT\n"
+        ",Assets,,\n"
+        ",Business Chequing,540.00,\n"
+        ",Total Assets,540.00,0.00\n"
+        ",Income,,\n"
+        ",Consulting Income,,540.00\n"
+        ",Total Income,0.00,540.00\n"
+        ",Total for all accounts,540.00,540.00\n"
+    )
+    wave_gl = (
+        "Transaction ID,Transaction Date,Account Name,Transaction Line Description,Amount (One column)\n"
+        "T-9,2026-03-01,Business Chequing,Consulting payment,540.00\n"
+        "T-9,2026-03-01,Consulting Income,Consulting payment,-540.00\n"
+    )
+    resp = client.post(
+        "/api/migration/wave/dry-run",
+        files=_files(
+            **{
+                "accounts.csv": WAVE_COA,
+                "transactions.csv": wave_gl,
+                "trial balance.csv": wave_tb,
+            }
+        ),
+    )
+    data = resp.json()
+    assert data["ok"] is True, data["errors"]

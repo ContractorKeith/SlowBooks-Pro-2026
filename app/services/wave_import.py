@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.models.accounts import AccountType
 from app.services.migration_common import (
     dry_run_bundle,
+    skip_report_preamble,
     field,
     make_classifier,
     parse_amount,
@@ -165,14 +166,22 @@ def parse_gl(csv_text: str) -> tuple[list[dict], list[str]]:
 
 
 def parse_tb(csv_text: str) -> tuple[dict, list[str]]:
+    # Wave's trial balance is a report export: title/company/date-range
+    # preamble, UPPERCASE headers ("ACCOUNTS"), section rows with no
+    # amounts, and "Total …" subtotal rows.
+    csv_text = skip_report_preamble(csv_text)
     balances, errors = {}, []
     for i, row in enumerate(sniff_reader(csv_text), start=2):
-        name = field(row, "account name", "account", "name")
-        if not name:
+        name = field(row, "account name", "accounts", "account", "name")
+        if not name or name.lower().startswith("total"):
             continue
+        raw_debit = field(row, "debit", "debit amount")
+        raw_credit = field(row, "credit", "credit amount")
+        if not raw_debit and not raw_credit:
+            continue  # section header row ("Assets", "Income", …)
         try:
-            debit = parse_amount(field(row, "debit", "debit amount"))
-            credit = parse_amount(field(row, "credit", "credit amount"))
+            debit = parse_amount(raw_debit)
+            credit = parse_amount(raw_credit)
         except ValueError as exc:
             errors.append(f"TB row {i}: {exc}")
             continue
