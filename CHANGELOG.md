@@ -7,6 +7,41 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.3.0 — Migration onramps
+
+**Migrate Data** — one page that brings accounting history in from six
+systems, each behind the same dry-run-gated engine (nothing is written
+until every reconstructed journal balances and, when supplied, the
+trial balance reconciles):
+
+- **MYOB** — fully validated against MYOB's own Clearwater sample
+  company (101 accounts, 328 journals, ledger balanced to the cent,
+  every account reconciling exactly to MYOB's trial balance). Handles
+  tab-separated classic exports, dd/mm/yyyy dates, header accounts,
+  reused journal IDs, number-only GL rows, duplicate account names,
+  and per-type journal file bundles. docs/migrate-from-myob.md walks
+  the export flow.
+- **GnuCash** — fully validated against real 5.5 exports (multi-split
+  transactions, GUID grouping, signed per-split amounts, placeholder
+  accounts).
+- **Xero** — refactored onto the shared engine (behavior-identical).
+- **Zoho Books** — chart validated against a live account's export.
+- **Wave** — trial-balance report shape validated against a live
+  account's export; supports both debit/credit and signed
+  single-amount transaction exports.
+- **Sage 50** — account-ID resolution, mm/dd dates, Sage's descriptive
+  account types.
+- Opening balances: trial-balance residuals that net to zero (the
+  source system's account-setup balances, absent from any journal
+  export) are detected and imported as one balanced opening journal.
+
+**Dependencies** — refreshed across the board for the release
+(FastAPI 0.141, Stripe SDK 15, cryptography 50, argon2-cffi 25,
+python-multipart 0.0.32, psycopg2-binary 2.9.12); pip-audit clean.
+The route-table introspection tests were taught FastAPI 0.141's new
+nested-router shape, with a tripwire so a future shape change can
+never silently empty the auth-contract suite again.
+
 ### v2.2.0 — The fork-integration release
 
 The largest single release since 2.0: work mined from four community

@@ -56,13 +56,29 @@ def _normalize_js_path(raw: str) -> str:
     return path
 
 
+def _iter_app_routes(routes):
+    """Yield concrete routes across FastAPI versions.
+
+    FastAPI 0.141 wraps each include_router() in an _IncludedRouter that
+    carries no .path itself — the real APIRoutes live on its
+    .original_router. Older versions put routes directly in app.routes.
+    Duck-typed so both shapes work.
+    """
+    for route in routes:
+        if hasattr(route, "path"):
+            yield route
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            yield from _iter_app_routes(inner.routes)
+
+
 @pytest.fixture(scope="module")
 def app_routes():
     """List of (METHOD, [path_segments]) for every registered FastAPI route."""
     from app.main import app
 
     out = []
-    for route in app.routes:
+    for route in _iter_app_routes(app.routes):
         methods = getattr(route, "methods", None) or set()
         segs = route.path.split("/")
         for m in methods:
