@@ -1,9 +1,9 @@
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
 MACOS_DIR = Path(__file__).resolve().parent.parent / "packaging" / "macos"
 
@@ -17,7 +17,6 @@ def _load_module(name, filename):
 
 sys.path.insert(0, str(MACOS_DIR))
 audit = _load_module("slowbooks_macos_audit", "audit_bundle.py")
-icons = _load_module("slowbooks_macos_icons", "build_icon.py")
 prepare = _load_module("slowbooks_macos_prepare", "prepare_bundle.py")
 sys.path.pop(0)
 
@@ -128,13 +127,47 @@ def test_audit_rejects_resources_link_to_frameworks(monkeypatch, tmp_path):
 
 
 def test_build_iconset_writes_every_apple_icon_size(tmp_path):
-    source = tmp_path / "source.png"
+    source = Path(__file__).resolve().parent.parent / "assets" / "icon-256.png"
     output = tmp_path / "SlowBooksPro.iconset"
-    Image.new("RGB", (256, 256), "navy").save(source)
+    expected_sizes = {
+        "icon_16x16.png": 16,
+        "icon_16x16@2x.png": 32,
+        "icon_32x32.png": 32,
+        "icon_32x32@2x.png": 64,
+        "icon_128x128.png": 128,
+        "icon_128x128@2x.png": 256,
+        "icon_256x256.png": 256,
+        "icon_256x256@2x.png": 512,
+        "icon_512x512.png": 512,
+        "icon_512x512@2x.png": 1024,
+    }
 
-    icons.build_iconset(source, output)
+    subprocess.run(
+        [sys.executable, str(MACOS_DIR / "build_icon.py"), str(source), str(output)],
+        check=True,
+    )
 
-    assert {path.name for path in output.iterdir()} == set(icons.ICON_SIZES)
-    for filename, size in icons.ICON_SIZES.items():
-        with Image.open(output / filename) as generated:
-            assert generated.size == (size, size)
+    assert {path.name for path in output.iterdir()} == set(expected_sizes)
+    verify_script = """
+from pathlib import Path
+import sys
+from PIL import Image
+
+output = Path(sys.argv[1])
+expected_sizes = {
+    "icon_16x16.png": 16,
+    "icon_16x16@2x.png": 32,
+    "icon_32x32.png": 32,
+    "icon_32x32@2x.png": 64,
+    "icon_128x128.png": 128,
+    "icon_128x128@2x.png": 256,
+    "icon_256x256.png": 256,
+    "icon_256x256@2x.png": 512,
+    "icon_512x512.png": 512,
+    "icon_512x512@2x.png": 1024,
+}
+for filename, size in expected_sizes.items():
+    with Image.open(output / filename) as generated:
+        assert generated.size == (size, size)
+"""
+    subprocess.run([sys.executable, "-c", verify_script, str(output)], check=True)
