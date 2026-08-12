@@ -100,6 +100,10 @@ jobs:
           # and rejects the apparent Mach-O files in Resources.
           python packaging/macos/prepare_bundle.py "$app"
           find "$app" -exec xattr -c {} +
+          # Removing those sealed symlinks invalidates only PyInstaller's outer
+          # ad-hoc transport signature. Refresh that outer signature without
+          # recursive signing; local Developer ID signing replaces it later.
+          codesign --force --sign - "$app"
           plutil -lint "$app/Contents/Info.plist"
           test "$(plutil -extract CFBundleShortVersionString raw -o - \
             "$app/Contents/Info.plist")" = "$APP_VERSION"
