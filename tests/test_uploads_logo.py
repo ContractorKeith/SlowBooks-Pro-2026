@@ -9,6 +9,21 @@ clear, JSON-shaped error.
 import io
 
 
+def test_pdf_logo_uses_desktop_upload_storage(tmp_path, monkeypatch):
+    from app.services import pdf_service
+
+    monkeypatch.setenv("SLOWBOOKS_DATA_DIR", str(tmp_path))
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    (uploads / "company_logo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    result = pdf_service._company_logo_data_uri(
+        {"company_logo_path": "/static/uploads/company_logo.png"}
+    )
+
+    assert result == "data:image/png;base64,iVBORw0KGgo="
+
+
 def _post(client, content, content_type, filename="logo.png"):
     return client.post(
         "/api/uploads/logo",

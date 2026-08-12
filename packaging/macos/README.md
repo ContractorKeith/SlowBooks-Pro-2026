@@ -1,47 +1,112 @@
-# macOS build — maintainer notes
+# macOS release
 
-Maintainer: **@ContractorKeith** (signing + notarization with his Apple
-Developer ID; credited in the main README). Owner approval is required
-for every merge to `main` (CODEOWNERS + branch protection).
+Maintainer: **@ContractorKeith**. Owner review is required for merges to
+`main`.
 
-## What exists
+The first supported native build is Apple Silicon (`arm64`) on macOS 14 or
+newer. Intel support needs a separate build and installed-app acceptance pass.
 
-- `.github/workflows/macos.yml` — builds an **unsigned** `.app` with
-  PyInstaller on a hosted `macos-14` runner, runs the same `--smoke-test`
-  gate as the Windows build (boot server, migrate a company, render a
-  PDF), and packages a DMG artifact. Runnable today via
-  *Actions → macOS → Run workflow*.
-- `SlowBooksPro-mac.spec` — adapted from the Windows spec: Cocoa/WebKit
-  pywebview backend (no pythonnet/WebView2 on macOS), same data tree
-  (index.html, static, templates, migrations, alembic.ini).
+## Release model
 
-## What needs a real Mac + Developer ID (the maintainer's part)
+GitHub Actions builds and smoke-tests an exact commit without Apple
+credentials. PyInstaller ad-hoc signs the transport app, but the artifact is
+still called `unsigned` because it is not suitable for distribution.
 
-1. **Validate the spec.** First run will likely surface WeasyPrint dylib
-   or pyobjc packaging issues — iterate on the spec, not the workflow.
-2. **Pick a signing flow:**
-   - *CI signing*: provide the secrets documented in the workflow's
-     disabled block to the repo owner (only admins can add secrets),
-     then enable those steps. Note this stores your signing identity as
-     repo secrets — your call.
-   - *Local signing*: download the unsigned artifact, then on your Mac:
-     `codesign --deep --force --options runtime --sign "Developer ID
-     Application: <name>" "SlowBooks Pro.app"`, zip it, `xcrun notarytool
-     submit --wait`, `xcrun stapler staple`, rebuild the DMG. Attach the
-     signed DMG to the GitHub release (owner can grant release upload or
-     attach it for you).
-3. **Known launcher notes for macOS:**
-   - Data dir: `get_data_dir()` in `desktop_launcher.py` resolves the
-     per-user data area — verify it lands in
-     `~/Library/Application Support/SlowBooksPro` when frozen.
-   - There is a crash report from an earlier native macOS run — get the
-     current one into an issue so it's tracked.
-4. **Server Edition:** `--serve-lan` works headless on macOS the same as
-   Windows; nothing platform-specific expected.
+Developer ID signing and notarization happen on the maintainer's Mac:
 
-## Ground rules (same as every contribution)
+1. Actions builds the app, verifies its native-library closure, exercises the
+   Cocoa backend, creates a company, starts the server, and renders a PDF.
+2. Actions uploads a checksummed app ZIP, transport DMG, dependency inventory,
+   and build metadata for seven days. It never creates or changes a GitHub
+   Release.
+3. `release.py` verifies the artifact and source SHA, replaces every ad-hoc
+   signature from the inside out, signs the final DMG, submits that DMG to
+   Apple, retrieves the notarization log, staples the ticket, and runs final
+   command-line gates.
+4. Installed-app acceptance and public-release verification remain separate
+   human gates.
 
-- PRs into `main`; owner review required before merge.
-- CI (lint + pytest + CodeQL) must be green.
-- The version source of truth is `app/__init__.py` — the workflow reads
-  it; don't hardcode versions anywhere.
+Apple certificates, private keys, passwords, and notarization credentials must
+never enter Git, Actions, build logs, or project notes.
+
+## Build the transport artifact
+
+While the workflow exists only on `macos-build`, pushing that branch triggers
+the build. After the workflow reaches the default branch, it can also be
+manually dispatched with the full commit SHA in `expected_sha`.
+
+The artifact name is:
+
+```text
+SlowBooksPro-macos-arm64-<full-commit-sha>-unsigned
+```
+
+Download it with GitHub CLI and verify the files before signing:
+
+```bash
+repo="VonHoltenCodes/SlowBooks-Pro-2026"
+run_id="<successful-macos-run-id>"
+sha="<full-40-character-commit-sha>"
+artifact="SlowBooksPro-macos-arm64-${sha}-unsigned"
+download_dir="$HOME/Downloads/$artifact"
+
+mkdir -p "$download_dir"
+gh run download "$run_id" --repo "$repo" \
+  --name "$artifact" --dir "$download_dir"
+(cd "$download_dir" && shasum -a 256 -c SHA256SUMS)
+test "$(awk -F= '$1 == "git_sha" {print $2}' \
+  "$download_dir/build-info.txt")" = "$sha"
+```
+
+## One-time notarization setup
+
+Store notarization authentication in Login Keychain. The command prompts for
+the app-specific password; do not put it on the command line:
+
+```bash
+xcrun notarytool store-credentials slowbooks-notary \
+  --apple-id "<developer-apple-id>" \
+  --team-id "<apple-team-id>"
+```
+
+The Mac must have exactly one valid `Developer ID Application` identity, or the
+release command must receive the exact identity through `--identity`.
+
+## Sign and notarize
+
+Run from a checkout of the same source commit used by Actions:
+
+```bash
+python3 packaging/macos/release.py "$download_dir" \
+  --expected-sha "$sha" \
+  --output-root "$HOME/Downloads/SlowBooksPro-release-candidates" \
+  --notary-profile slowbooks-notary
+```
+
+The command creates a new evidence directory instead of overwriting a previous
+attempt. A successful directory contains the final
+`SlowBooksPro-<version>-macos-arm64.dmg`, its SHA-256 manifest, the source build
+metadata, native-linkage report, code-signing details, and Apple notarization
+submission and log files.
+
+`release.py` never uses `codesign --deep` to sign. It signs actual Mach-O files
+and nested code from the deepest item outward. `--deep` is used only for the
+final recursive verification gate.
+
+## Installed-app acceptance
+
+Do not publish on command-line proof alone. Using the exact final DMG:
+
+- Mount it and launch once from the image.
+- Copy the app to `/Applications`, eject the image, and launch again.
+- Create and reopen a company, then quit and relaunch.
+- Confirm data persists under
+  `~/Library/Application Support/SlowBooksPro/data`.
+- Upload a logo and render a PDF that contains it.
+- Create a backup and exercise an export/download.
+- Confirm no missing-library dialog or fatal entry appears in `launcher.log`.
+
+After owner-approved merge, rebuild from the exact release-tag commit. Never
+publish a development-branch artifact under an existing tag. Upload only the
+signed, notarized, stapled DMG, then independently re-download it and repeat
+the checksum, Gatekeeper, mount, and launch checks.

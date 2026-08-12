@@ -10,11 +10,89 @@
 # ============================================================================
 
 import json
+import os
 import sqlite3
 
 import pytest
 
 from app.services import backup_service, company_service
+
+
+def test_macos_data_dir_uses_application_support(tmp_path, monkeypatch):
+    import desktop_launcher
+
+    monkeypatch.delenv("SLOWBOOKS_DATA_DIR", raising=False)
+    monkeypatch.setattr(desktop_launcher.sys, "platform", "darwin")
+    monkeypatch.setattr(desktop_launcher.Path, "home", lambda: tmp_path)
+
+    expected = tmp_path / "Library" / "Application Support" / "SlowBooksPro" / "data"
+    assert desktop_launcher.get_data_dir() == expected
+    assert company_service.data_dir() == expected
+
+
+def test_prepare_env_persists_settings_key_outside_bundle(tmp_path, monkeypatch):
+    import desktop_launcher
+    from cryptography.fernet import Fernet
+
+    env_file = tmp_path / "Application Support" / "SlowBooksPro" / ".env"
+    data_dir = env_file.parent / "data"
+    monkeypatch.setattr(desktop_launcher, "ENV_FILE", env_file)
+    monkeypatch.setattr(desktop_launcher, "ENV_EXAMPLE", tmp_path / "missing.example")
+    monkeypatch.setattr(desktop_launcher, "get_data_dir", lambda: data_dir)
+
+    desktop_launcher.prepare_env()
+    first_key = desktop_launcher.get_env_value("SETTINGS_ENCRYPTION_KEY")
+    assert first_key
+    Fernet(first_key.encode("ascii"))
+    assert os.environ["SLOWBOOKS_ENV_FILE"] == str(env_file)
+
+    desktop_launcher.prepare_env()
+    assert desktop_launcher.get_env_value("SETTINGS_ENCRYPTION_KEY") == first_key
+    if os.name != "nt":
+        assert env_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_macos_frozen_runtime_uses_bundle_dylibs_and_writable_font_cache(
+    tmp_path, monkeypatch
+):
+    import desktop_launcher
+
+    executable = tmp_path / "SlowBooks Pro.app" / "Contents" / "MacOS" / "SlowBooksPro"
+    config_dir = tmp_path / "Application Support" / "SlowBooksPro"
+    monkeypatch.setattr(desktop_launcher.sys, "executable", str(executable))
+    monkeypatch.setattr(desktop_launcher, "_config_dir", lambda: config_dir)
+    monkeypatch.setattr(desktop_launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("DYLD_FALLBACK_LIBRARY_PATH", raising=False)
+    monkeypatch.delenv("FONTCONFIG_FILE", raising=False)
+
+    desktop_launcher._bootstrap_frozen_macos_runtime()
+
+    assert os.environ["DYLD_FALLBACK_LIBRARY_PATH"] == str(
+        executable.parent.parent / "Frameworks"
+    )
+    fonts_conf = config_dir / "fonts.conf"
+    assert os.environ["FONTCONFIG_FILE"] == str(fonts_conf)
+    contents = fonts_conf.read_text(encoding="utf-8")
+    assert "/System/Library/Fonts" in contents
+    assert str(config_dir / "fontconfig-cache") in contents
+
+
+def test_macos_error_box_uses_native_alert(monkeypatch):
+    import desktop_launcher
+
+    calls = []
+    monkeypatch.setattr(desktop_launcher.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        desktop_launcher.subprocess,
+        "run",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    desktop_launcher._show_error_box("the app could not start")
+
+    command = calls[0][0][0]
+    assert command[0] == "/usr/bin/osascript"
+    assert command[-1] == "the app could not start"
 
 
 @pytest.fixture

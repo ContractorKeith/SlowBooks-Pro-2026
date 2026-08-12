@@ -13,6 +13,7 @@
 #   * Icon: assets/icon-256.png → .icns (see the workflow step).
 
 import os
+import subprocess
 
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -35,6 +36,20 @@ def _tree(src_rel, dest):
     return out
 
 
+def _brew_library(formula, filename):
+    """Resolve one required Homebrew dylib or fail the build loudly."""
+    prefix = subprocess.run(
+        ["brew", "--prefix", formula],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    path = os.path.join(prefix, "lib", filename)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"required {formula} library not found: {path}")
+    return path
+
+
 datas = [
     (os.path.join(ROOT, "index.html"), "."),
     (os.path.join(ROOT, "alembic.ini"), "."),
@@ -46,6 +61,19 @@ datas += _tree("app/templates", "app/templates")
 # they must exist on disk in the bundle, not just inside the PYZ.
 datas += _tree("migrations", "migrations")
 
+# PyInstaller's WeasyPrint hook uses ctypes.util.find_library(), which does
+# not find Homebrew libraries on Apple Silicon. Seed the six libraries that
+# WeasyPrint dlopens; PyInstaller follows and rewrites their dependency
+# closure into Contents/Frameworks.
+binaries = [
+    (_brew_library("glib", "libgobject-2.0.0.dylib"), "."),
+    (_brew_library("pango", "libpango-1.0.dylib"), "."),
+    (_brew_library("pango", "libpangoft2-1.0.dylib"), "."),
+    (_brew_library("harfbuzz", "libharfbuzz.0.dylib"), "."),
+    (_brew_library("harfbuzz", "libharfbuzz-subset.0.dylib"), "."),
+    (_brew_library("fontconfig", "libfontconfig.1.dylib"), "."),
+]
+
 hiddenimports = (
     collect_submodules("app")
     + collect_submodules("uvicorn")
@@ -53,14 +81,19 @@ hiddenimports = (
     + [
         # pywebview's macOS backend (Cocoa/WebKit via pyobjc)
         "webview.platforms.cocoa",
+        # alembic.ini logging config and desktop SQLite dialect
+        "logging.config",
+        "sqlalchemy.dialects.sqlite",
     ]
 )
 
 a = Analysis(
     [os.path.join(ROOT, "desktop_launcher.py")],
     pathex=[ROOT],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
+    excludes=["psycopg2", "psycopg2_binary"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -88,11 +121,13 @@ app = BUNDLE(
     bundle_identifier="com.vonholtencodes.slowbookspro",
     info_plist={
         "CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.0.0"),
+        "CFBundleVersion": os.environ.get("APP_VERSION", "0.0.0"),
+        "LSMinimumSystemVersion": "14.0",
+        "LSArchitecturePriority": ["arm64"],
         "NSHighResolutionCapable": True,
         # The app runs a local web server for its own UI
         "NSLocalNetworkUsageDescription": (
-            "SlowBooks Pro runs a local server for its user interface "
-            "and, in Server Edition mode, for other computers you allow."
+            "SlowBooks Pro runs a loopback server for its desktop interface."
         ),
     },
 )

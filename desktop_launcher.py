@@ -1,6 +1,6 @@
 """SlowBooks Pro 2026 — native desktop launcher.
 
-Entry point for the no-Docker desktop install (Windows-first, but runs
+Entry point for the no-Docker desktop install (Windows and macOS, but runs
 anywhere Python does). What it does, in order:
 
   1. Prepares .env (copies .env.example on first run, generates a real
@@ -8,7 +8,7 @@ anywhere Python does). What it does, in order:
      APP_HOST=127.0.0.1 — correct for a loopback-only desktop install).
   2. Shows a company picker (like QuickBooks' "File → Open Company"):
      each company is its own SQLite file under
-     %LOCALAPPDATA%\\SlowBooksPro\\data\\companies\\, tracked in
+     the platform's per-user application-data directory, tracked in
      companies.json. Pick one or create a new one.
   3. Points DATABASE_URL at the chosen company's .db file, runs
      `alembic upgrade head` (idempotent), starts uvicorn on 127.0.0.1,
@@ -60,6 +60,8 @@ def get_data_dir() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "SlowBooksPro" / "data"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "SlowBooksPro" / "data"
     return Path.home() / ".slowbookspro" / "data"
 
 
@@ -138,8 +140,54 @@ def _bootstrap_frozen_runtime() -> None:
         pass  # PDF rendering may still work; don't block app startup
 
 
-if FROZEN and sys.platform == "win32":
-    _bootstrap_frozen_runtime()
+def _bootstrap_frozen_macos_runtime() -> None:
+    """Point WeasyPrint at the bundled dylibs and system font directories."""
+    frameworks_dir = Path(sys.executable).parent.parent / "Frameworks"
+    fallback = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+    fallback_parts = [str(frameworks_dir)]
+    if fallback:
+        fallback_parts.append(fallback)
+    os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(fallback_parts)
+
+    # Homebrew's fontconfig file points back into /opt/homebrew. A signed app
+    # must remain self-contained, so give the bundled library a tiny per-user
+    # configuration that uses macOS fonts and a writable cache.
+    try:
+        from xml.sax.saxutils import escape
+
+        config_dir = _config_dir()
+        cache_dir = config_dir / "fontconfig-cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        fonts_conf = config_dir / "fonts.conf"
+        font_dirs = [
+            Path("/System/Library/Fonts"),
+            Path("/Library/Fonts"),
+            Path.home() / "Library" / "Fonts",
+        ]
+        dirs_xml = "\n".join(f"  <dir>{escape(str(path))}</dir>" for path in font_dirs)
+        contents = (
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+            "<fontconfig>\n"
+            f"{dirs_xml}\n"
+            f"  <cachedir>{escape(str(cache_dir))}</cachedir>\n"
+            "</fontconfig>\n"
+        )
+        if (
+            not fonts_conf.exists()
+            or fonts_conf.read_text(encoding="utf-8") != contents
+        ):
+            fonts_conf.write_text(contents, encoding="utf-8")
+        os.environ["FONTCONFIG_FILE"] = str(fonts_conf)
+    except OSError:
+        pass
+
+
+if FROZEN:
+    if sys.platform == "win32":
+        _bootstrap_frozen_runtime()
+    elif sys.platform == "darwin":
+        _bootstrap_frozen_macos_runtime()
 
 # Must match app/config.py's shipped placeholder — a real secret is
 # generated to replace it (or an empty value) on first run.
@@ -189,7 +237,18 @@ def prepare_env() -> None:
             )
         else:
             ENV_FILE.write_text("", encoding="utf-8")
+        if os.name != "nt":
+            ENV_FILE.chmod(0o600)
         print(f"Created {ENV_FILE}")
+    elif os.name != "nt":
+        try:
+            ENV_FILE.chmod(0o600)
+        except OSError:
+            print(f"WARNING: could not restrict permissions on {ENV_FILE}")
+
+    # Any app modules imported after this point must read the writable desktop
+    # environment, never a bundled .env.
+    os.environ["SLOWBOOKS_ENV_FILE"] = str(ENV_FILE)
 
     # APP_DEBUG=true is correct here because this deployment only ever talks
     # to 127.0.0.1: it disables the HTTPS/TLS production gates (which don't
@@ -214,6 +273,21 @@ def prepare_env() -> None:
     if not get_env_value("SESSION_SECRET_KEY"):
         set_env_value("SESSION_SECRET_KEY", secrets.token_urlsafe(48))
         print("Generated SESSION_SECRET_KEY")
+
+    # Field-level settings encryption historically fell back to a key file
+    # next to the source tree. In a frozen app that location is inside the
+    # signed, read-only bundle, so persist the key in the per-user .env too.
+    if not get_env_value("SETTINGS_ENCRYPTION_KEY"):
+        from cryptography.fernet import Fernet
+
+        set_env_value("SETTINGS_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+        print("Generated SETTINGS_ENCRYPTION_KEY")
+
+    if os.name != "nt":
+        try:
+            ENV_FILE.chmod(0o600)
+        except OSError:
+            print(f"WARNING: could not restrict permissions on {ENV_FILE}")
 
     data_dir = get_data_dir()
     (data_dir / "companies").mkdir(parents=True, exist_ok=True)
@@ -705,15 +779,35 @@ def _webview2_installed() -> bool:
 
 def _show_error_box(message: str) -> None:
     """Best-effort native popup for fatal errors -- used in --hidden mode,
-    where there's no visible console to print to. No-op off Windows, or
-    if it fails for any reason (this must never itself crash the caller)."""
-    if sys.platform != "win32":
-        return
+    where there's no visible console to print to. No-op on unsupported
+    platforms, or if it fails for any reason."""
     try:
-        import ctypes
+        if sys.platform == "darwin":
+            subprocess.run(
+                [
+                    "/usr/bin/osascript",
+                    "-e",
+                    "on run argv",
+                    "-e",
+                    'display alert "SlowBooks Pro 2026" message (item 1 of argv) as critical',
+                    "-e",
+                    "end run",
+                    "--",
+                    message,
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            return
+        if sys.platform == "win32":
+            import ctypes
 
-        MB_ICONERROR = 0x10
-        ctypes.windll.user32.MessageBoxW(0, message, "SlowBooks Pro 2026", MB_ICONERROR)
+            MB_ICONERROR = 0x10
+            ctypes.windll.user32.MessageBoxW(
+                0, message, "SlowBooks Pro 2026", MB_ICONERROR
+            )
     except Exception:
         pass
 
@@ -783,11 +877,22 @@ def run_window(port: int, log_fh=None) -> int:
         # see the comment above where storage_dir is created.
         webview.start(gui=gui, private_mode=False, storage_path=str(storage_dir))
     except Exception as exc:
+        if sys.platform == "win32":
+            guidance = (
+                "This usually means the Microsoft WebView2 runtime is missing.\n"
+                "Install it from:\n"
+                "    https://developer.microsoft.com/microsoft-edge/webview2/"
+            )
+        elif sys.platform == "darwin":
+            guidance = (
+                "The macOS Cocoa/WebKit window could not start. Review the "
+                "launcher log for the packaged native dependency error."
+            )
+        else:
+            guidance = "The native webview backend could not start."
         msg = (
             f"Could not open the native window: {exc}\n"
-            "This usually means the Microsoft WebView2 runtime is missing.\n"
-            "Install it from:\n"
-            "    https://developer.microsoft.com/microsoft-edge/webview2/\n"
+            f"{guidance}\n"
             "You can also start without a native window:\n"
             "    python desktop_launcher.py --no-window"
         )
@@ -871,6 +976,10 @@ def run_smoke_test(port: int = 3999) -> int:
     # Service-layer failures are logger.exception'd and swallowed into
     # generic user-facing errors; in a smoke test we want the traceback.
     logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
+
+    if sys.platform == "darwin":
+        print("smoke: importing the Cocoa webview backend...")
+        import webview.platforms.cocoa  # noqa: F401
 
     prepare_env()
     os.environ["SLOWBOOKS_DATA_DIR"] = str(get_data_dir())
