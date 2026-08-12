@@ -7,6 +7,16 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Native macOS desktop
+
+- Added a signed and Apple-notarized native app for Apple Silicon Macs running
+  macOS 14 or newer, distributed as a drag-to-Applications DMG.
+- Desktop companies, settings keys, uploads, logs, and backups persist under
+  the user's Application Support directory; upgrades never place writable data
+  inside the app bundle.
+- Bundled PDF libraries and the Cocoa window backend are exercised before a
+  build can become a release candidate.
+
 ### v2.3.0 — Migration onramps
 
 **Migrate Data** — one page that brings accounting history in from six

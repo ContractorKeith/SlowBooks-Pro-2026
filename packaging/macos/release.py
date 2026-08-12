@@ -6,26 +6,63 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Iterable
 
 from audit_bundle import audit_bundle
+from prepare_bundle import prepare_bundle
 
 BUNDLE_ID = "com.vonholtencodes.slowbookspro"
+REPOSITORY_URL = "https://github.com/VonHoltenCodes/SlowBooks-Pro-2026"
+NESTED_CODE_SUFFIXES = {".framework", ".bundle", ".plugin", ".xpc", ".appex", ".app"}
 IDENTITY_PATTERN = re.compile(
     r'^\s*\d+\)\s+[0-9A-Fa-f]+\s+"(Developer ID Application:[^"]+)"$',
     re.MULTILINE,
 )
 
 
+def _redacted_args(args: Iterable[str]) -> list[str]:
+    return [
+        (
+            "<Developer ID Application identity>"
+            if arg.startswith("Developer ID Application:")
+            else arg
+        )
+        for arg in args
+    ]
+
+
 def _run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    print("+", " ".join(args), flush=True)
+    print("+", " ".join(_redacted_args(args)), flush=True)
     return subprocess.run(args, check=check, capture_output=True, text=True)
+
+
+def _record_run(
+    report_path: Path,
+    *args: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command and preserve both output streams as release evidence."""
+    result = _run(*args, check=False)
+    with report_path.open("a", encoding="utf-8") as report:
+        report.write(f"$ {' '.join(_redacted_args(args))}\n")
+        if result.stdout:
+            report.write(result.stdout)
+            if not result.stdout.endswith("\n"):
+                report.write("\n")
+        if result.stderr:
+            report.write(result.stderr)
+            if not result.stderr.endswith("\n"):
+                report.write("\n")
+        report.write(f"exit_code={result.returncode}\n\n")
+    if check:
+        result.check_returncode()
+    return result
 
 
 def _parse_key_values(text: str) -> dict[str, str]:
@@ -86,16 +123,7 @@ def _select_identity(requested: str | None) -> str:
 
 
 def _clear_xattrs(root: Path) -> None:
-    for path in [root, *root.rglob("*")]:
-        try:
-            names = os.listxattr(path, follow_symlinks=False)
-        except OSError:
-            continue
-        for name in names:
-            try:
-                os.removexattr(path, name, follow_symlinks=False)
-            except OSError:
-                pass
+    _run("find", str(root), "-exec", "xattr", "-c", "{}", "+")
 
 
 def _is_macho(path: Path) -> tuple[bool, bool]:
@@ -127,11 +155,10 @@ def _sign_app(app: Path, identity: str) -> None:
     ):
         _sign(path, identity, hardened_runtime=is_executable)
 
-    nested_suffixes = {".framework", ".bundle", ".plugin", ".xpc", ".appex", ".app"}
     nested = [
         path
         for path in app.rglob("*")
-        if path.is_dir() and path.suffix in nested_suffixes
+        if path.is_dir() and path.suffix in NESTED_CODE_SUFFIXES
     ]
     for path in sorted(nested, key=lambda item: len(item.parts), reverse=True):
         _sign(path, identity, hardened_runtime=True)
@@ -139,17 +166,137 @@ def _sign_app(app: Path, identity: str) -> None:
     _sign(app, identity, hardened_runtime=True)
 
 
-def _verify_signed_app(app: Path, report_dir: Path) -> None:
-    _run("codesign", "--verify", "--deep", "--strict", "--verbose=4", str(app))
-    details = _run("codesign", "-dvvv", str(app)).stderr
-    if "Authority=Developer ID Application:" not in details:
-        raise RuntimeError("app is not signed with a Developer ID Application identity")
-    if "TeamIdentifier=" not in details or "Timestamp=" not in details:
-        raise RuntimeError("app signature is missing Team ID or secure timestamp")
-    if "runtime" not in details:
-        raise RuntimeError("app signature does not enable hardened runtime")
-    (report_dir / "codesign-app.txt").write_text(details, encoding="utf-8")
-    _run("xcrun", "syspolicy_check", "notary-submission", str(app))
+def _signed_targets(app: Path) -> Iterable[tuple[Path, bool]]:
+    """Yield nested signed code and whether hardened runtime is required."""
+    for path in sorted(app.rglob("*")):
+        if path.is_symlink():
+            continue
+        if path.is_dir() and path.suffix in NESTED_CODE_SUFFIXES:
+            yield path, True
+        elif path.is_file():
+            is_macho, is_executable = _is_macho(path)
+            if is_macho:
+                yield path, is_executable
+    yield app, True
+
+
+def _signature_team_id(details: str) -> str:
+    match = re.search(r"^TeamIdentifier=(.+)$", details, re.MULTILINE)
+    if not match:
+        raise RuntimeError("signature is missing a Team ID")
+    return match.group(1).strip()
+
+
+def _verify_signature_details(
+    details: str,
+    identity: str,
+    expected_team_id: str | None,
+    hardened_runtime: bool,
+) -> str:
+    if f"Authority={identity}" not in details:
+        raise RuntimeError("signature does not use the selected Developer ID identity")
+    team_id = _signature_team_id(details)
+    if expected_team_id is not None and team_id != expected_team_id:
+        raise RuntimeError("nested signature Team ID differs from the outer app")
+    if "Timestamp=" not in details:
+        raise RuntimeError("signature is missing a secure timestamp")
+    if hardened_runtime and "runtime" not in details:
+        raise RuntimeError("executable signature does not enable hardened runtime")
+    return team_id
+
+
+def _expected_unnotarized_policy_result(
+    syspolicy: subprocess.CompletedProcess[str],
+    gatekeeper: subprocess.CompletedProcess[str],
+) -> bool:
+    """Recognize the lone pre-notary rejection produced by some macOS releases."""
+    policy_output = syspolicy.stdout + syspolicy.stderr
+    gatekeeper_output = gatekeeper.stdout + gatekeeper.stderr
+    return (
+        syspolicy.returncode != 0
+        and gatekeeper.returncode != 0
+        and "Gatekeeper rejected this file" in policy_output
+        and "source=Unnotarized Developer ID" in gatekeeper_output
+        and policy_output.count("Severity: Fatal") == 1
+        and "Severity: Warning" not in policy_output
+        and "Incorrect Bundle Structure" not in policy_output
+    )
+
+
+def _verify_pre_notary_policy(app: Path, report_dir: Path) -> None:
+    evidence = report_dir / "syspolicy-app.txt"
+    syspolicy = _record_run(
+        evidence,
+        "xcrun",
+        "syspolicy_check",
+        "notary-submission",
+        str(app),
+        check=False,
+    )
+    if syspolicy.returncode == 0:
+        return
+
+    gatekeeper = _record_run(
+        evidence,
+        "spctl",
+        "--assess",
+        "--type",
+        "execute",
+        "--verbose=4",
+        str(app),
+        check=False,
+    )
+    if _expected_unnotarized_policy_result(syspolicy, gatekeeper):
+        with evidence.open("a", encoding="utf-8") as report:
+            report.write(
+                "Expected pre-notary state: Developer ID signature is valid, "
+                "but no Apple notarization ticket exists yet.\n"
+            )
+        return
+    raise RuntimeError(f"app failed pre-notarization policy checks; see {evidence}")
+
+
+def _verify_signed_app(app: Path, identity: str, report_dir: Path) -> None:
+    evidence = report_dir / "codesign-app.txt"
+    outer_details = _record_run(evidence, "codesign", "-dvvv", str(app)).stderr
+    team_id = _verify_signature_details(
+        outer_details,
+        identity,
+        expected_team_id=None,
+        hardened_runtime=True,
+    )
+
+    for path, hardened_runtime in _signed_targets(app):
+        relative = path.relative_to(app.parent)
+        _record_run(
+            evidence,
+            "codesign",
+            "--verify",
+            "--strict",
+            "--verbose=4",
+            str(path),
+        )
+        details = _record_run(evidence, "codesign", "-dvvv", str(path)).stderr
+        try:
+            _verify_signature_details(
+                details,
+                identity,
+                expected_team_id=team_id,
+                hardened_runtime=hardened_runtime,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(f"invalid signature on {relative}: {exc}") from exc
+
+    _record_run(
+        evidence,
+        "codesign",
+        "--verify",
+        "--deep",
+        "--strict",
+        "--verbose=4",
+        str(app),
+    )
+    _verify_pre_notary_policy(app, report_dir)
 
 
 def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
@@ -180,7 +327,7 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
         ) from exc
 
     log_path = report_dir / "notary-log.json"
-    _run(
+    log_result = _run(
         "xcrun",
         "notarytool",
         "log",
@@ -190,11 +337,37 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
         profile,
         check=False,
     )
+    (report_dir / "notary-log-command.txt").write_text(
+        f"stdout:\n{log_result.stdout}\nstderr:\n{log_result.stderr}\n"
+        f"exit_code={log_result.returncode}\n",
+        encoding="utf-8",
+    )
+    if log_result.returncode or not log_path.is_file():
+        raise RuntimeError(f"could not retrieve notarization log; see {log_path}")
+    try:
+        log_payload = json.loads(log_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"notarization log is unreadable; see {log_path}") from exc
+    issues = log_payload.get("issues")
+    if not isinstance(issues, list) or any(
+        not isinstance(issue, dict) for issue in issues
+    ):
+        raise RuntimeError(f"notarization log has invalid issues data; see {log_path}")
+    log_errors = [
+        issue for issue in issues if str(issue.get("severity", "")).lower() == "error"
+    ]
+    if (
+        log_payload.get("jobId", log_payload.get("id")) != submission_id
+        or log_payload.get("status") != "Accepted"
+        or log_errors
+    ):
+        raise RuntimeError(f"notarization log did not pass inspection; see {log_path}")
     if result.returncode or not accepted:
         raise RuntimeError(f"notarization was not accepted; see {log_path}")
 
-    _run("xcrun", "stapler", "staple", "-v", str(dmg))
-    _run("xcrun", "stapler", "validate", "-v", str(dmg))
+    staple_evidence = report_dir / "stapler.txt"
+    _record_run(staple_evidence, "xcrun", "stapler", "staple", "-v", str(dmg))
+    _record_run(staple_evidence, "xcrun", "stapler", "validate", "-v", str(dmg))
 
 
 def build_release(
@@ -218,6 +391,13 @@ def build_release(
         raise ValueError("artifact commit does not match --expected-sha")
     if build_info.get("architecture") != "arm64":
         raise ValueError("artifact is not the expected arm64 build")
+    run_id = build_info.get("github_run_id", "")
+    run_attempt = build_info.get("github_run_attempt", "")
+    run_url = build_info.get("github_run_url", "")
+    if not run_id.isdigit() or not run_attempt.isdigit():
+        raise ValueError("artifact is missing valid Actions run metadata")
+    if run_url != f"{REPOSITORY_URL}/actions/runs/{run_id}":
+        raise ValueError("artifact has an invalid Actions run URL")
     version = build_info.get("app_version", "")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("artifact has an invalid application version")
@@ -226,8 +406,10 @@ def build_release(
     app_zip = artifact_dir / f"{basename}-unsigned-app.zip"
     if not app_zip.is_file():
         raise ValueError(f"missing unsigned app archive: {app_zip.name}")
+    transport_dmg = artifact_dir / f"{basename}-unsigned.dmg"
+    if not transport_dmg.is_file():
+        raise ValueError(f"missing unsigned transport DMG: {transport_dmg.name}")
 
-    selected_identity = _select_identity(identity)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_dir = output_root.resolve() / f"{basename}-{expected_sha[:12]}-{timestamp}"
     report_dir.mkdir(parents=True, exist_ok=False)
@@ -235,6 +417,10 @@ def build_release(
         (artifact_dir / "build-info.txt").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    transport_evidence = report_dir / "transport-verification.txt"
+    _record_run(transport_evidence, "unzip", "-tq", str(app_zip))
+    _record_run(transport_evidence, "hdiutil", "verify", str(transport_dmg))
+    selected_identity = _select_identity(identity)
 
     with tempfile.TemporaryDirectory(prefix="slowbooks-release-") as temporary:
         work_dir = Path(temporary)
@@ -243,9 +429,15 @@ def build_release(
         if not app.is_dir():
             raise RuntimeError("transport archive did not contain SlowBooks Pro.app")
 
+        removed_links = prepare_bundle(app)
+        (report_dir / "bundle-preparation.txt").write_text(
+            "Removed Resources-to-Frameworks compatibility links:\n"
+            + "".join(f"- {path.relative_to(app)}\n" for path in removed_links),
+            encoding="utf-8",
+        )
         _clear_xattrs(app)
         _sign_app(app, selected_identity)
-        _verify_signed_app(app, report_dir)
+        _verify_signed_app(app, selected_identity, report_dir)
         (report_dir / "native-linkage.txt").write_text(
             audit_bundle(app, "arm64"),
             encoding="utf-8",
@@ -290,15 +482,41 @@ def build_release(
             f"{BUNDLE_ID}.dmg",
             str(candidate_dmg),
         )
-        _run("hdiutil", "verify", str(candidate_dmg))
-        _run("codesign", "--verify", "--strict", "--verbose=4", str(candidate_dmg))
+        candidate_evidence = report_dir / "candidate-dmg-verification.txt"
+        _record_run(candidate_evidence, "hdiutil", "verify", str(candidate_dmg))
+        _record_run(
+            candidate_evidence,
+            "codesign",
+            "--verify",
+            "--strict",
+            "--verbose=4",
+            str(candidate_dmg),
+        )
+        dmg_details = _record_run(
+            candidate_evidence, "codesign", "-dvvv", str(candidate_dmg)
+        ).stderr
+        _verify_signature_details(
+            dmg_details,
+            selected_identity,
+            expected_team_id=None,
+            hardened_runtime=False,
+        )
         _notarize(candidate_dmg, notary_profile, report_dir)
 
         final_dmg = report_dir / f"{basename}.dmg"
         candidate_dmg.rename(final_dmg)
-        _run("hdiutil", "verify", str(final_dmg))
-        _run("codesign", "--verify", "--strict", "--verbose=4", str(final_dmg))
-        _run(
+        final_evidence = report_dir / "final-dmg-verification.txt"
+        _record_run(final_evidence, "hdiutil", "verify", str(final_dmg))
+        _record_run(
+            final_evidence,
+            "codesign",
+            "--verify",
+            "--strict",
+            "--verbose=4",
+            str(final_dmg),
+        )
+        _record_run(
+            final_evidence,
             "spctl",
             "--assess",
             "--type",

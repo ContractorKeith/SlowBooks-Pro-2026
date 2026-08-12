@@ -86,8 +86,9 @@ python3 packaging/macos/release.py "$download_dir" \
 The command creates a new evidence directory instead of overwriting a previous
 attempt. A successful directory contains the final
 `SlowBooksPro-<version>-macos-arm64.dmg`, its SHA-256 manifest, the source build
-metadata, native-linkage report, code-signing details, and Apple notarization
-submission and log files.
+metadata (including the Actions run URL and attempt), transport and final-DMG
+verification results, native-linkage report, nested code-signing details, and
+Apple notarization submission and inspected log files.
 
 `release.py` never uses `codesign --deep` to sign. It signs actual Mach-O files
 and nested code from the deepest item outward. `--deep` is used only for the
@@ -98,7 +99,17 @@ final recursive verification gate.
 Do not publish on command-line proof alone. Using the exact final DMG:
 
 - Mount it and launch once from the image.
-- Copy the app to `/Applications`, eject the image, and launch again.
+- Copy the app to a new temporary Applications-equivalent directory, eject the
+  image, and launch that copy. Never overwrite an existing installation during
+  acceptance:
+
+  ```bash
+  acceptance_root="$(mktemp -d "${TMPDIR%/}/SlowBooksPro-Applications.XXXXXX")"
+  ditto "/Volumes/SlowBooks Pro/SlowBooks Pro.app" \
+    "$acceptance_root/SlowBooks Pro.app"
+  open "$acceptance_root/SlowBooks Pro.app"
+  ```
+
 - Create and reopen a company, then quit and relaunch.
 - Confirm data persists under
   `~/Library/Application Support/SlowBooksPro/data`.

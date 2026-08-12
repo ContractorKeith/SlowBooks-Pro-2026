@@ -95,6 +95,10 @@ jobs:
           # Hosted and File Provider workspaces can add Finder/resource-fork
           # xattrs after PyInstaller's ad-hoc signing. They are not bundle
           # content and make strict codesign verification reject the app.
+          # PyInstaller also cross-links binaries back into Resources for
+          # compatibility; Apple's notarization preflight follows those links
+          # and rejects the apparent Mach-O files in Resources.
+          python packaging/macos/prepare_bundle.py "$app"
           find "$app" -exec xattr -c {} +
           plutil -lint "$app/Contents/Info.plist"
           test "$(plutil -extract CFBundleShortVersionString raw -o - \
@@ -153,6 +157,9 @@ jobs:
             echo "git_sha=$GITHUB_SHA"
             echo "app_version=$APP_VERSION"
             echo "architecture=$(uname -m)"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "github_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "github_run_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
             echo "runner_image=${ImageOS:-unknown}"
