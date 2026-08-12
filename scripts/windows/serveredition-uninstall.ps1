@@ -1,8 +1,8 @@
 # ============================================================================
-# SlowBooks Pro — Server Edition uninstall (Windows)
+# SlowBooks Pro - Server Edition uninstall (Windows)
 #
 # Removes the startup task and firewall rule. Books under
-# C:\ProgramData\SlowBooksPro are deliberately left in place — delete
+# C:\ProgramData\SlowBooksPro are deliberately left in place - delete
 # that folder yourself if you're sure.
 # ============================================================================
 #Requires -RunAsAdministrator

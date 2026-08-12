@@ -1,5 +1,5 @@
 # ============================================================================
-# SlowBooks Pro — Server Edition install (Windows)
+# SlowBooks Pro - Server Edition install (Windows)
 #
 # Registers a scheduled task that runs the server at machine startup as
 # SYSTEM (no login required), stores books machine-wide under
@@ -21,14 +21,14 @@ $ErrorActionPreference = "Stop"
 $TaskName = "SlowBooksProServer"
 $RuleName = "SlowBooks Pro Server Edition"
 
-# The script ships inside the bundle at _internal\scripts\windows\ —
+# The script ships inside the bundle at _internal\scripts\windows\ -
 # the exe is three levels up. Explicit -ExePath overrides.
 if (-not $ExePath) {
     $ExePath = Join-Path $PSScriptRoot "..\..\..\SlowBooksPro.exe"
 }
 $ExePath = (Resolve-Path $ExePath).Path
 if (-not (Test-Path $ExePath)) {
-    throw "SlowBooksPro.exe not found at $ExePath — pass -ExePath"
+    throw "SlowBooksPro.exe not found at $ExePath - pass -ExePath"
 }
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
