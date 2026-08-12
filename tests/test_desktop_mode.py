@@ -39,6 +39,9 @@ def test_prepare_env_persists_settings_key_outside_bundle(tmp_path, monkeypatch)
     monkeypatch.setattr(desktop_launcher, "ENV_FILE", env_file)
     monkeypatch.setattr(desktop_launcher, "ENV_EXAMPLE", tmp_path / "missing.example")
     monkeypatch.setattr(desktop_launcher, "get_data_dir", lambda: data_dir)
+    # prepare_env mutates os.environ directly; register the key so pytest
+    # restores it instead of leaking a deleted temporary path to later tests.
+    monkeypatch.setenv("SLOWBOOKS_ENV_FILE", "")
 
     desktop_launcher.prepare_env()
     first_key = desktop_launcher.get_env_value("SETTINGS_ENCRYPTION_KEY")
@@ -62,8 +65,10 @@ def test_macos_frozen_runtime_uses_bundle_dylibs_and_writable_font_cache(
     monkeypatch.setattr(desktop_launcher.sys, "executable", str(executable))
     monkeypatch.setattr(desktop_launcher, "_config_dir", lambda: config_dir)
     monkeypatch.setattr(desktop_launcher.Path, "home", lambda: tmp_path)
-    monkeypatch.delenv("DYLD_FALLBACK_LIBRARY_PATH", raising=False)
-    monkeypatch.delenv("FONTCONFIG_FILE", raising=False)
+    # The bootstrap mutates os.environ directly. setenv records even an absent
+    # key, ensuring teardown removes the temporary font configuration.
+    monkeypatch.setenv("DYLD_FALLBACK_LIBRARY_PATH", "")
+    monkeypatch.setenv("FONTCONFIG_FILE", "")
 
     desktop_launcher._bootstrap_frozen_macos_runtime()
 
