@@ -36,6 +36,11 @@ def _is_desktop() -> bool:
     return os.environ.get("SLOWBOOKS_DESKTOP") == "1"
 
 
+def _is_server_mode() -> bool:
+    """True when the launcher is serving beyond loopback (--serve-lan)."""
+    return os.environ.get("SLOWBOOKS_SERVER_MODE") == "1"
+
+
 def _parse(v) -> tuple:
     """'2.1.0' (or 'v2.1.0') → (2, 1, 0) for comparison."""
     out = []
@@ -56,7 +61,11 @@ def is_newer(remote: str, local: str) -> bool:
 
 @router.get("")
 async def system_info():
-    return {"version": __version__, "desktop": _is_desktop()}
+    return {
+        "version": __version__,
+        "desktop": _is_desktop(),
+        "server_mode": _is_server_mode(),
+    }
 
 
 @router.get("/update-check")

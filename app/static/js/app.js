@@ -676,7 +676,14 @@ const App = {
             const info = await res.json();
             const versionEl = $('#app-version');
             if (versionEl && info.version) {
-                versionEl.textContent = `v${info.version}`;
+                versionEl.textContent = info.server_mode
+                    ? `v${info.version} · Server`
+                    : `v${info.version}`;
+            }
+            if (info.server_mode) {
+                // Serving the LAN: the deployment announces itself.
+                document.querySelectorAll('.sidebar-edition, .splash-subtitle')
+                    .forEach(el => { el.textContent = 'Server Edition'; });
             }
             if (!info.desktop) return;
 

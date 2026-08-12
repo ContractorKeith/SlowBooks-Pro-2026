@@ -18,6 +18,9 @@ anywhere Python does). What it does, in order:
 To switch companies: close the window and relaunch — the picker appears
 again. Flags:
   --no-window   start the server and print the URL (no native window)
+  --serve-lan   Server Edition mode: serve the LAN, no window (binds
+                0.0.0.0, or --bind IP for one interface). Plain HTTP —
+                trusted networks only for now.
   --setup-only  prepare .env and data directories, then exit
   --smoke-test  CI self-test: create a company, boot the server, render a
                 PDF, exit 0/1
@@ -224,14 +227,17 @@ def prepare_env() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _server_env(db_url: str, port: int) -> dict:
+def _server_env(db_url: str, port: int, bind_host: str = "127.0.0.1") -> dict:
     env = dict(os.environ)
     env.update(
         {
             "DATABASE_URL": db_url,
             "APP_DEBUG": "true",
             "FORCE_HTTPS": "false",
-            "APP_HOST": "127.0.0.1",
+            "APP_HOST": bind_host,
+            # Server Edition groundwork: anything beyond loopback flips the
+            # flag the frontend uses to show the SERVER EDITION header.
+            "SLOWBOOKS_SERVER_MODE": "0" if bind_host == "127.0.0.1" else "1",
             "APP_PORT": str(port),
             "SLOWBOOKS_DATA_DIR": str(get_data_dir()),
             # Where app/config.py loads .env from (the install dir is
@@ -282,7 +288,9 @@ def migrate(db_url: str, output=None) -> None:
     )
 
 
-def start_server(db_url: str, port: int, output=None) -> subprocess.Popen:
+def start_server(
+    db_url: str, port: int, output=None, bind_host: str = "127.0.0.1"
+) -> subprocess.Popen:
     if FROZEN:
         # Re-exec this same bundled exe; --_serve (handled at the top of
         # main()) turns the child into the uvicorn server. cwd must be
@@ -297,7 +305,7 @@ def start_server(db_url: str, port: int, output=None) -> subprocess.Popen:
             "uvicorn",
             "app.main:app",
             "--host",
-            "127.0.0.1",
+            bind_host,
             "--port",
             str(port),
             # cmd.exe consoles don't render ANSI colors by default; without
@@ -308,14 +316,19 @@ def start_server(db_url: str, port: int, output=None) -> subprocess.Popen:
     return subprocess.Popen(
         cmd,
         cwd=cwd,
-        env=_server_env(db_url, port),
+        env=_server_env(db_url, port, bind_host),
         stdout=output,
         stderr=subprocess.STDOUT if output else None,
     )
 
 
-def wait_for_health(proc: subprocess.Popen, port: int, timeout: float = 120) -> bool:
-    url = f"http://127.0.0.1:{port}/health"
+def wait_for_health(
+    proc: subprocess.Popen,
+    port: int,
+    timeout: float = 120,
+    host: str = "127.0.0.1",
+) -> bool:
+    url = f"http://{host}:{port}/health"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
@@ -350,7 +363,9 @@ def _server_already_running(port: int) -> bool:
         return False
 
 
-def launch_company(filename: str, port: int, output=None) -> subprocess.Popen:
+def launch_company(
+    filename: str, port: int, output=None, bind_host: str = "127.0.0.1"
+) -> subprocess.Popen:
     """Point the app at a company file, migrate it, and start the server."""
     from app.services import company_service
 
@@ -373,8 +388,10 @@ def launch_company(filename: str, port: int, output=None) -> subprocess.Popen:
 
     migrate(db_url, output=output)
 
-    proc = start_server(db_url, port, output=output)
-    if not wait_for_health(proc, port):
+    proc = start_server(db_url, port, output=output, bind_host=bind_host)
+    # 0.0.0.0 includes loopback; a specific interface bind does not.
+    health_host = "127.0.0.1" if bind_host in ("127.0.0.1", "0.0.0.0") else bind_host
+    if not wait_for_health(proc, port, host=health_host):
         stop_server(proc)
         raise RuntimeError(
             f"Server did not become healthy on port {port}. "
@@ -804,7 +821,35 @@ def run_window(port: int, log_fh=None) -> int:
 # ---------------------------------------------------------------------------
 
 
-def run_headless(port: int) -> int:
+def _lan_addresses() -> list[str]:
+    """Best-effort list of this machine's reachable names/IPs for the
+    'your team connects at ...' banner. Never raises."""
+    import socket
+
+    seen: list[str] = []
+    try:
+        hostname = socket.gethostname()
+        if hostname:
+            seen.append(hostname)
+    except OSError:
+        pass
+    try:
+        # UDP "connect" to a public address picks the primary interface
+        # without sending a packet.
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if ip and ip not in seen:
+                seen.append(ip)
+        finally:
+            s.close()
+    except OSError:
+        pass
+    return seen
+
+
+def run_headless(port: int, bind_host: str = "127.0.0.1") -> int:
     from app.services import company_service
 
     filename = company_service.get_last_opened()
@@ -822,12 +867,22 @@ def run_headless(port: int) -> int:
 
     print(f"Opening company file: {filename}")
     try:
-        proc = launch_company(filename, port)
+        proc = launch_company(filename, port, bind_host=bind_host)
     except (ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"ERROR: {exc}")
         return 1
 
-    print(f"SlowBooks Pro is running at http://127.0.0.1:{port}")
+    if bind_host == "127.0.0.1":
+        print(f"SlowBooks Pro is running at http://127.0.0.1:{port}")
+    else:
+        print("SlowBooks Pro — SERVER EDITION mode (LAN serving)")
+        print(f"Listening on {bind_host}:{port}. Your team connects at:")
+        for addr in _lan_addresses():
+            print(f"    http://{addr}:{port}")
+        print(
+            "NOTE: traffic is plain HTTP — use this only on a network you "
+            "trust, and make sure Windows Firewall allows the port."
+        )
     print("Press Ctrl+C to stop.")
     try:
         proc.wait()
@@ -857,7 +912,8 @@ def _serve() -> int:
         raise
 
     port = int(os.environ.get("APP_PORT", "3001"))
-    uvicorn.run(app.main.app, host="127.0.0.1", port=port, use_colors=False)
+    host = os.environ.get("APP_HOST", "127.0.0.1")
+    uvicorn.run(app.main.app, host=host, port=port, use_colors=False)
     return 0
 
 
@@ -951,6 +1007,18 @@ def main() -> int:
         ),
     )
     parser.add_argument("--port", type=int, default=None)
+    parser.add_argument(
+        "--serve-lan",
+        action="store_true",
+        help="Server Edition mode: serve to the local network (no window). "
+        "Binds 0.0.0.0 unless --bind is given.",
+    )
+    parser.add_argument(
+        "--bind",
+        default=None,
+        metavar="IP",
+        help="with --serve-lan: bind a specific interface instead of all",
+    )
     args = parser.parse_args()
 
     # A frozen console=False exe has no console at all — always behave as
@@ -1012,6 +1080,8 @@ def main() -> int:
 
         port = args.port or int(get_env_value("APP_PORT") or "3001")
 
+        if args.serve_lan:
+            return run_headless(port, bind_host=args.bind or "0.0.0.0")
         if args.no_window:
             return run_headless(port)
         return run_window(port, log_fh)
