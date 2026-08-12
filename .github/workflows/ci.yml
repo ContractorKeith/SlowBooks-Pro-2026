@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main, server-edition, "claude/**", "se/**"]
   pull_request:
-    branches: [main]
+    branches: [main, server-edition]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

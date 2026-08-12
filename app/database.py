@@ -25,6 +25,31 @@ if not _is_sqlite:
         pool_use_lifo=True,
     )
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
+
+
+def enable_sqlite_tuning(target_engine) -> None:
+    """Concurrency PRAGMAs for SQLite engines (Server Edition groundwork).
+
+    WAL lets readers proceed while one writer commits — the difference
+    between "works for an office" and "database is locked" the moment a
+    second person opens a report mid-save. busy_timeout makes brief lock
+    contention wait instead of erroring; NORMAL sync is the recommended
+    pairing with WAL. Harmless no-ops on :memory: databases.
+    """
+    from sqlalchemy import event
+
+    @event.listens_for(target_engine, "connect")
+    def _tune(dbapi_conn, _record):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.close()
+
+
+if _is_sqlite:
+    enable_sqlite_tuning(engine)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
