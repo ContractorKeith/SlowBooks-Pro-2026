@@ -1,0 +1,5 @@
+# Every path requires VonHoltenCodes review before merging to main.
+# Combined with branch protection (require code-owner review), this means
+# collaborators can push branches and run Actions freely, but nothing
+# lands on main without the owner's approval.
+* @VonHoltenCodes
