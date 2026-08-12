@@ -384,16 +384,45 @@ async def require_session(request: Request, call_next):
             )
         request.session["last_activity"] = now
 
-    # Attribute this request's DB writes to the acting user (audit hooks
-    # read the contextvar — they have no access to the request).
-    token = _acting_username.set(request.session.get("username") or "operator")
-    try:
-        return await call_next(request)
-    finally:
-        _acting_username.reset(token)
+    return await call_next(request)
+
+
+class ActingUserContextMiddleware:
+    """Pure-ASGI middleware: stamp the acting username into a contextvar
+    for the audit hooks (which live at the SQLAlchemy layer and can't see
+    the request).
+
+    Deliberately NOT a BaseHTTPMiddleware — those run the downstream app
+    in a separate task, and contextvar propagation across that hop proved
+    unreliable on the frozen Windows build (field report: every audit row
+    showed no user despite the middleware setting the var). Pure ASGI
+    runs in the same task; the value is visible to everything downstream
+    unconditionally.
+
+    Must be registered BEFORE SessionMiddleware's add_middleware call so
+    SessionMiddleware wraps outside us and scope["session"] is populated.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        session = scope.get("session") or {}
+        acting = None
+        if session.get("authenticated") is True:
+            acting = session.get("username") or "operator"
+        token = _acting_username.set(acting)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _acting_username.reset(token)
 
 
 # ---- Session cookie (Phase 9.7) ----
+app.add_middleware(ActingUserContextMiddleware)
+
 # Added AFTER require_session so SessionMiddleware becomes the outer
 # layer (Starlette: last added = outermost). That way request.session
 # is populated by the time require_session dispatches.
