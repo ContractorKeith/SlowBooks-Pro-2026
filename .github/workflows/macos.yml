@@ -1,0 +1,102 @@
+name: macOS
+
+# Builds the native macOS app: PyInstaller .app bundle → (signing +
+# notarization — maintainer steps, see packaging/macos/README.md) → DMG.
+#
+# STATUS: scaffold. The unsigned build should work end-to-end on the
+# hosted runner; the signing/notarization steps are deliberately left as
+# documented placeholders for the macOS maintainer to wire up, since they
+# require an Apple Developer ID that does not belong to this repository.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build macOS .app + DMG
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Read version from app/__init__.py
+        run: |
+          APP_VERSION=$(python -c "import re; print(re.search(r'\"(.+)\"', open('app/__init__.py').read()).group(1))")
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "Building version $APP_VERSION"
+
+      - name: Install WeasyPrint native dependencies (Homebrew)
+        run: brew install pango fontconfig gobject-introspection
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-desktop.txt
+          pip install pyinstaller pyinstaller-hooks-contrib pillow
+
+      - name: Build the .icns from the icon asset
+        run: |
+          mkdir -p icon.iconset
+          python - <<'PY'
+          from PIL import Image
+          img = Image.open("assets/icon-256.png")
+          for size in (16, 32, 64, 128, 256):
+              img.resize((size, size)).save(f"icon.iconset/icon_{size}x{size}.png")
+          PY
+          iconutil -c icns icon.iconset -o packaging/macos/slowbookspro.icns
+
+      - name: Build the .app (PyInstaller)
+        run: |
+          cd packaging/macos
+          pyinstaller --noconfirm --clean SlowBooksPro-mac.spec
+
+      - name: Smoke test the frozen bundle
+        timeout-minutes: 8
+        run: |
+          # Same self-test the Windows build gates on: create a company,
+          # boot the server, render a PDF. Exit code is the verdict.
+          "./packaging/macos/dist/SlowBooks Pro.app/Contents/MacOS/SlowBooksPro" --smoke-test
+
+      # ----------------------------------------------------------------
+      # SIGNING + NOTARIZATION — maintainer steps (currently disabled).
+      #
+      # Requires repository secrets (admin adds them; maintainer provides):
+      #   MACOS_CERT_P12          base64 Developer ID Application cert+key
+      #   MACOS_CERT_PASSWORD     password for the .p12
+      #   APPLE_TEAM_ID           the maintainer's team id
+      #   APPLE_ID                Apple ID for notarytool
+      #   APPLE_APP_PASSWORD      app-specific password for notarytool
+      #
+      # Steps once secrets exist: import cert into a throwaway keychain,
+      # `codesign --deep --options runtime` the .app, `xcrun notarytool
+      # submit --wait` the zipped app, `xcrun stapler staple`. Alternative:
+      # build unsigned in CI and sign/notarize locally on the maintainer's
+      # Mac — see packaging/macos/README.md for that flow.
+      # ----------------------------------------------------------------
+
+      - name: Package DMG (unsigned)
+        run: |
+          mkdir -p dist-dmg
+          hdiutil create -volname "SlowBooks Pro" \
+            -srcfolder "packaging/macos/dist/SlowBooks Pro.app" \
+            -ov -format UDZO "dist-dmg/SlowBooksPro-${APP_VERSION}-macos.dmg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SlowBooksPro-macos
+          path: dist-dmg/*.dmg
+
+      - name: Attach to release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-dmg/*.dmg
