@@ -57,7 +57,7 @@ const AuditPage = {
 
         let html = `<div class="table-container"><table>
             <thead><tr>
-                <th>Time</th><th>Table</th><th>ID</th><th>Action</th><th>Changes</th>
+                <th>Time</th><th>User</th><th>Table</th><th>ID</th><th>Action</th><th>Changes</th>
             </tr></thead><tbody>`;
 
         for (const log of logs) {
@@ -81,6 +81,7 @@ const AuditPage = {
 
             html += `<tr>
                 <td style="white-space:nowrap;font-size:10px;">${ts}</td>
+                <td style="font-size:10px;">${escapeHtml(log.username || '—')}</td>
                 <td><strong>${escapeHtml(log.table_name)}</strong></td>
                 <td style="font-family:var(--font-mono);">${log.record_id}</td>
                 <td><span class="badge ${actionClass}">${log.action}</span></td>

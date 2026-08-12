@@ -57,6 +57,7 @@ from app.routes import uploads
 
 # Phase 5: Advanced Integration
 from app.routes import bank_import, simplefin, tax, backups
+from app.routes import users as users_routes
 from app.routes import classes as classes_routes
 from app.routes import fx as fx_routes
 from app.routes import fixed_assets as fixed_assets_routes
@@ -111,6 +112,7 @@ from app.config import (
 )
 from app.database import SessionLocal, Base, engine
 from app.services.audit import register_audit_hooks
+from app.services.request_context import acting_username as _acting_username
 
 
 def _run_startup_security_checks():
@@ -313,6 +315,39 @@ _AUTH_EXEMPT_RE = _re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# Server Edition RBAC — coarse route-group policy, enforced centrally.
+#
+#   admin       everything
+#   bookkeeper  everything except administrative writes (users, settings,
+#               backups, companies, migration imports)
+#   readonly    GET/HEAD/OPTIONS only
+#
+# Legacy sessions (issued before the principal model) carry no role and
+# are treated as admin — they belong to the operator by definition.
+# ---------------------------------------------------------------------------
+_ADMIN_WRITE_PREFIXES = (
+    "/api/users",
+    "/api/settings",
+    "/api/backups",
+    "/api/companies",
+    "/api/migration",
+)
+_READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _role_allows(role: str, method: str, path: str) -> bool:
+    if role == "admin":
+        return True
+    is_read = method in _READ_METHODS
+    if role == "readonly":
+        return is_read
+    # bookkeeper: full read, all daily-books writes, no admin writes
+    if is_read:
+        return True
+    return not path.startswith(_ADMIN_WRITE_PREFIXES)
+
+
 @app.middleware("http")
 async def require_session(request: Request, call_next):
     path = request.url.path
@@ -326,6 +361,13 @@ async def require_session(request: Request, call_next):
         return JSONResponse(
             status_code=401,
             content={"detail": "Not authenticated"},
+        )
+
+    role = request.session.get("role") or "admin"
+    if not _role_allows(role, request.method, path):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Your role doesn't allow this action"},
         )
 
     # Idle session cap. Sliding window — every authenticated hit refreshes
@@ -342,7 +384,13 @@ async def require_session(request: Request, call_next):
             )
         request.session["last_activity"] = now
 
-    return await call_next(request)
+    # Attribute this request's DB writes to the acting user (audit hooks
+    # read the contextvar — they have no access to the request).
+    token = _acting_username.set(request.session.get("username") or "operator")
+    try:
+        return await call_next(request)
+    finally:
+        _acting_username.reset(token)
 
 
 # ---- Session cookie (Phase 9.7) ----
@@ -400,6 +448,7 @@ app.include_router(uploads.router)
 # Phase 5: Advanced Integration
 app.include_router(bank_import.router)
 app.include_router(simplefin.router)
+app.include_router(users_routes.router)
 app.include_router(tax.router)
 app.include_router(backups.router)
 app.include_router(system_routes.router)
