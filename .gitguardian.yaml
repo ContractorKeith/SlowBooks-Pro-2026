@@ -1,0 +1,7 @@
+# GitGuardian/ggshield configuration.
+# tests/ contains deliberately fake credentials (fixture passwords like
+# "test-password-123") — secrets in tests are test data, not leaks.
+version: 2
+secret:
+  ignored_paths:
+    - "tests/**"

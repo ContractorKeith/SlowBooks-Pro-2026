@@ -1,10 +1,9 @@
 # ============================================================================
-# Slowbooks Pro 2026 — Auth routes (Phase 9.7)
+# Slowbooks Pro 2026 — Auth routes
 #
-# Single-operator password flow. No user model — just:
-#   GET  /api/auth/status  → {setup_needed, authenticated}
+#   GET  /api/auth/status  → {setup_needed, authenticated, multi_user, user?}
 #   POST /api/auth/setup   → first-time password set (409 if already set)
-#   POST /api/auth/login   → verify password, issue session cookie
+#   POST /api/auth/login   → password (+ username once 2+ users exist)
 #   POST /api/auth/logout  → clear session
 #
 # These routes are deliberately NOT protected by require_auth — they're
@@ -20,7 +19,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.auth import LoginAttempt
 from app.services.auth import (
-    check_password,
+    authenticate,
+    ensure_admin_user,
+    is_multi_user,
     password_is_set,
     set_password,
 )
@@ -49,6 +50,8 @@ def _record_login_attempt(db: Session, request: Request, success: bool) -> None:
 
 class PasswordPayload(BaseModel):
     password: str = Field(..., min_length=1, max_length=512)
+    # Server Edition: required only when more than one user exists.
+    username: Optional[str] = Field(None, max_length=100)
 
 
 class SetupPayload(BaseModel):
@@ -101,10 +104,20 @@ _SETUP_SETTINGS_KEYS = (
 def auth_status(request: Request, db: Session = Depends(get_db)):
     """Tell the SPA whether first-run setup is needed and whether the
     current session is authenticated."""
-    return {
+    authenticated = request.session.get("authenticated") is True
+    out = {
         "setup_needed": not password_is_set(db),
-        "authenticated": request.session.get("authenticated") is True,
+        "authenticated": authenticated,
+        # Login UI shows a username field only when this is true.
+        "multi_user": is_multi_user(db),
     }
+    if authenticated and request.session.get("username"):
+        out["user"] = {
+            "username": request.session.get("username"),
+            "display_name": request.session.get("display_name") or "",
+            "role": request.session.get("role") or "admin",
+        }
+    return out
 
 
 @router.post("/setup")
@@ -131,13 +144,27 @@ def setup(
             set_setting(db, key, value)
 
     set_password(db, payload.password)
+    # Materialize the operator as the admin user row right away (Server
+    # Edition principal model) — same password, zero extra questions.
+    admin = ensure_admin_user(db)
     # Rotate session before issuing — clears anything an attacker might have
     # planted via a fixation attempt. Starlette's signed-cookie session is
     # already fixation-resistant (signature changes with payload) but this
     # is defence in depth and intent-revealing.
     request.session.clear()
     request.session["authenticated"] = True
+    _stash_user(request, admin)
     return {"status": "ok", "authenticated": True}
+
+
+def _stash_user(request: Request, user) -> None:
+    """Record the acting principal in the session (None = legacy no-row)."""
+    if user is None:
+        return
+    request.session["user_id"] = user.id
+    request.session["username"] = user.username
+    request.session["display_name"] = user.display_name
+    request.session["role"] = user.role
 
 
 @router.post("/login")
@@ -159,16 +186,27 @@ def login(
             status_code=status.HTTP_409_CONFLICT,
             detail="Setup required — set a password first",
         )
-    if not check_password(db, payload.password):
+    if is_multi_user(db) and not (payload.username or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username required",
+        )
+    user = authenticate(db, payload.password, username=payload.username)
+    if user is None:
         _record_login_attempt(db, request, success=False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
+            detail=(
+                "Incorrect username or password"
+                if is_multi_user(db)
+                else "Incorrect password"
+            ),
         )
     _record_login_attempt(db, request, success=True)
     # Same rotation rationale as /setup.
     request.session.clear()
     request.session["authenticated"] = True
+    _stash_user(request, user)
     return {"status": "ok", "authenticated": True}
 
 

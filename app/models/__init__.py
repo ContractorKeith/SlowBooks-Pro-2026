@@ -13,6 +13,9 @@ from app.models.fixed_assets import FixedAsset, FixedAssetType  # noqa: F401
 # Phase 1: Foundation
 from app.models.audit import AuditLog
 
+# Server Edition: user principals
+from app.models.users import User  # noqa: F401 — registers the table
+
 # Phase 2: Accounts Payable
 from app.models.purchase_orders import PurchaseOrder, PurchaseOrderLine
 from app.models.bills import Bill, BillLine, BillPayment, BillPaymentAllocation
