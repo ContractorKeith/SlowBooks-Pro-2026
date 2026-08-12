@@ -12,12 +12,24 @@ from app.models.audit import AuditLog
 from app.services.request_context import acting_username
 
 
+import os as _os
+
+
 def _actor(session) -> str | None:
     """Who is acting: the Session's own info dict (stamped by get_db —
     travels with the object, immune to task/context propagation quirks),
     falling back to the request contextvar for sessions created outside
     the request cycle."""
-    return session.info.get("acting_username") or acting_username.get()
+    info_val = session.info.get("acting_username")
+    ctx_val = acting_username.get()
+    if _os.environ.get("SLOWBOOKS_ATTRIBUTION_DEBUG", "1") != "0":
+        # TEMPORARY field diagnostic (server-edition): stdout reaches
+        # launcher.log on the frozen build. Remove before merging to main.
+        print(
+            f"[attribution] info={info_val!r} ctx={ctx_val!r}",
+            flush=True,
+        )
+    return info_val or ctx_val
 
 
 # Tables to skip auditing.

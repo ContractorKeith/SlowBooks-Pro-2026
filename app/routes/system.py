@@ -16,9 +16,11 @@ import os
 import time
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
 
 from app import __version__
+from app.database import get_db
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -65,6 +67,22 @@ async def system_info():
         "version": __version__,
         "desktop": _is_desktop(),
         "server_mode": _is_server_mode(),
+    }
+
+
+@router.get("/attribution-debug")
+def attribution_debug(request: Request, db: Session = Depends(get_db)):
+    """TEMPORARY (server-edition branch only): pinpoint which attribution
+    link fails on the frozen Windows build. Reports what every layer sees
+    for the current authenticated request."""
+    from app.services.request_context import acting_username
+
+    return {
+        "app_version": __version__,
+        "http_session_keys": sorted(request.session.keys()),
+        "http_session_username": request.session.get("username"),
+        "db_info_username": db.info.get("acting_username"),
+        "contextvar_username": acting_username.get(),
     }
 
 
