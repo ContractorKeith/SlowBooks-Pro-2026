@@ -42,6 +42,10 @@ datas += _tree("app/templates", "app/templates")
 # Alembic loads migration scripts as FILES at runtime (script_location) —
 # they must exist on disk in the bundle, not just inside the PYZ.
 datas += _tree("migrations", "migrations")
+# Server Edition helper scripts ship in the bundle so an installed or
+# portable copy can register the startup task without downloading anything:
+#   _internal\scripts\windows\serveredition-install.ps1
+datas += _tree("scripts/windows", "scripts/windows")
 
 # The WeasyPrint DLL set staged by CI (empty when building without it, so a
 # local `pyinstaller SlowBooksPro.spec` still produces a testable bundle).

@@ -735,6 +735,52 @@ def _show_error_box(message: str) -> None:
         pass
 
 
+def _compose_serve_banner(port: int, addresses: list[str]) -> str:
+    """The 'your team connects at ...' text — shared by the console print,
+    the connect-urls.txt drop, and the frozen build's popup."""
+    lines = ["SlowBooks Pro — SERVER EDITION mode is running.", ""]
+    lines.append("Your team connects at:")
+    for addr in addresses or ["<this machine's IP>"]:
+        lines.append(f"    http://{addr}:{port}")
+    lines += [
+        "",
+        "Traffic is plain HTTP — trusted networks only.",
+        "This server stops when this process is closed.",
+    ]
+    return "\n".join(lines)
+
+
+def _announce_serve_lan(port: int) -> None:
+    """Make the connect URLs impossible to miss.
+
+    The frozen exe has no console (field report: 'I ran the command and
+    nothing happened'), so print alone is useless there. Always write
+    connect-urls.txt next to the data, and on frozen Windows also raise a
+    non-blocking popup from a daemon thread (the server keeps serving
+    behind it)."""
+    banner = _compose_serve_banner(port, _lan_addresses())
+    print(banner)
+    try:
+        (get_data_dir() / "connect-urls.txt").write_text(banner, encoding="utf-8")
+    except OSError:
+        pass
+    if FROZEN and sys.platform == "win32":
+        import threading
+
+        def _popup():
+            try:
+                import ctypes
+
+                MB_ICONINFORMATION = 0x40
+                ctypes.windll.user32.MessageBoxW(
+                    0, banner, "SlowBooks Pro — Server Edition", MB_ICONINFORMATION
+                )
+            except Exception:
+                pass
+
+        threading.Thread(target=_popup, daemon=True).start()
+
+
 def run_window(port: int, log_fh=None) -> int:
     try:
         import webview
@@ -875,14 +921,7 @@ def run_headless(port: int, bind_host: str = "127.0.0.1") -> int:
     if bind_host == "127.0.0.1":
         print(f"SlowBooks Pro is running at http://127.0.0.1:{port}")
     else:
-        print("SlowBooks Pro — SERVER EDITION mode (LAN serving)")
-        print(f"Listening on {bind_host}:{port}. Your team connects at:")
-        for addr in _lan_addresses():
-            print(f"    http://{addr}:{port}")
-        print(
-            "NOTE: traffic is plain HTTP — use this only on a network you "
-            "trust, and make sure Windows Firewall allows the port."
-        )
+        _announce_serve_lan(port)
     print("Press Ctrl+C to stop.")
     try:
         proc.wait()
@@ -1019,7 +1058,17 @@ def main() -> int:
         metavar="IP",
         help="with --serve-lan: bind a specific interface instead of all",
     )
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        metavar="PATH",
+        help="override the data directory (sets SLOWBOOKS_DATA_DIR). Used "
+        "by the Server Edition scheduled task so books live in a "
+        "machine-wide location instead of one user's profile.",
+    )
     args = parser.parse_args()
+    if args.data_dir:
+        os.environ["SLOWBOOKS_DATA_DIR"] = str(Path(args.data_dir).resolve())
 
     # A frozen console=False exe has no console at all — always behave as
     # --hidden there so output lands in launcher.log instead of vanishing.
