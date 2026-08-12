@@ -127,6 +127,9 @@ def test_audit_rejects_resources_link_to_frameworks(monkeypatch, tmp_path):
 
 
 def test_build_iconset_writes_every_apple_icon_size(tmp_path):
+    if importlib.util.find_spec("PIL") is None:
+        pytest.skip("macOS packaging dependencies are not installed")
+
     source = Path(__file__).resolve().parent.parent / "assets" / "icon-256.png"
     output = tmp_path / "SlowBooksPro.iconset"
     expected_sizes = {
