@@ -5,6 +5,7 @@
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from starlette.requests import HTTPConnection
 
 from app.config import DATABASE_URL
 
@@ -54,8 +55,22 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def get_db():
+def get_db(request: HTTPConnection = None):
+    """Request-scoped DB session (FastAPI dependency).
+
+    When FastAPI injects the request, the acting username is stamped onto
+    the Session's own info dict — the audit hooks receive this exact
+    object at flush time, so attribution travels WITH the session instead
+    of relying on contextvar propagation (which proved unreliable on the
+    frozen Windows runtime; the contextvar remains as a fallback for
+    sessions created outside the request cycle)."""
     db = SessionLocal()
+    try:
+        session = getattr(request, "session", None) if request is not None else None
+        if isinstance(session, dict) and session.get("authenticated") is True:
+            db.info["acting_username"] = session.get("username") or "operator"
+    except Exception:
+        pass  # attribution must never break a request
     try:
         yield db
     except Exception:

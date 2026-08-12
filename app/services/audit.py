@@ -11,6 +11,15 @@ from sqlalchemy.orm import Session
 from app.models.audit import AuditLog
 from app.services.request_context import acting_username
 
+
+def _actor(session) -> str | None:
+    """Who is acting: the Session's own info dict (stamped by get_db —
+    travels with the object, immune to task/context propagation quirks),
+    falling back to the request contextvar for sessions created outside
+    the request cycle."""
+    return session.info.get("acting_username") or acting_username.get()
+
+
 # Tables to skip auditing.
 # audit_log itself must be skipped to prevent infinite recursion (the
 # audit entries we're about to write would themselves trigger writes).
@@ -87,7 +96,7 @@ def log_event(
         new_values=new_values,
         changed_fields=changed_fields,
         source=source,
-        username=acting_username.get(),
+        username=_actor(db),
     )
     db.add(entry)
 
@@ -114,7 +123,7 @@ def _after_flush(session, flush_context):
                 new_values=new_vals,
                 changed_fields=list(new_vals.keys()),
                 source="api",
-                username=acting_username.get(),
+                username=_actor(session),
             )
         )
 
@@ -153,7 +162,7 @@ def _after_flush(session, flush_context):
                     new_values=new_vals,
                     changed_fields=changed,
                     source="api",
-                    username=acting_username.get(),
+                    username=_actor(session),
                 )
             )
 
@@ -175,7 +184,7 @@ def _after_flush(session, flush_context):
                 new_values=None,
                 changed_fields=None,
                 source="api",
-                username=acting_username.get(),
+                username=_actor(session),
             )
         )
 
