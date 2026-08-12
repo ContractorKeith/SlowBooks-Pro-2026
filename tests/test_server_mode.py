@@ -78,3 +78,40 @@ def test_system_info_reports_server_mode(authed_client, monkeypatch):
     monkeypatch.setenv("SLOWBOOKS_SERVER_MODE", "1")
     info = authed_client.get("/api/system").json()
     assert info["server_mode"] is True
+
+
+# ---------------------------------------------------------------------------
+# PR-S4: banner composition + --data-dir override
+# ---------------------------------------------------------------------------
+
+
+def test_serve_banner_lists_all_addresses():
+    text = desktop_launcher._compose_serve_banner(3001, ["OFFICE-PC", "192.168.68.50"])
+    assert "http://OFFICE-PC:3001" in text
+    assert "http://192.168.68.50:3001" in text
+    assert "plain HTTP" in text
+    # No addresses discovered: still renders something actionable
+    fallback = desktop_launcher._compose_serve_banner(3001, [])
+    assert "3001" in fallback
+
+
+def test_data_dir_flag_redirects_everything(tmp_path):
+    import subprocess
+    import sys as _sys
+
+    target = tmp_path / "server-data"
+    r = subprocess.run(
+        [
+            _sys.executable,
+            "desktop_launcher.py",
+            "--setup-only",
+            "--data-dir",
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**__import__("os").environ, "SLOWBOOKS_DATA_DIR": ""},
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (target / "companies").is_dir()
