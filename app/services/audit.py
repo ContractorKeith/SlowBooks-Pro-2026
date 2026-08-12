@@ -9,6 +9,7 @@ from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
+from app.services.request_context import acting_username
 
 # Tables to skip auditing.
 # audit_log itself must be skipped to prevent infinite recursion (the
@@ -24,6 +25,10 @@ _SKIP_TABLES = {
     "document_audits",  # hash-chain document audit
     "email_log",  # outbound email send log
 }
+
+# Column values that must never be snapshotted into audit JSON — the users
+# table is audited (who created/changed accounts matters), its hashes are not.
+_REDACT_COLUMNS = {"password_hash"}
 
 
 def _serialize_value(val):
@@ -55,6 +60,9 @@ def _get_instance_dict(instance):
     result = {}
     for col in mapper.columns:
         key = col.key
+        if key in _REDACT_COLUMNS:
+            result[key] = "***"
+            continue
         val = getattr(instance, key, None)
         result[key] = _serialize_value(val)
     return result
@@ -79,6 +87,7 @@ def log_event(
         new_values=new_values,
         changed_fields=changed_fields,
         source=source,
+        username=acting_username.get(),
     )
     db.add(entry)
 
@@ -105,6 +114,7 @@ def _after_flush(session, flush_context):
                 new_values=new_vals,
                 changed_fields=list(new_vals.keys()),
                 source="api",
+                username=acting_username.get(),
             )
         )
 
@@ -143,6 +153,7 @@ def _after_flush(session, flush_context):
                     new_values=new_vals,
                     changed_fields=changed,
                     source="api",
+                    username=acting_username.get(),
                 )
             )
 
@@ -164,6 +175,7 @@ def _after_flush(session, flush_context):
                 new_values=None,
                 changed_fields=None,
                 source="api",
+                username=acting_username.get(),
             )
         )
 

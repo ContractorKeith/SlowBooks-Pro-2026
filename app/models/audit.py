@@ -21,3 +21,6 @@ class AuditLog(Base):
     changed_fields = Column(JSON, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     source = Column(String(100), nullable=True)  # e.g. "api", "system"
+    # Server Edition: which user made the change (NULL on pre-multi-user
+    # rows and system-originated writes)
+    username = Column(String(100), nullable=True, index=True)

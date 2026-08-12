@@ -685,6 +685,23 @@ const App = {
                 document.querySelectorAll('.sidebar-edition, .splash-subtitle')
                     .forEach(el => { el.textContent = 'Server Edition'; });
             }
+
+            // Multi-user: always-visible identity chip in the topbar.
+            const auth = await fetch('/api/auth/status', { credentials: 'same-origin' });
+            if (auth.ok) {
+                const a = await auth.json();
+                if (a.multi_user && a.user) {
+                    const right = document.querySelector('.topbar-right');
+                    if (right && !document.getElementById('user-chip')) {
+                        const chip = document.createElement('span');
+                        chip.id = 'user-chip';
+                        chip.className = 'topbar-clock';
+                        chip.textContent =
+                            `${a.user.display_name || a.user.username} · ${a.user.role}`;
+                        right.prepend(chip);
+                    }
+                }
+            }
             if (!info.desktop) return;
 
             res = await fetch('/api/system/update-check', { credentials: 'same-origin' });
