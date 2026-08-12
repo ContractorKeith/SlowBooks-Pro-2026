@@ -168,6 +168,11 @@
 
     // ----- login view ------------------------------------------------------
 
+    // Server Edition: set from /api/auth/status — when more than one user
+    // exists, the login form gains a username field. Single-user installs
+    // never see it.
+    let multiUser = false;
+
     function loginViewHTML() {
         return (
             '<form id="auth-form" ' +
@@ -176,8 +181,16 @@
             'box-shadow:0 20px 60px rgba(0,0,0,0.4);">' +
             '<h2 style="margin:0 0 6px;font-size:20px;">Unlock Slowbooks</h2>' +
             '<p style="margin:0 0 20px;color:#555;font-size:13px;line-height:1.5;">' +
-            "Enter your password to continue." +
+            (multiUser
+                ? "Sign in to continue."
+                : "Enter your password to continue.") +
             "</p>" +
+            (multiUser
+                ? field("auth-username", "Username", {
+                      required: true,
+                      autocomplete: "username",
+                  }) + '<div style="height:10px"></div>'
+                : "") +
             field("auth-password", "Password", {
                 type: "password",
                 required: true,
@@ -202,11 +215,12 @@
     function wireLogin(overlay, onSuccess) {
         const form = overlay.querySelector("#auth-form");
         const input = overlay.querySelector("#auth-password");
+        const userInput = overlay.querySelector("#auth-username");
         const errBox = overlay.querySelector("#auth-error");
         const btn = overlay.querySelector("#auth-submit");
         const switchBtn = overlay.querySelector("#auth-switch-setup");
 
-        input.focus();
+        (userInput || input).focus();
 
         switchBtn.addEventListener("click", function () {
             renderView("setup", onSuccess);
@@ -218,7 +232,9 @@
             btn.disabled = true;
             btn.textContent = "...";
             try {
-                await postJSON(AUTH_LOGIN_URL, { password: input.value });
+                const body = { password: input.value };
+                if (userInput) body.username = userInput.value.trim();
+                await postJSON(AUTH_LOGIN_URL, body);
                 removeOverlay();
                 if (onSuccess) onSuccess();
                 else window.location.reload();
@@ -403,6 +419,7 @@
         authPromptInFlight = true;
         try {
             const status = await checkStatus();
+            multiUser = status.multi_user === true;
             if (status.authenticated) return;
             renderView("login", onSuccess);
         } finally {
