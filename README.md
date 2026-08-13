@@ -9,7 +9,12 @@ Free and open source. Runs on Windows, macOS, and Linux. No Intuit activation se
 double-click, done. No Docker, no Python, no database server; Windows shows
 a verified publisher instead of a SmartScreen warning.
 
-**Get started (servers / macOS / Linux):** `docker compose up` — see
+**Get started (Apple Silicon Mac):** download the signed and notarized macOS
+DMG from the [latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest),
+drag **SlowBooks Pro** to Applications, and launch it normally. The native app
+supports macOS 14 or newer and does not require Docker or Python.
+
+**Get started (servers / Intel Mac / Linux):** `docker compose up` — see
 **[INSTALL.md](INSTALL.md)** for all install options, or visit
 **[slowbookspro.com](https://www.slowbookspro.com)**.
 
@@ -153,6 +158,14 @@ from the latest release and double-click it. Fully self-contained (64-bit
 Windows 10/11); also available as a portable .zip on the
 [releases page](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest).
 
+### macOS — signed Apple Silicon app
+
+Download the `SlowBooksPro-<version>-macos-arm64.dmg` asset from the
+[latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest).
+Open the image, drag **SlowBooks Pro** to Applications, and launch it. The app
+is signed with an Apple Developer ID and notarized for macOS 14 or newer.
+Intel Macs should use Docker until a separately tested Intel build is listed.
+
 ### Docker (servers, macOS, Linux)
 
 ```bash
@@ -174,6 +187,7 @@ For backups, restore, key rotation, and monitoring see **[docs/operations.md](do
 | Doc | Covers |
 |-----|--------|
 | [INSTALL.md](INSTALL.md) | Install / first-run / upgrade guide (Windows installer + Docker + native Linux/macOS) |
+| [packaging/macos/README.md](packaging/macos/README.md) | Maintainer build, signing, notarization, and release-proof runbook |
 | [docs/features.md](docs/features.md) | Full feature catalog + API endpoint reference + IIF interoperability |
 | [docs/development.md](docs/development.md) | Tech stack, project structure, contributor flow |
 | [docs/data-model.md](docs/data-model.md) | Database schema — 55 tables |
@@ -199,7 +213,11 @@ For backups, restore, key rotation, and monitoring see **[docs/operations.md](do
 
 Python 3.13 + FastAPI on PostgreSQL 17 (SQLite for tests and for the desktop app, one file per company) with SQLAlchemy 2.0 and Alembic migrations. Vanilla HTML/CSS/JS single-page app — no framework, no build step. WeasyPrint + Jinja2 for PDFs. Self-hosted Chart.js for analytics (no CDN; LAN-deployable). Stripe, PayPal, and Square for online payments (hosted checkout only — card data never touches the app). python-quickbooks + intuit-oauth for QBO sync. Runs on port 3001 by default.
 
-The Windows desktop build is the same codebase frozen with PyInstaller (pywebview/WebView2 window, in-process Alembic, bundled Pango for PDFs), built and code-signed in CI via Azure Trusted Signing on every release tag.
+The Windows and Apple Silicon macOS desktop builds freeze the same codebase
+with PyInstaller and pywebview, run Alembic in process, and bundle Pango for
+PDFs. Windows is signed in CI through Azure Trusted Signing; macOS transport
+artifacts are built in CI, then signed locally with an Apple Developer ID and
+notarized by Apple before publication.
 
 Full project layout in [docs/development.md](docs/development.md).
 

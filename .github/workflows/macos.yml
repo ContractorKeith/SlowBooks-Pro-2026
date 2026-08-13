@@ -1,0 +1,192 @@
+name: macOS
+
+# Option 1 release model: CI creates a short-lived, ad-hoc-signed transport
+# artifact. Developer ID signing, notarization, and release publication happen
+# locally after exact-commit verification.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Full 40-character commit SHA to build
+        required: true
+        type: string
+  push:
+    branches: [macos-build]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned macOS arm64 app
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify exact source and runner architecture
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$GITHUB_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$actual_sha" = "$EXPECTED_SHA"
+          fi
+          test "$(uname -m)" = "arm64"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-desktop.txt
+            packaging/macos/requirements-build.txt
+
+      - name: Read and validate application version
+        run: |
+          set -euo pipefail
+          APP_VERSION="$(python -c 'from app import __version__; print(__version__)')"
+          [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            test "$GITHUB_REF_NAME" = "v$APP_VERSION"
+          fi
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_BASENAME=SlowBooksPro-${APP_VERSION}-macos-arm64" >> "$GITHUB_ENV"
+
+      - name: Install WeasyPrint native dependencies
+        run: |
+          brew install pango fontconfig gobject-introspection
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix)/lib" >> "$GITHUB_ENV"
+
+      - name: Install Python and packaging dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            -r requirements.txt \
+            -r requirements-desktop.txt \
+            -r packaging/macos/requirements-build.txt
+
+      - name: Build the application icon
+        run: |
+          python packaging/macos/build_icon.py \
+            assets/icon-256.png "$RUNNER_TEMP/SlowBooksPro.iconset"
+          iconutil -c icns "$RUNNER_TEMP/SlowBooksPro.iconset" \
+            -o packaging/macos/slowbookspro.icns
+
+      - name: Build the app with PyInstaller
+        run: |
+          cd packaging/macos
+          pyinstaller --noconfirm --clean SlowBooksPro-mac.spec
+
+      - name: Validate the frozen bundle
+        run: |
+          set -euo pipefail
+          app="packaging/macos/dist/SlowBooks Pro.app"
+          # Hosted and File Provider workspaces can add Finder/resource-fork
+          # xattrs after PyInstaller's ad-hoc signing. They are not bundle
+          # content and make strict codesign verification reject the app.
+          # PyInstaller also cross-links binaries back into Resources for
+          # compatibility; Apple's notarization preflight follows those links
+          # and rejects the apparent Mach-O files in Resources.
+          python packaging/macos/prepare_bundle.py "$app"
+          find "$app" -exec xattr -c {} +
+          # Removing those sealed symlinks invalidates only PyInstaller's outer
+          # ad-hoc transport signature. Refresh that outer signature without
+          # recursive signing; local Developer ID signing replaces it later.
+          codesign --force --sign - "$app"
+          plutil -lint "$app/Contents/Info.plist"
+          test "$(plutil -extract CFBundleShortVersionString raw -o - \
+            "$app/Contents/Info.plist")" = "$APP_VERSION"
+          test "$(plutil -extract LSMinimumSystemVersion raw -o - \
+            "$app/Contents/Info.plist")" = "14.0"
+          test "$(lipo -archs "$app/Contents/MacOS/SlowBooksPro")" = "arm64"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          python packaging/macos/audit_bundle.py "$app" \
+            --expected-arch arm64 \
+            --output "$RUNNER_TEMP/native-linkage.txt"
+
+      - name: Smoke test the frozen bundle
+        timeout-minutes: 8
+        env:
+          SLOWBOOKS_DATA_DIR: ${{ runner.temp }}/slowbooks-smoke/data
+        run: |
+          set +e
+          "packaging/macos/dist/SlowBooks Pro.app/Contents/MacOS/SlowBooksPro" \
+            --smoke-test
+          status=$?
+          set -e
+          log="$SLOWBOOKS_DATA_DIR/launcher.log"
+          if [[ -f "$log" ]]; then
+            cat "$log"
+          else
+            echo "No launcher.log was written."
+          fi
+          exit "$status"
+
+      - name: Package unsigned transport artifacts and provenance
+        run: |
+          set -euo pipefail
+          app="packaging/macos/dist/SlowBooks Pro.app"
+          artifact_dir="$RUNNER_TEMP/macos-artifact"
+          stage="$RUNNER_TEMP/dmg-stage"
+          mkdir -p "$artifact_dir" "$stage"
+
+          ditto -c -k --sequesterRsrc --keepParent "$app" \
+            "$artifact_dir/${BUILD_BASENAME}-unsigned-app.zip"
+          ditto "$app" "$stage/SlowBooks Pro.app"
+          ln -s /Applications "$stage/Applications"
+          hdiutil create -volname "SlowBooks Pro" \
+            -srcfolder "$stage" -ov -format UDZO \
+            "$artifact_dir/${BUILD_BASENAME}-unsigned.dmg"
+
+          unzip -tq "$artifact_dir/${BUILD_BASENAME}-unsigned-app.zip"
+          hdiutil verify "$artifact_dir/${BUILD_BASENAME}-unsigned.dmg"
+          cp "$RUNNER_TEMP/native-linkage.txt" "$artifact_dir/native-linkage.txt"
+          python -m pip freeze --all > "$artifact_dir/pip-freeze.txt"
+          brew list --versions pango fontconfig gobject-introspection \
+            glib harfbuzz > "$artifact_dir/brew-packages.txt"
+
+          {
+            echo "format_version=1"
+            echo "git_sha=$GITHUB_SHA"
+            echo "app_version=$APP_VERSION"
+            echo "architecture=$(uname -m)"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "github_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "github_run_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_image=${ImageOS:-unknown}"
+            echo "runner_image_version=${ImageVersion:-unknown}"
+            echo "python=$(python --version 2>&1)"
+          } > "$artifact_dir/build-info.txt"
+
+          (
+            cd "$artifact_dir"
+            shasum -a 256 \
+              "${BUILD_BASENAME}-unsigned-app.zip" \
+              "${BUILD_BASENAME}-unsigned.dmg" \
+              build-info.txt \
+              brew-packages.txt \
+              native-linkage.txt \
+              pip-freeze.txt > SHA256SUMS
+          )
+
+      - name: Upload exact-commit unsigned artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SlowBooksPro-macos-arm64-${{ github.sha }}-unsigned
+          path: ${{ runner.temp }}/macos-artifact/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

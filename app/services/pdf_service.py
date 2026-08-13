@@ -9,13 +9,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, default_url_fetcher
 
+from app.services import storage
+
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _jinja_env = Environment(autoescape=True, loader=FileSystemLoader(str(TEMPLATE_DIR)))
-
-# Where uploaded company logos live. Anything outside this directory is
-# refused — keeps a tampered settings.company_logo_path from reading
-# arbitrary files like /etc/passwd into the rendered PDF.
-_UPLOADS_DIR = (Path(__file__).parent.parent / "static" / "uploads").resolve()
 
 # MIME types we'll embed as data URIs. Keep this tight — WeasyPrint will
 # happily render whatever, but we don't want a path traversal turning into
@@ -32,9 +29,8 @@ _LOGO_ALLOWED_MIMES = {
 def _company_logo_data_uri(company_settings: dict) -> str:
     """Return the company logo as a base64 data URI, or empty string.
 
-    Constrains the file to live inside app/static/uploads so a tampered
-    `company_logo_path` setting can't be used to read files outside the
-    upload directory.
+    Constrains the file to the active upload storage root so a tampered
+    `company_logo_path` setting can't read files outside that directory.
     """
     logo_path = (company_settings or {}).get("company_logo_path") or ""
     if not logo_path:
@@ -45,12 +41,13 @@ def _company_logo_data_uri(company_settings: dict) -> str:
     relative = logo_path.lstrip("/")
     if relative.startswith("static/"):
         relative = relative[len("static/") :]
-    candidate = (_UPLOADS_DIR.parent / relative).resolve()
+    uploads_dir = storage.uploads_root().resolve()
+    candidate = (uploads_dir.parent / relative).resolve()
 
     # Path containment check — reject if the resolved path escapes the
     # uploads directory (defends against ../ in stored value).
     try:
-        candidate.relative_to(_UPLOADS_DIR)
+        candidate.relative_to(uploads_dir)
     except ValueError:
         return ""
 

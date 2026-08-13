@@ -66,9 +66,32 @@ administer — no `pg_dump`, no containers, no background services.
 
 ---
 
+## Option 0A: macOS desktop app
+
+**Recommended for Apple Silicon Macs running macOS 14 or newer.** No Docker,
+Python, or database server is required.
+
+1. Download `SlowBooksPro-<version>-macos-arm64.dmg` from the
+   [latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest).
+2. Open the disk image and drag **SlowBooks Pro** to Applications.
+3. Eject the image, then launch **SlowBooks Pro** from Applications.
+
+The app is signed with an Apple Developer ID and notarized by Apple. Each
+company is an ordinary SQLite file under
+`~/Library/Application Support/SlowBooksPro/data/companies/`. Settings,
+backups, uploads, and `launcher.log` live under the same `data` directory and
+remain outside the app bundle during upgrades.
+
+This path has the same single-user tradeoffs as the Windows desktop app. Intel
+Macs should use Docker or the developer-oriented native install below until a
+separately tested Intel build is available.
+
+---
+
 ## Option 1: Docker (Windows, macOS, Linux)
 
-**Recommended for Windows and macOS.** One command, no dependency headaches.
+**Recommended for servers, Intel Macs, and multi-user setups.** One command,
+no dependency headaches.
 
 ### Prerequisites
 

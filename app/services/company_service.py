@@ -63,6 +63,8 @@ def data_dir() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "SlowBooksPro" / "data"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "SlowBooksPro" / "data"
     return Path.home() / ".slowbookspro" / "data"
 
 
