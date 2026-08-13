@@ -263,9 +263,6 @@ def test_collector_finds_something():
 # - One-shot seeds run once during setup, not from the running SPA
 # - Legacy paths superseded by newer endpoints (kept for backwards compat)
 _INTENTIONAL_BACKEND_ONLY: set[tuple[str, str]] = {
-    # TEMPORARY diagnostic for the Server Edition attribution field bug —
-    # remove with the endpoint before server-edition merges to main.
-    ("GET", "/api/system/attribution-debug"),
     ("POST", "/api/stripe/webhook"),  # legacy alias for provider webhook
     # Provider payment routes without SPA callers: webhooks fire from the
     # provider's servers; create-checkout-session is called from the
