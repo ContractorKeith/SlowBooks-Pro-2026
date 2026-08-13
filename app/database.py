@@ -5,6 +5,7 @@
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from starlette.requests import HTTPConnection
 
 from app.config import DATABASE_URL
 
@@ -25,12 +26,51 @@ if not _is_sqlite:
         pool_use_lifo=True,
     )
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
+
+
+def enable_sqlite_tuning(target_engine) -> None:
+    """Concurrency PRAGMAs for SQLite engines (Server Edition groundwork).
+
+    WAL lets readers proceed while one writer commits — the difference
+    between "works for an office" and "database is locked" the moment a
+    second person opens a report mid-save. busy_timeout makes brief lock
+    contention wait instead of erroring; NORMAL sync is the recommended
+    pairing with WAL. Harmless no-ops on :memory: databases.
+    """
+    from sqlalchemy import event
+
+    @event.listens_for(target_engine, "connect")
+    def _tune(dbapi_conn, _record):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.close()
+
+
+if _is_sqlite:
+    enable_sqlite_tuning(engine)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def get_db():
+def get_db(request: HTTPConnection = None):
+    """Request-scoped DB session (FastAPI dependency).
+
+    When FastAPI injects the request, the acting username is stamped onto
+    the Session's own info dict — the audit hooks receive this exact
+    object at flush time, so attribution travels WITH the session instead
+    of relying on contextvar propagation (which proved unreliable on the
+    frozen Windows runtime; the contextvar remains as a fallback for
+    sessions created outside the request cycle)."""
     db = SessionLocal()
+    try:
+        session = getattr(request, "session", None) if request is not None else None
+        if isinstance(session, dict) and session.get("authenticated") is True:
+            db.info["acting_username"] = session.get("username") or "operator"
+    except Exception:
+        pass  # attribution must never break a request
     try:
         yield db
     except Exception:

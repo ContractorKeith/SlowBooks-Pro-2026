@@ -25,6 +25,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402
+from starlette.requests import HTTPConnection  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
@@ -165,8 +166,14 @@ def seed_customer(db_session):
 def _wire_app(TestSession):
     """Override app's get_db dependency to use the per-test session factory."""
 
-    def override_get_db():
+    def override_get_db(request: HTTPConnection = None):
         session = TestSession()
+        # Mirror production's attribution stamping so tests exercise the
+        # session.info path (the mechanism that works on frozen Windows),
+        # not just the contextvar fallback.
+        http_session = getattr(request, "session", None) if request else None
+        if isinstance(http_session, dict) and http_session.get("authenticated") is True:
+            session.info["acting_username"] = http_session.get("username") or "operator"
         try:
             yield session
         finally:

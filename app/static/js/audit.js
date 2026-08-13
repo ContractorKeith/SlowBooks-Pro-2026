@@ -57,13 +57,18 @@ const AuditPage = {
 
         let html = `<div class="table-container"><table>
             <thead><tr>
-                <th>Time</th><th>Table</th><th>ID</th><th>Action</th><th>Changes</th>
+                <th>Time</th><th>User</th><th>Table</th><th>ID</th><th>Action</th><th>Changes</th>
             </tr></thead><tbody>`;
 
         for (const log of logs) {
             const actionClass = log.action === 'INSERT' ? 'badge-paid' :
                                 log.action === 'DELETE' ? 'badge-void' : 'badge-sent';
-            const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '';
+            // Timestamps arrive as naive UTC; without an explicit Z the Date
+            // parser assumes LOCAL time and the page renders hours off
+            // (field-reported: 23:45 UTC showed as 11:45 PM on the wall clock).
+            const iso = log.timestamp && !/Z|[+-]\d\d:?\d\d$/.test(log.timestamp)
+                ? log.timestamp + 'Z' : log.timestamp;
+            const ts = iso ? new Date(iso).toLocaleString() : '';
             let changes = '';
             if (log.action === 'UPDATE' && log.changed_fields) {
                 changes = log.changed_fields.map(f => {
@@ -81,6 +86,7 @@ const AuditPage = {
 
             html += `<tr>
                 <td style="white-space:nowrap;font-size:10px;">${ts}</td>
+                <td style="font-size:10px;">${escapeHtml(log.username || '—')}</td>
                 <td><strong>${escapeHtml(log.table_name)}</strong></td>
                 <td style="font-family:var(--font-mono);">${log.record_id}</td>
                 <td><span class="badge ${actionClass}">${log.action}</span></td>

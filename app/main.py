@@ -57,6 +57,7 @@ from app.routes import uploads
 
 # Phase 5: Advanced Integration
 from app.routes import bank_import, simplefin, tax, backups
+from app.routes import users as users_routes
 from app.routes import classes as classes_routes
 from app.routes import fx as fx_routes
 from app.routes import fixed_assets as fixed_assets_routes
@@ -111,6 +112,7 @@ from app.config import (
 )
 from app.database import SessionLocal, Base, engine
 from app.services.audit import register_audit_hooks
+from app.services.request_context import acting_username as _acting_username
 
 
 def _run_startup_security_checks():
@@ -313,6 +315,42 @@ _AUTH_EXEMPT_RE = _re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# Server Edition RBAC — coarse route-group policy, enforced centrally.
+#
+#   admin       everything
+#   bookkeeper  everything except administrative writes (users, settings,
+#               backups, companies, migration imports)
+#   readonly    GET/HEAD/OPTIONS only
+#
+# Legacy sessions (issued before the principal model) carry no role and
+# are treated as admin — they belong to the operator by definition.
+# ---------------------------------------------------------------------------
+_ADMIN_WRITE_PREFIXES = (
+    "/api/users",
+    "/api/settings",
+    "/api/backups",
+    "/api/companies",
+    "/api/migration",
+)
+_READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _role_allows(role: str, method: str, path: str) -> bool:
+    if role == "admin":
+        return True
+    is_read = method in _READ_METHODS
+    if role == "readonly":
+        # Field finding: audit payloads snapshot full record contents
+        # (tax ids, addresses) — "read the books" shouldn't mean "read
+        # every historical value of every field".
+        return is_read and not path.startswith("/api/audit")
+    # bookkeeper: full read, all daily-books writes, no admin writes
+    if is_read:
+        return True
+    return not path.startswith(_ADMIN_WRITE_PREFIXES)
+
+
 @app.middleware("http")
 async def require_session(request: Request, call_next):
     path = request.url.path
@@ -326,6 +364,13 @@ async def require_session(request: Request, call_next):
         return JSONResponse(
             status_code=401,
             content={"detail": "Not authenticated"},
+        )
+
+    role = request.session.get("role") or "admin"
+    if not _role_allows(role, request.method, path):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Your role doesn't allow this action"},
         )
 
     # Idle session cap. Sliding window — every authenticated hit refreshes
@@ -345,7 +390,42 @@ async def require_session(request: Request, call_next):
     return await call_next(request)
 
 
+class ActingUserContextMiddleware:
+    """Pure-ASGI middleware: stamp the acting username into a contextvar
+    for the audit hooks (which live at the SQLAlchemy layer and can't see
+    the request).
+
+    Deliberately NOT a BaseHTTPMiddleware — those run the downstream app
+    in a separate task, and contextvar propagation across that hop proved
+    unreliable on the frozen Windows build (field report: every audit row
+    showed no user despite the middleware setting the var). Pure ASGI
+    runs in the same task; the value is visible to everything downstream
+    unconditionally.
+
+    Must be registered BEFORE SessionMiddleware's add_middleware call so
+    SessionMiddleware wraps outside us and scope["session"] is populated.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        session = scope.get("session") or {}
+        acting = None
+        if session.get("authenticated") is True:
+            acting = session.get("username") or "operator"
+        token = _acting_username.set(acting)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _acting_username.reset(token)
+
+
 # ---- Session cookie (Phase 9.7) ----
+app.add_middleware(ActingUserContextMiddleware)
+
 # Added AFTER require_session so SessionMiddleware becomes the outer
 # layer (Starlette: last added = outermost). That way request.session
 # is populated by the time require_session dispatches.
@@ -400,6 +480,7 @@ app.include_router(uploads.router)
 # Phase 5: Advanced Integration
 app.include_router(bank_import.router)
 app.include_router(simplefin.router)
+app.include_router(users_routes.router)
 app.include_router(tax.router)
 app.include_router(backups.router)
 app.include_router(system_routes.router)

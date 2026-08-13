@@ -13,5 +13,9 @@ class AuditLogResponse(BaseModel):
     changed_fields: Optional[list] = None
     timestamp: Optional[datetime] = None
     source: Optional[str] = None
+    # Server Edition: who made the change. Response models STRIP undeclared
+    # fields silently — this line missing was a field-debugged display bug
+    # (the DB had the value all along; the API filtered it out).
+    username: Optional[str] = None
 
     model_config = {"from_attributes": True}

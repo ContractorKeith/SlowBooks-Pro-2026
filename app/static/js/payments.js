@@ -248,3 +248,7 @@ const PaymentsPage = {
         } catch (err) { toast(err.message, 'error'); }
     },
 };
+
+// Top-level const creates no window property — the topbar's
+// data-action dispatch (bootstrap.js callByPath) needs this export.
+window.PaymentsPage = PaymentsPage;
