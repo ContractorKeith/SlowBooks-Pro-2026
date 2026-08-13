@@ -1037,12 +1037,50 @@ def run_headless(port: int, bind_host: str = "127.0.0.1") -> int:
     return 0
 
 
+def _watch_parent(parent_pid: int, poll_seconds: float = 2.0) -> None:
+    """Daemon thread: exit this server process when its launcher dies.
+
+    Issue #52: on macOS, Command-Q terminates the parent app process
+    without unwinding Python cleanup, orphaning the --_serve child on
+    the port (invisible server, "already running" on relaunch). The
+    child watching its parent fixes every abnormal-parent-death path —
+    including launcher crashes — with one mechanism.
+
+    Server Edition is preserved BY DESIGN, not by accident: in
+    --serve-lan / scheduled-task mode the launcher parent stays alive
+    holding proc.wait(), so the watcher never fires and the server runs
+    perpetually. POSIX only (macOS + Linux); on Windows every quit path
+    goes through the window-close cleanup that already works.
+
+    (Deliberate "keep serving after the window closes" is a designed
+    v2.6 feature — tray indicator + relaunch adoption — not an accident
+    of orphaning.)
+    """
+    import threading
+    import time as _t
+
+    def _poll():
+        while True:
+            _t.sleep(poll_seconds)
+            try:
+                os.kill(parent_pid, 0)  # signal 0 = existence check
+            except OSError:
+                os._exit(0)  # parent gone: take the port down with us
+            if os.getppid() != parent_pid:
+                os._exit(0)  # reparented (launchd/init adopted us)
+
+    threading.Thread(target=_poll, daemon=True, name="parent-watch").start()
+
+
 def _serve() -> int:
     """Internal: run the uvicorn server in this process. The frozen build
     has no child interpreter for `-m uvicorn`, so start_server() re-execs
     the bundled exe with --_serve instead; all configuration (DATABASE_URL,
     APP_PORT, SLOWBOOKS_*) arrives via the environment from _server_env()."""
     import uvicorn
+
+    if sys.platform != "win32":
+        _watch_parent(os.getppid())
 
     # Import the app OURSELVES rather than passing "app.main:app": when the
     # import fails, uvicorn's string loader reports only "Could not import
