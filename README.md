@@ -142,6 +142,11 @@ Full feature catalog (300+ entries across every module) lives in **[docs/feature
 
 - **Online payments** — Stripe, PayPal, and Square behind one provider abstraction, with desktop-mode payment recording. Setup guides: [Stripe](docs/setup-stripe.md), [PayPal](docs/setup-paypal.md), [Square](docs/setup-square.md).
 - **Bank feeds** — Automatic transaction sync via [SimpleFIN](https://www.simplefin.org/): you hold the bank credential (no middleman server, no developer API keys), transactions dedup against OFX/CSV imports, and bank rules auto-categorize on arrival. See **[docs/setup-bank-feeds.md](docs/setup-bank-feeds.md)**.
+- **Server Edition** — The same signed installer can serve your whole office from one Windows PC: users with roles (admin / bookkeeper / read-only), username logins, per-user audit attribution, and a startup task that has the books serving before anyone logs in. Everyone else just needs a browser. An edition is a state, not a SKU — add a second user and you've promoted yourself, free either way. See **[docs/server-edition.md](docs/server-edition.md)**.
+
+![Server Edition dashboard served over the LAN](screenshots/server-edition-dashboard.png)
+
+![Users management — roles, deactivation, password resets](screenshots/server-edition-users.png)
 - **QuickBooks Online sync** — OAuth + bidirectional sync. See **[docs/setup-qbo.md](docs/setup-qbo.md)**.
 - **QB2003 interop** — IIF import/export with type-mapping, validation, round-trip safety, and INVOICE/PAYMENT/ESTIMATE/BILL/DEPOSIT transaction blocks (classes included).
 - **Fixed assets** — Register, depreciation runs, disposal with gain/loss, CSV import, reconciliation report.
@@ -250,3 +255,4 @@ You can use, modify, and run Slowbooks Pro for any personal, educational, or int
 - [Alex Jordan (@LayoverLogic)](https://github.com/LayoverLogic) — Security hardening (company-DB creation quoting, DOM debug-string cleanup), IIF BILL/DEPOSIT import, class tracking design, multi-currency design with the Bank of Canada FX service, sortable list columns, country dropdowns
 - [amazon1148](https://github.com/amazon1148) — CSV bank import with auto-detection for Chase and PayPal statement formats
 - [Joel Macklow (@joelmacklow)](https://github.com/joelmacklow) — Fixed assets, Xero import with dry-run, opening-balance wizard, report PDF pipeline, and security regression-suite concepts, specified in his NZ localization fork
+- [Keith (@ContractorKeith)](https://github.com/ContractorKeith) — macOS maintainer: native Apple Silicon `.app`/DMG build pipeline with local Developer ID signing and notarization, per-user Application Support data layout, frozen-bundle fontconfig self-containment, `.env` permission hardening; long-time macOS field tester

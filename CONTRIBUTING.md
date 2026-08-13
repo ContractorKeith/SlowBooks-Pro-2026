@@ -9,6 +9,27 @@ For anything bigger than a typo or a one-line bug fix, open an issue
 first so we can sanity-check direction before you write the code. Quick
 fixes can just be a PR.
 
+## How merges work
+
+`main` is protected: every change lands through a pull request with a
+code-owner (@VonHoltenCodes) review — that's enforced by GitHub, not
+etiquette. Collaborators have full branch and Actions access: push
+branches, trigger workflows, download artifacts. CI (black/ruff,
+pytest, CodeQL, pip-audit) must be green before review.
+
+GitGuardian flags the fake credentials in `tests/` from time to time —
+those are pytest fixtures, tracked as dismissed false positives.
+
+## Platform maintainers
+
+- **Windows + Docker + server**: @VonHoltenCodes (releases signed via
+  Azure Trusted Signing in CI)
+- **macOS**: [@ContractorKeith](https://github.com/ContractorKeith) —
+  builds the `.app`/DMG from `packaging/macos/`, signs and notarizes
+  locally with his Apple Developer ID (credentials never enter the
+  repo or CI), and hands the checksummed DMG to the owner to attach to
+  releases.
+
 ## Branch naming
 
 - `claude/<short-topic>` — branches authored by Claude Code or via the
