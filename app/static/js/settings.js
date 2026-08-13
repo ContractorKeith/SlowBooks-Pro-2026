@@ -11,6 +11,7 @@ const SettingsPage = {
             SettingsPage.loadEmailTemplates();
             SettingsPage.loadAiConfig();
             SettingsPage.loadClasses();
+            SettingsPage.loadUsers();
             SettingsPage.scrollToFocus();
         }, 0);
         return `
@@ -281,10 +282,106 @@ const SettingsPage = {
                     <div id="backup-list"></div>
                 </div>
 
+                <div class="settings-section" id="settings-users" style="display:none;">
+                    <h3>Users &mdash; Server Edition</h3>
+                    <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+                        Add a second user and this deployment becomes
+                        <strong>Server Edition</strong>: everyone signs in with a
+                        username, every change is attributed in the audit log, and
+                        roles limit what each person can do.
+                    </p>
+                    <div id="users-list" style="margin-bottom:12px;"></div>
+                    <div class="form-grid" style="align-items:end;">
+                        <div class="form-group"><label>Username</label>
+                            <input id="user-new-username" autocomplete="off"></div>
+                        <div class="form-group"><label>Display name</label>
+                            <input id="user-new-display" autocomplete="off"></div>
+                        <div class="form-group"><label>Password</label>
+                            <input id="user-new-password" type="password" autocomplete="new-password"></div>
+                        <div class="form-group"><label>Role</label>
+                            <select id="user-new-role">
+                                <option value="bookkeeper">Bookkeeper — daily books, no admin</option>
+                                <option value="readonly">Read-only — reports and lookups</option>
+                                <option value="admin">Admin — everything</option>
+                            </select></div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="SettingsPage.createUser()">Add User</button>
+                </div>
+
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Save Settings</button>
                 </div>
             </form>`;
+    },
+
+    // ------------------------------------------------------------------
+    // Users (Server Edition) — section is visible to admins only; the
+    // backend enforces the same rule, this just avoids a useless 403.
+    // ------------------------------------------------------------------
+    async loadUsers() {
+        const section = $('#settings-users');
+        if (!section) return;
+        try {
+            const status = await API.get('/auth/status');
+            if (!status.user || status.user.role !== 'admin') return;
+            const users = await API.get('/users');
+            section.style.display = '';
+            const rows = users.map(u => `<tr>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.display_name)}</td>
+                <td>
+                    <select onchange="SettingsPage.updateUser(${u.id}, {role: this.value})">
+                        ${['admin', 'bookkeeper', 'readonly'].map(r =>
+                            `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+                    </select>
+                </td>
+                <td>${u.last_login_at ? formatDate(u.last_login_at) : '—'}</td>
+                <td>${u.is_active
+                    ? `<button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.updateUser(${u.id}, {is_active: false})">Deactivate</button>`
+                    : `<button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.updateUser(${u.id}, {is_active: true})">Reactivate</button>`}
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.resetUserPassword(${u.id}, '${escapeHtml(u.username)}')">Reset password</button>
+                </td>
+            </tr>`).join('');
+            $('#users-list').innerHTML = `<div class="table-container"><table>
+                <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Last login</th><th></th></tr></thead>
+                <tbody>${rows}</tbody></table></div>`;
+        } catch (e) { /* non-admin or pre-upgrade server: section stays hidden */ }
+    },
+
+    async createUser() {
+        try {
+            await API.post('/users', {
+                username: $('#user-new-username').value.trim(),
+                display_name: $('#user-new-display').value.trim(),
+                password: $('#user-new-password').value,
+                role: $('#user-new-role').value,
+            });
+            toast('User added — this deployment is now Server Edition');
+            $('#user-new-username').value = '';
+            $('#user-new-display').value = '';
+            $('#user-new-password').value = '';
+            SettingsPage.loadUsers();
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
+    async updateUser(id, patch) {
+        try {
+            await API.put(`/users/${id}`, patch);
+            toast('User updated');
+            SettingsPage.loadUsers();
+        } catch (err) {
+            toast(err.message, 'error');
+            SettingsPage.loadUsers(); // revert any optimistic select change
+        }
+    },
+
+    async resetUserPassword(id, username) {
+        const pw = prompt(`New password for ${username} (min 8 characters):`);
+        if (!pw) return;
+        try {
+            await API.put(`/users/${id}`, { password: pw });
+            toast('Password updated');
+        } catch (err) { toast(err.message, 'error'); }
     },
 
     async save(e) {
