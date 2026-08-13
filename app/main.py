@@ -180,6 +180,20 @@ async def lifespan(app: FastAPI):
     fail-hard production guard — keep them on the startup side of the yield
     so a misconfigured deploy never serves a single request."""
     _run_startup_security_checks()
+    # At-rest upgrade: encrypt any legacy plaintext credential rows (SMTP,
+    # payment, QBO, SimpleFIN secrets) on first boot after upgrading.
+    try:
+        from app.services.settings_service import upgrade_plaintext_secrets
+
+        _db = SessionLocal()
+        try:
+            n = upgrade_plaintext_secrets(_db)
+            if n:
+                print(f"Encrypted {n} legacy plaintext secret setting(s) at rest")
+        finally:
+            _db.close()
+    except Exception:
+        pass  # never block boot on the upgrader
     yield
 
 

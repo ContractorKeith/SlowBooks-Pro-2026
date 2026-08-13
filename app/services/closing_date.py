@@ -4,6 +4,8 @@
 # ============================================================================
 
 import hmac
+
+from app.services.crypto import decrypt_value
 from datetime import date
 
 from fastapi import HTTPException
@@ -39,7 +41,7 @@ def check_closing_date(db: Session, txn_date: date, password: str = None):
             pw_row
             and pw_row.value
             and password
-            and hmac.compare_digest(password, pw_row.value)
+            and hmac.compare_digest(password, decrypt_value(pw_row.value))
         ):
             return  # Password override accepted
         raise HTTPException(

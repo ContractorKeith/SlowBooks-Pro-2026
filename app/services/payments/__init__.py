@@ -49,10 +49,12 @@ def all_providers() -> list[PaymentProvider]:
 def provider_settings(db: Session, provider: PaymentProvider) -> dict:
     """Load this provider's settings rows as a plain dict ('' when unset)."""
     keys = list(provider.settings_keys)
+    from app.services.settings_service import _maybe_decrypt
+
     rows = db.query(Settings).filter(Settings.key.in_(keys)).all()
     result = {k: "" for k in keys}
     for r in rows:
-        result[r.key] = r.value
+        result[r.key] = _maybe_decrypt(r.key, r.value)
     return result
 
 
