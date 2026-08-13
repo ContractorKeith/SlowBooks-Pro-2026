@@ -13,6 +13,7 @@
 # ASCII only in this file - Windows PowerShell 5.1 parses BOM-less
 # scripts as ANSI and em-dashes break the parser.
 # ============================================================================
+#Requires -RunAsAdministrator
 param(
     [string]$RunId = "",
     [string]$ZipPath = "",
@@ -61,7 +62,7 @@ try {
 
     # ---- Swap -------------------------------------------------------------
     Write-Host ">> Stopping server"
-    taskkill /IM SlowBooksPro.exe /F 2>$null | Out-Null
+    Get-Process -Name SlowBooksPro -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 2
 
     Write-Host ">> Swapping program files in $InstallDir"

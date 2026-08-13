@@ -63,7 +63,12 @@ const AuditPage = {
         for (const log of logs) {
             const actionClass = log.action === 'INSERT' ? 'badge-paid' :
                                 log.action === 'DELETE' ? 'badge-void' : 'badge-sent';
-            const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '';
+            // Timestamps arrive as naive UTC; without an explicit Z the Date
+            // parser assumes LOCAL time and the page renders hours off
+            // (field-reported: 23:45 UTC showed as 11:45 PM on the wall clock).
+            const iso = log.timestamp && !/Z|[+-]\d\d:?\d\d$/.test(log.timestamp)
+                ? log.timestamp + 'Z' : log.timestamp;
+            const ts = iso ? new Date(iso).toLocaleString() : '';
             let changes = '';
             if (log.action === 'UPDATE' && log.changed_fields) {
                 changes = log.changed_fields.map(f => {

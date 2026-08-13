@@ -203,3 +203,28 @@ def test_audit_api_returns_username_field(client, db_session):
     assert rows, "expected at least one customers audit row"
     assert "username" in rows[0], "response model is stripping username"
     assert rows[0]["username"] == "keeper"
+
+
+def test_login_audit_row_is_self_attributed(client, db_session):
+    """Field finding: every login wrote the most visible unattributed row
+    (last_login_at UPDATE flushes before the session carries a username)."""
+    _mk_user(db_session, "keeper", "keeper-password-1", ROLE_BOOKKEEPER)
+    _login_as(client, "keeper", "keeper-password-1")
+    row = (
+        db_session.query(AuditLog)
+        .filter(AuditLog.table_name == "users", AuditLog.action == "UPDATE")
+        .order_by(AuditLog.id.desc())
+        .first()
+    )
+    assert row is not None
+    assert row.username == "keeper"
+
+
+def test_readonly_cannot_read_audit_payloads(client, db_session):
+    """Field finding: audit snapshots carry full historical PII — readonly
+    means read the books, not read every value any field ever held."""
+    _mk_user(db_session, "viewer", "viewer-password-1", ROLE_READONLY)
+    _login_as(client, "viewer", "viewer-password-1")
+    assert client.get("/api/audit").status_code == 403
+    assert client.get("/api/audit/tables").status_code == 403
+    assert client.get("/api/customers").status_code == 200  # books stay readable

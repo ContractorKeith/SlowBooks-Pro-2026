@@ -341,7 +341,10 @@ def _role_allows(role: str, method: str, path: str) -> bool:
         return True
     is_read = method in _READ_METHODS
     if role == "readonly":
-        return is_read
+        # Field finding: audit payloads snapshot full record contents
+        # (tax ids, addresses) — "read the books" shouldn't mean "read
+        # every historical value of every field".
+        return is_read and not path.startswith("/api/audit")
     # bookkeeper: full read, all daily-books writes, no admin writes
     if is_read:
         return True

@@ -235,6 +235,10 @@ def authenticate(db: Session, password: str, username: str | None = None):
 
     if user is None or not verify_password(password, user.password_hash):
         return None
+    # Self-attribute the login's own audit row (field finding: the session
+    # carries no username yet at this point, so without this stamp every
+    # login writes the most visible unattributed row on the audit page).
+    db.info["acting_username"] = user.username
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     return user
