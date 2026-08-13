@@ -71,8 +71,6 @@ Your books survive uninstall — the script never deletes data.
 
 ## Troubleshooting
 
-- **Downloaded a build artifact from GitHub Actions?** It's a zip inside
-  a zip — extract twice.
 - **"Nothing happened" when running the exe** — the packaged exe has no
   console; output goes to `launcher.log` in the data folder, and
   `--serve-lan` shows its URLs in a popup + `connect-urls.txt`.
