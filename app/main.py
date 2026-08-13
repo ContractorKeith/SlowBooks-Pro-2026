@@ -58,6 +58,7 @@ from app.routes import uploads
 # Phase 5: Advanced Integration
 from app.routes import bank_import, simplefin, tax, backups
 from app.routes import users as users_routes
+from app.routes import api_tokens as api_tokens_routes
 from app.routes import classes as classes_routes
 from app.routes import fx as fx_routes
 from app.routes import fixed_assets as fixed_assets_routes
@@ -113,6 +114,7 @@ from app.config import (
 from app.database import SessionLocal, Base, engine
 from app.services.audit import register_audit_hooks
 from app.services.request_context import acting_username as _acting_username
+from app.services.api_token_service import resolve as _resolve_api_token
 
 
 def _run_startup_security_checks():
@@ -328,6 +330,7 @@ _AUTH_EXEMPT_RE = _re.compile(
 # ---------------------------------------------------------------------------
 _ADMIN_WRITE_PREFIXES = (
     "/api/users",
+    "/api/tokens",
     "/api/settings",
     "/api/backups",
     "/api/companies",
@@ -360,13 +363,35 @@ async def require_session(request: Request, call_next):
         or _AUTH_EXEMPT_RE.match(path)
     ):
         return await call_next(request)
-    if request.session.get("authenticated") is not True:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Not authenticated"},
-        )
+    token_principal = None
+    if request.session.get("authenticated") is True:
+        role = request.session.get("role") or "admin"
+    else:
+        # Scoped API tokens: non-human principals (agents, integrations)
+        # authenticate with `Authorization: Bearer sbp_...` and wear a role
+        # exactly like a user. Session auth always wins when present.
+        auth_header = request.headers.get("authorization") or ""
+        if auth_header.startswith("Bearer "):
+            token_principal = _resolve_api_token(auth_header[7:].strip())
+        if token_principal is None:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated"},
+            )
+        # Tokens cannot manage identities — a leaked bookkeeper token must
+        # not be able to mint itself an admin token or a user account.
+        if path.startswith(("/api/users", "/api/tokens")):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "API tokens cannot manage users or tokens"},
+            )
+        role = token_principal["role"]
+        # get_db reads this to stamp audit attribution ("token:<label>")
+        request.state.token_principal = {
+            "username": "token:" + token_principal["label"],
+            "role": role,
+        }
 
-    role = request.session.get("role") or "admin"
     if not _role_allows(role, request.method, path):
         return JSONResponse(
             status_code=403,
@@ -376,7 +401,7 @@ async def require_session(request: Request, call_next):
     # Idle session cap. Sliding window — every authenticated hit refreshes
     # `last_activity`, so a session that's actively in use never trips this.
     # Disabled when SESSION_IDLE_TIMEOUT_SECONDS = 0 (test harness, dev).
-    if SESSION_IDLE_TIMEOUT_SECONDS > 0:
+    if SESSION_IDLE_TIMEOUT_SECONDS > 0 and token_principal is None:
         now = int(_time.time())
         last = request.session.get("last_activity")
         if isinstance(last, int) and (now - last) > SESSION_IDLE_TIMEOUT_SECONDS:
@@ -481,6 +506,7 @@ app.include_router(uploads.router)
 app.include_router(bank_import.router)
 app.include_router(simplefin.router)
 app.include_router(users_routes.router)
+app.include_router(api_tokens_routes.router)
 app.include_router(tax.router)
 app.include_router(backups.router)
 app.include_router(system_routes.router)

@@ -174,6 +174,10 @@ def _wire_app(TestSession):
         http_session = getattr(request, "session", None) if request else None
         if isinstance(http_session, dict) and http_session.get("authenticated") is True:
             session.info["acting_username"] = http_session.get("username") or "operator"
+        elif request is not None:
+            tp = getattr(getattr(request, "state", None), "token_principal", None)
+            if isinstance(tp, dict) and tp.get("username"):
+                session.info["acting_username"] = tp["username"]
         try:
             yield session
         finally:

@@ -15,6 +15,7 @@ from app.models.audit import AuditLog
 
 # Server Edition: user principals
 from app.models.users import User  # noqa: F401 — registers the table
+from app.models.api_tokens import ApiToken  # noqa: F401 — registers the table
 
 # Phase 2: Accounts Payable
 from app.models.purchase_orders import PurchaseOrder, PurchaseOrderLine

@@ -12,6 +12,7 @@ const SettingsPage = {
             SettingsPage.loadAiConfig();
             SettingsPage.loadClasses();
             SettingsPage.loadUsers();
+            SettingsPage.loadApiTokens();
             SettingsPage.scrollToFocus();
         }, 0);
         return `
@@ -308,6 +309,34 @@ const SettingsPage = {
                     <button type="button" class="btn btn-primary" onclick="SettingsPage.createUser()">Add User</button>
                 </div>
 
+                <div class="settings-section" id="settings-api-tokens" style="display:none;">
+                    <h3>API Tokens &mdash; agents &amp; integrations</h3>
+                    <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+                        Scoped credentials for non-humans: AI agents, the receipt
+                        service, scripts. A token wears a role just like a user —
+                        give read-only to anything that only reports, and every
+                        change it makes is attributed in the audit log as
+                        <code>token:&lt;label&gt;</code>. Tokens can never manage
+                        users or other tokens, whatever their role.
+                    </p>
+                    <div id="api-token-reveal" style="display:none; margin-bottom:12px; padding:10px; border:1px solid var(--qb-gold); border-radius:4px; background:rgba(224,158,36,0.08); font-size:12px;">
+                        <strong>Copy this token now — it will never be shown again:</strong>
+                        <div style="font-family:var(--font-mono); margin-top:6px; word-break:break-all;" id="api-token-secret"></div>
+                    </div>
+                    <div id="api-token-list" style="margin-bottom:12px;"></div>
+                    <div class="form-grid" style="align-items:end;">
+                        <div class="form-group"><label>Label</label>
+                            <input id="token-new-label" autocomplete="off" placeholder="e.g. claude-code, receipt-service"></div>
+                        <div class="form-group"><label>Role</label>
+                            <select id="token-new-role">
+                                <option value="readonly">Read-only — reports and lookups</option>
+                                <option value="bookkeeper">Bookkeeper — daily books, no admin</option>
+                                <option value="admin">Admin — everything except identity management</option>
+                            </select></div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="SettingsPage.createApiToken()">Create Token</button>
+                </div>
+
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Save Settings</button>
                 </div>
@@ -346,6 +375,60 @@ const SettingsPage = {
                 <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Last login</th><th></th></tr></thead>
                 <tbody>${rows}</tbody></table></div>`;
         } catch (e) { /* non-admin or pre-upgrade server: section stays hidden */ }
+    },
+
+    // ------------------------------------------------------------------
+    // API tokens — admin-only, mirrors the Users section
+    // ------------------------------------------------------------------
+    async loadApiTokens() {
+        const section = $('#settings-api-tokens');
+        if (!section) return;
+        try {
+            const status = await API.get('/auth/status');
+            if (!status.user || status.user.role !== 'admin') return;
+            const tokens = await API.get('/tokens');
+            section.style.display = '';
+            if (!tokens.length) {
+                $('#api-token-list').innerHTML =
+                    '<div style="font-size:11px; color:var(--text-muted);">No tokens yet.</div>';
+                return;
+            }
+            const rows = tokens.map(t => `<tr>
+                <td>${escapeHtml(t.label)}</td>
+                <td style="font-family:var(--font-mono); font-size:10px;">${escapeHtml(t.token_hint)}&hellip;</td>
+                <td>${escapeHtml(t.role)}</td>
+                <td>${t.last_used_at ? formatDate(t.last_used_at) : '—'}</td>
+                <td>${t.is_active
+                    ? `<button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.updateApiToken(${t.id}, {is_active: false})">Revoke</button>`
+                    : `<button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.updateApiToken(${t.id}, {is_active: true})">Reactivate</button>`}
+                </td>
+            </tr>`).join('');
+            $('#api-token-list').innerHTML = `<div class="table-container"><table>
+                <thead><tr><th>Label</th><th>Token</th><th>Role</th><th>Last used</th><th></th></tr></thead>
+                <tbody>${rows}</tbody></table></div>`;
+        } catch (e) { /* non-admin or pre-upgrade server: section stays hidden */ }
+    },
+
+    async createApiToken() {
+        try {
+            const created = await API.post('/tokens', {
+                label: $('#token-new-label').value.trim(),
+                role: $('#token-new-role').value,
+            });
+            $('#api-token-secret').textContent = created.token;
+            $('#api-token-reveal').style.display = '';
+            $('#token-new-label').value = '';
+            toast('Token created — copy it now, it will not be shown again');
+            SettingsPage.loadApiTokens();
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
+    async updateApiToken(id, patch) {
+        try {
+            await API.put(`/tokens/${id}`, patch);
+            toast('Token updated');
+            SettingsPage.loadApiTokens();
+        } catch (err) { toast(err.message, 'error'); }
     },
 
     async createUser() {
