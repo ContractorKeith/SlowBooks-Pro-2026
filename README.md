@@ -9,7 +9,7 @@ cloud, no account, no telemetry, no caps, no paid tiers.
 
 **Get started:**
 [Windows installer](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest/download/SlowBooksPro-Setup-x64.exe) ·
-[macOS DMG](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest) ·
+[macOS DMG](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest/download/SlowBooksPro-macos-arm64.dmg) ·
 [Docker / Linux](#quick-start) ·
 [slowbookspro.com](https://www.slowbookspro.com)
 
@@ -165,8 +165,7 @@ startup task, and machine-wide data location handled. Details in
 
 ### macOS — signed Apple Silicon app
 
-Download the `SlowBooksPro-<version>-macos-arm64.dmg` from the
-[latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest),
+Download **[SlowBooksPro-macos-arm64.dmg](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest/download/SlowBooksPro-macos-arm64.dmg)**,
 drag **SlowBooks Pro** to Applications, launch. Signed and notarized;
 macOS 14+. Intel Macs: use Docker until a tested Intel build ships.
 
