@@ -1,156 +1,146 @@
 # Slowbooks Pro 2026
 
-**A personal bookkeeping application "decompiled" from the ashes of QuickBooks 2003 Pro.**
+**A personal bookkeeping application raised from the ashes of QuickBooks 2003 Pro.**
 
-Free and open source. Runs on Windows, macOS, and Linux. No Intuit activation servers required.
+Free, source-available, and complete: double-entry accounting, unlimited
+invoicing, US payroll with tamper-evident tax forms, perpetual inventory,
+bank feeds, analytics — with every record in local files you control. No
+cloud, no account, no telemetry, no caps, no paid tiers.
 
-**Get started (Windows):** download the signed installer —
-**[SlowBooksPro-Setup-x64.exe](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest/download/SlowBooksPro-Setup-x64.exe)** —
-double-click, done. No Docker, no Python, no database server; Windows shows
-a verified publisher instead of a SmartScreen warning.
+**Get started:**
+[Windows installer](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest/download/SlowBooksPro-Setup-x64.exe) ·
+[macOS DMG](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest) ·
+[Docker / Linux](#quick-start) ·
+[slowbookspro.com](https://www.slowbookspro.com)
 
-**Get started (Apple Silicon Mac):** download the signed and notarized macOS
-DMG from the [latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest),
-drag **SlowBooks Pro** to Applications, and launch it normally. The native app
-supports macOS 14 or newer and does not require Docker or Python.
+![Company Snapshot in light and dark themes](screenshots/hero-themes.png)
 
-**Get started (servers / Intel Mac / Linux):** `docker compose up` — see
-**[INSTALL.md](INSTALL.md)** for all install options, or visit
-**[slowbookspro.com](https://www.slowbookspro.com)**.
-
-![Slowbooks Pro 2026 — Company Snapshot (Light)](screenshots/dashboard-light.png)
-![Slowbooks Pro 2026 — Company Snapshot (Dark)](screenshots/dashboard-dark.png)
-
-*Ships with both themes — toggle from the topbar or hit `Alt+D`. Choice persists in `localStorage`, so reloads stay in the theme you picked.*
+*Both themes ship in the box — toggle from the topbar or `Alt+D`; the choice persists.*
 
 ---
 
 ## The Story
 
-I ran QuickBooks 2003 Pro for 14 years for side business invoicing and bookkeeping. Then the hard drive died. Intuit's activation servers have been dead since ~2017, so the software can't be reinstalled. The license I paid for is worthless.
+I ran QuickBooks 2003 Pro for 14 years for side-business invoicing and
+bookkeeping. Then the hard drive died. Intuit's activation servers have
+been dead since ~2017, so the software can't be reinstalled. The license
+I paid for is worthless.
 
-So I built my own replacement. I transferred all my data from the old .QBW file using IIF export/import.
+So I built my own replacement, and transferred my data out of the old
+.QBW file using IIF export/import. Early versions wore the grief openly —
+the code was annotated with invented "decompilation" comments referencing
+`QBW32.EXE` offsets and Btrieve table layouts as a tribute to software
+that served me well until its maker decided it should stop working. The
+codebase has since grown up and the fiction now lives only in this
+origin story; the software never depended on it.
 
-The codebase is annotated with "decompilation" comments referencing `QBW32.EXE` offsets, Btrieve table layouts, and MFC class names — a tribute to the software that served me well for 14 years before its maker decided it should stop working. The offsets, class names, and binary trivia are invented from whole cloth; nothing was actually decompiled or disassembled.
-
-**This is an independent, from-scratch reimplementation.** No Intuit source code or binaries were available, decompiled, or used.
+**This is an independent, from-scratch reimplementation.** No Intuit
+source code or binaries were available, decompiled, or used.
 
 ---
 
 ## What's New
 
-**Online payments: Stripe, PayPal, and Square (v2.2)** — One provider
-abstraction, three processors. Enable any combination and the customer
-pay page shows a button per provider; every payment posts through one
-idempotent recorder (DR Undeposited Funds / CR A/R). Desktop installs
-record payments too — no webhook required — via verified capture on the
-customer's return plus a "Check Payment Status" button on the invoice.
-See [docs/setup-stripe.md](docs/setup-stripe.md),
-[docs/setup-paypal.md](docs/setup-paypal.md),
-[docs/setup-square.md](docs/setup-square.md).
+**v2.5 — Server Edition.** The same signed installer can serve your whole
+office from one Windows PC: users with roles (admin / bookkeeper /
+read-only), username logins, per-user audit attribution, and a startup
+task that has the books serving before anyone logs in — everyone else
+just needs a browser. An edition is a state, not a SKU: add a second user
+and you've promoted yourself, free either way. Field-verified on real
+office hardware before release. See
+**[docs/server-edition.md](docs/server-edition.md)**.
 
-**Class tracking** — The QuickBooks class dimension (department /
-location / line of business) on invoices, bills, journals, deposits, and
-more, with a **P&L by Class** report whose totals reconcile exactly with
-the plain P&L. Classes are managed in Settings; IIF imports map
-`SPL.CLASS` automatically.
+v2.5 also debuts the **signed & notarized Apple Silicon macOS app**
+(maintained by [@ContractorKeith](https://github.com/ContractorKeith)) —
+a native `.app` in a DMG, no Docker or Python required.
 
-**Multi-currency** — Foreign-currency invoices and bills booked at a
-per-document exchange rate (auto-prefilled from the Bank of Canada feed,
-always overridable), a single-currency home ledger so every report stays
-exact, and realized FX gain/loss posted automatically when payments
-settle at a different rate.
+![Server Edition: LAN-served dashboard and user management](screenshots/server-edition-grid.png)
 
-**Fixed assets** — Asset register with per-type account mappings,
-straight-line or declining-balance depreciation runs (one journal per
-asset), disposal with gain/loss, CSV import, and a reconciliation report.
+**v2.4 — Bank feeds & the AI-ready API.** Automatic transaction sync via
+[SimpleFIN](https://www.simplefin.org/) — you hold the bank credential,
+no middleman server, dedup + bank rules on arrival
+([docs/setup-bank-feeds.md](docs/setup-bank-feeds.md)). Every install
+also serves a self-documenting 347-operation local REST API; point
+Claude Code or any agentic CLI at it —
+[slowbookspro.com/ai](https://www.slowbookspro.com/ai/) has the
+paste-prompt.
 
-**Migrate from Xero** — Upload Xero CSV exports (Chart of Accounts +
-General Ledger + Trial Balance); a dry-run verifies every journal
-balances and cross-checks the trial balance before anything is written.
-Pairs with the new **Opening Balances wizard** for guided setup without
-journal-entry knowledge.
+**v2.3 — Migrate from anywhere.** One Migrate Data page for Xero, MYOB,
+Sage 50, Wave, Zoho Books, and GnuCash — every import dry-run-verified
+against your trial balance before a single record is written, with
+opening balances posted automatically.
 
-**Financial-report PDFs** — Print the P&L, Balance Sheet, or the
-one-click **Financial Statements Pack** (P&L + Balance Sheet + Trial
-Balance, page-numbered), in US Letter or A4.
+**v2.2 — Payments, classes, currencies, assets.** Stripe + PayPal +
+Square behind one provider abstraction; class tracking with P&L by
+Class; multi-currency with automatic FX gain/loss; fixed assets with
+depreciation runs; financial-report PDF pack.
 
-**Bank CSV import** — Chase checking, Chase credit, and PayPal statement
-exports auto-detected by header signature, with dedup that survives
-re-imports and overlapping date ranges without dropping legitimate
-same-day duplicates.
-
-**Native Windows desktop app (v2.1)** — A real installer, code-signed via
-Azure Trusted Signing, that runs SlowBooks as a normal desktop app in its
-own window: no Docker, no Python install, no database server. Each company
-is a single SQLite file (like a QuickBooks company file) under
-`%LOCALAPPDATA%\SlowBooksPro`, picked from a QuickBooks-style company
-picker at launch — upgrades and even uninstalls never touch your books.
-The footer shows an update notice when a new release ships.
-
-**Full payroll & HR module** — Onboarding checklists, time tracking, PTO policies and requests, deductions (401k, health, HSA), court-ordered garnishments, W-2/W-3/940/941 generation, and a token-accessed employee self-service portal for pay stubs, W-4 updates, direct-deposit setup, and time-off requests.
-
-**Analytics dashboard + AI Insights** — KPI cards plus four charts (12-month revenue line, expenses doughnut, A/R+A/P stacked bar, 90-day cash forecast), MTD/QTD/YTD period selector, CSV/PDF export with branded headers. Optional one-shot executive brief and 11 curated predefined analyses via bring-your-own-key for any of seven providers (xAI Grok, Groq, Cloudflare Workers AI, Anthropic Claude, OpenAI, Google Gemini, or a self-hosted Cloudflare Worker gateway); keys encrypted at rest.
-
-**Inventory & reporting** — Perpetual-inventory ledger with weighted-average cost, automatic COGS journal entries, click-through drill-down on P&L and Balance Sheet rows, fuzzy duplicate detection on customer/vendor names, and Saved Reports for one-click reruns.
-
-**Customer details popout + reseller permits** — Click a customer row for a single-screen details modal with addresses, autosaving notes, attached reseller permits, and recent invoices/payments. A standalone reseller-permit module tracks expiration, validates per-state formats (WA 9-digit, CA 9-12, TX 11), and one-click-opens the state's official lookup site in your default browser for verification — the verification trail (who, when) is stored locally.
-
-**Hardened for production** — App-level HTTPS redirect + HSTS, Content-Security-Policy, Fernet at-rest encryption with versioned ciphertext (clean key rotation), portal token expiration (90-day idle + 1-year hard), Argon2id passwords, rate limiting on login and portal, and startup checks that fail hard on critical misconfig. See [docs/security-hardening.md](docs/security-hardening.md).
-
-See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+Full history in **[CHANGELOG.md](CHANGELOG.md)**.
 
 ---
 
 ## Wait — it does *that*?
 
-A few things in here that aren't normal for self-hosted bookkeeping.
+**Cryptographically tamper-evident tax forms.** Every W-2, W-3, 940, and
+941 PDF carries a SHA-256 content hash and audit ID printed in the
+footer. An auditor can recompute the hash and confirm the form hasn't
+been edited since generation, against the local `document_audits` chain.
+Not a watermark — a verification trail.
 
-**Cryptographically tamper-evident tax forms.** Every W-2, W-3, Form 940, and Form 941 PDF carries a **SHA-256 content hash and an audit ID printed in the footer**. Hand the printout to an auditor and they can recompute the hash, look it up against the local `document_audits` chain, and confirm the form hasn't been edited since you generated it. Not a watermark — a verification trail.
+**Bring-your-own-AI, including your own gateway.** AI Insights runs
+against any of seven providers (xAI Grok, Groq, Cloudflare Workers AI,
+Anthropic Claude, OpenAI, Google Gemini, or a Cloudflare Worker you host
+yourself) — keys encrypted at rest with versioned, rotatable ciphertext.
+And the whole app is agent-operable through its local API: see the
+[AI setup guide](https://www.slowbookspro.com/ai/).
 
-**Bring-your-own-AI, including your own gateway.** AI Insights and 11 predefined analyses run against any of six hosted providers (xAI Grok, Groq, Cloudflare Workers AI, Anthropic Claude, OpenAI, Google Gemini) — or, as the seventh option, against a **Cloudflare Worker you host yourself**, so the prompt never leaves infrastructure you control. API keys are encrypted at rest with Fernet under a **versioned ciphertext you can rotate without downtime**.
+**One-click reseller-permit verification.** Per-state format validation
+(WA/CA/TX), one click opens the state's official lookup, and the
+who-and-when verification trail lands on the customer record.
 
-![Analytics dashboard with AI Insights](screenshots/analytics-dashboard.png)
-
-**One-click reseller-permit verification.** Type a customer's permit number — we validate the per-state digit pattern inline (WA 9-digit, CA 9–12, TX 11). Click **Verify** and your default browser pops the state's official lookup page; whatever you decide gets stamped onto the customer record as a who-and-when verification trail. No fake API integration that breaks in six months — just the workflow done right, with the digital permit encrypted at rest and the expiration date on the dashboard reminder strip.
-
-**Boots refuse to lie to you.** Dev and debug containers run the wiring audit *before* uvicorn binds the port — if the JS bundle drifted from the Python routes (route renamed, container built off a stale checkout), the container fails to start instead of 404-ing mid-feature. Release images are gated by the same check in CI before they're ever built.
+**Boots refuse to lie to you.** Dev and debug containers run the
+frontend↔backend wiring audit *before* uvicorn binds the port — drift
+between the JS and the routes fails the boot instead of 404-ing
+mid-feature. Release images gate on the same check in CI.
 
 ---
 
 ## What it does
 
-Full feature catalog (300+ entries across every module) lives in **[docs/features.md](docs/features.md)**. Highlights:
+Full catalog (300+ entries) in **[docs/features.md](docs/features.md)**. Highlights:
 
-- **Accounts receivable** — Invoices, estimates, payments with multi-invoice allocation, credit memos, recurring schedules, batch payments, Quick Entry for paper backlogs.
-- **Accounts payable** — Purchase orders, bills (with vendor default expense accounts), bill payments, AP aging.
-- **Double-entry accounting** — Manual + auto journal entries, 50-account Chart of Accounts (Contractor template), closing-date enforcement, real-time balance updates, automatic audit log via SQLAlchemy event hooks.
+- **Accounts receivable** — invoices, estimates, payments with
+  multi-invoice allocation, credit memos, recurring schedules, batch
+  payments, Quick Entry for paper backlogs
+- **Accounts payable** — purchase orders, bills, bill payments, AP aging
+- **Double-entry core** — auto + manual journals, closing-date
+  enforcement, automatic audit log, 50-account contractor chart
+- **Banking** — register, deposits, reconciliation, check printing,
+  OFX/QFX + Chase/PayPal CSV import with dedup, SimpleFIN bank feeds,
+  shared auto-categorization rules
+- **Reports & tax** — P&L (plain & by Class), Balance Sheet, Trial
+  Balance, agings, GL, Cash Flow, Sales Tax with pay-to-government flow,
+  Schedule C, printable PDF pack
+- **Payroll & HR** — full US module with W-2/W-3/940/941, deductions,
+  garnishments, PTO, onboarding, and a token-accessed employee portal
+  ([docs/payroll-hr-module.md](docs/payroll-hr-module.md))
+- **Inventory** — perpetual ledger, weighted-average cost, automatic
+  COGS, reorder points
+- **Analytics + AI** — 8 live metrics, 90-day cash forecast, optional
+  BYOK insights
+- **Server Edition** — users, roles, attributed audit trail, serves the
+  office from one PC ([docs/server-edition.md](docs/server-edition.md))
+- **Online payments** — [Stripe](docs/setup-stripe.md),
+  [PayPal](docs/setup-paypal.md), [Square](docs/setup-square.md) behind
+  one abstraction, desktop-mode recording included
+- **Interop & migration** — QuickBooks IIF round-trip,
+  [QBO OAuth sync](docs/setup-qbo.md), Migrate Data for Xero / MYOB /
+  Sage 50 / Wave / Zoho Books / GnuCash, Opening Balances wizard
+- **Fixed assets** — register, depreciation runs, disposal with
+  gain/loss, reconciliation report
+- **Duplicate detection** — fuzzy customer/vendor matching at create time
 
-![Invoice editor seeded with IRS Pub 583 mock data](screenshots/invoices.png)
-
-- **Banking** — Bank register with running balance, deposits, credit-card charges, check printing (3-per-page), full reconciliation workflow, OFX/QFX import with FITID dedup, CSV import for Chase and PayPal exports with content-based dedup, and auto-categorization bank rules shared by every importer.
-- **Reports & tax** — P&L (plain and by Class), Balance Sheet, Trial Balance, A/R & A/P Aging, General Ledger, Cash Flow, Sales Tax with pay-to-government flow, Customer Statements, Schedule C export — plus printable PDFs and the Financial Statements Pack.
-- **Payroll & HR** — Full module with tax forms; see **[docs/payroll-hr-module.md](docs/payroll-hr-module.md)**.
-- **Analytics + AI** — Real-time BI layer with 8 metrics and a 90-day cash forecast; optional BYOK AI Insights layer. Full feature reference in [docs/features.md](docs/features.md#analytics).
-- **Inventory** — Perpetual-inventory ledger, automatic COGS, weighted-average cost, reorder points, valuation, manual adjustments.
-
-![Inventory tracking on the item form](screenshots/inventory-tracking.png)
-
-- **Duplicate detection** — Fuzzy match on customer/vendor names (difflib ≥ 0.85 after normalizing case, punctuation, and business suffixes like "Inc"/"LLC"). The form shows the matched names + similarity %; you confirm-and-create-anyway or back out.
-
-![Duplicate detection warning on customer create](screenshots/duplicate-detection.png)
-
-- **Online payments** — Stripe, PayPal, and Square behind one provider abstraction, with desktop-mode payment recording. Setup guides: [Stripe](docs/setup-stripe.md), [PayPal](docs/setup-paypal.md), [Square](docs/setup-square.md).
-- **Bank feeds** — Automatic transaction sync via [SimpleFIN](https://www.simplefin.org/): you hold the bank credential (no middleman server, no developer API keys), transactions dedup against OFX/CSV imports, and bank rules auto-categorize on arrival. See **[docs/setup-bank-feeds.md](docs/setup-bank-feeds.md)**.
-- **Server Edition** — The same signed installer can serve your whole office from one Windows PC: users with roles (admin / bookkeeper / read-only), username logins, per-user audit attribution, and a startup task that has the books serving before anyone logs in. Everyone else just needs a browser. An edition is a state, not a SKU — add a second user and you've promoted yourself, free either way. See **[docs/server-edition.md](docs/server-edition.md)**.
-
-![Server Edition dashboard served over the LAN](screenshots/server-edition-dashboard.png)
-
-![Users management — roles, deactivation, password resets](screenshots/server-edition-users.png)
-- **QuickBooks Online sync** — OAuth + bidirectional sync. See **[docs/setup-qbo.md](docs/setup-qbo.md)**.
-- **QB2003 interop** — IIF import/export with type-mapping, validation, round-trip safety, and INVOICE/PAYMENT/ESTIMATE/BILL/DEPOSIT transaction blocks (classes included).
-- **Fixed assets** — Register, depreciation runs, disposal with gain/loss, CSV import, reconciliation report.
-- **Migration onramps** — one Migrate Data page for Xero, MYOB, Sage 50, Wave, Zoho Books, and GnuCash, all dry-run-verified; Opening Balances wizard; QuickBooks IIF.
+![Invoicing, analytics, inventory, and duplicate detection](screenshots/features-grid.png)
 
 ---
 
@@ -159,19 +149,24 @@ Full feature catalog (300+ entries across every module) lives in **[docs/feature
 ### Windows — signed installer
 
 Download **[SlowBooksPro-Setup-x64.exe](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest/download/SlowBooksPro-Setup-x64.exe)**
-from the latest release and double-click it. Fully self-contained (64-bit
-Windows 10/11); also available as a portable .zip on the
-[releases page](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest).
+and double-click. Fully self-contained (64-bit Windows 10/11); portable
+.zip on the [releases page](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest).
+Each company is one SQLite file under `%LOCALAPPDATA%\SlowBooksPro` —
+upgrades and even uninstalls never touch your books.
+
+**Serve the office (Server Edition):** on the host PC, run the bundled
+`serveredition-install.ps1` from an elevated PowerShell — firewall,
+startup task, and machine-wide data location handled. Details in
+[docs/server-edition.md](docs/server-edition.md).
 
 ### macOS — signed Apple Silicon app
 
-Download the `SlowBooksPro-<version>-macos-arm64.dmg` asset from the
-[latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest).
-Open the image, drag **SlowBooks Pro** to Applications, and launch it. The app
-is signed with an Apple Developer ID and notarized for macOS 14 or newer.
-Intel Macs should use Docker until a separately tested Intel build is listed.
+Download the `SlowBooksPro-<version>-macos-arm64.dmg` from the
+[latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest),
+drag **SlowBooks Pro** to Applications, launch. Signed and notarized;
+macOS 14+. Intel Macs: use Docker until a tested Intel build ships.
 
-### Docker (servers, macOS, Linux)
+### Docker (servers, Linux, Intel Mac)
 
 ```bash
 git clone https://github.com/VonHoltenCodes/SlowBooks-Pro-2026.git
@@ -179,11 +174,12 @@ cd SlowBooks-Pro-2026
 docker compose up
 ```
 
-Open **http://localhost:3001**. PostgreSQL, migrations, and seed data are handled automatically. Docker is the path for multi-user setups (e.g. the employee portal).
+Open **http://localhost:3001** — PostgreSQL, migrations, and seed data
+are automatic.
 
-For native installs (Linux + macOS), demo data, troubleshooting, and CORS / port-change recipes, see **[INSTALL.md](INSTALL.md)**.
-
-For backups, restore, key rotation, and monitoring see **[docs/operations.md](docs/operations.md)**. For a production-launch checklist see **[docs/release-checklist.md](docs/release-checklist.md)**.
+Native installs, demo data, troubleshooting: **[INSTALL.md](INSTALL.md)**.
+Backups, restore, key rotation: **[docs/operations.md](docs/operations.md)**.
+Production checklist: **[docs/release-checklist.md](docs/release-checklist.md)**.
 
 ---
 
@@ -191,57 +187,59 @@ For backups, restore, key rotation, and monitoring see **[docs/operations.md](do
 
 | Doc | Covers |
 |-----|--------|
-| [INSTALL.md](INSTALL.md) | Install / first-run / upgrade guide (Windows installer + Docker + native Linux/macOS) |
-| [packaging/macos/README.md](packaging/macos/README.md) | Maintainer build, signing, notarization, and release-proof runbook |
-| [docs/features.md](docs/features.md) | Full feature catalog + API endpoint reference + IIF interoperability |
+| [INSTALL.md](INSTALL.md) | Install / first-run / upgrade (installer + DMG + Docker + native) |
+| [docs/server-edition.md](docs/server-edition.md) | Serving the office: setup, users & roles, troubleshooting |
+| [packaging/macos/README.md](packaging/macos/README.md) | macOS maintainer build, signing, notarization runbook |
+| [docs/features.md](docs/features.md) | Full feature catalog + API endpoint reference |
 | [docs/development.md](docs/development.md) | Tech stack, project structure, contributor flow |
 | [docs/data-model.md](docs/data-model.md) | Database schema — 55 tables |
-| [docs/operations.md](docs/operations.md) | Backups, restore, key rotation, monitoring runbook |
-| [docs/payroll-hr-module.md](docs/payroll-hr-module.md) | Payroll / HR — models, routes, UI pages, pending items |
-| [docs/release-checklist.md](docs/release-checklist.md) | Production deployment checklist — secrets, TLS, backups, monitoring, pre-flight |
-| [docs/tls-proxy-setup.md](docs/tls-proxy-setup.md) | How to put a real cert in front of Slowbooks (Caddy, nginx, Traefik) |
-| [docs/security-hardening.md](docs/security-hardening.md) | Production-readiness security pass — what changed, why, and how it's tested |
-| [docs/hipaa-compliance.md](docs/hipaa-compliance.md) | HIPAA Security Rule mapping — what aligns, what doesn't, honest gap list |
-| [docs/wiring-audit.md](docs/wiring-audit.md) | Frontend ↔ backend disconnect audit methodology and findings |
-| [docs/setup-qbo.md](docs/setup-qbo.md) | QuickBooks Online OAuth + sync setup |
-| [docs/setup-stripe.md](docs/setup-stripe.md) | Stripe payment processing setup |
-| [docs/setup-paypal.md](docs/setup-paypal.md) | PayPal payment processing setup |
-| [docs/setup-square.md](docs/setup-square.md) | Square payment processing setup |
-| [docs/migrate-from-myob.md](docs/migrate-from-myob.md) | Migrating from MYOB — export walkthrough + dry-run flow |
-| [SECURITY.md](SECURITY.md) | Public security policy and responsible disclosure |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor flow |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/operations.md](docs/operations.md) | Backups, restore, key rotation, monitoring |
+| [docs/payroll-hr-module.md](docs/payroll-hr-module.md) | Payroll / HR module reference |
+| [docs/release-checklist.md](docs/release-checklist.md) | Production deployment checklist |
+| [docs/tls-proxy-setup.md](docs/tls-proxy-setup.md) | Real certs in front of Slowbooks (Caddy, nginx, Traefik) |
+| [docs/security-hardening.md](docs/security-hardening.md) | Security pass — what changed, why, how it's tested |
+| [docs/hipaa-compliance.md](docs/hipaa-compliance.md) | HIPAA mapping — honest gap list included |
+| [docs/wiring-audit.md](docs/wiring-audit.md) | Frontend ↔ backend drift audit methodology |
+| [docs/setup-bank-feeds.md](docs/setup-bank-feeds.md) | SimpleFIN bank feeds |
+| [docs/setup-qbo.md](docs/setup-qbo.md) · [Stripe](docs/setup-stripe.md) · [PayPal](docs/setup-paypal.md) · [Square](docs/setup-square.md) | Integrations |
+| [docs/migrate-from-myob.md](docs/migrate-from-myob.md) | MYOB migration walkthrough |
+| [SECURITY.md](SECURITY.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) | Policy, contributing, history |
 
 ---
 
 ## Tech Stack
 
-Python 3.13 + FastAPI on PostgreSQL 17 (SQLite for tests and for the desktop app, one file per company) with SQLAlchemy 2.0 and Alembic migrations. Vanilla HTML/CSS/JS single-page app — no framework, no build step. WeasyPrint + Jinja2 for PDFs. Self-hosted Chart.js for analytics (no CDN; LAN-deployable). Stripe, PayPal, and Square for online payments (hosted checkout only — card data never touches the app). python-quickbooks + intuit-oauth for QBO sync. Runs on port 3001 by default.
+Python + FastAPI on PostgreSQL (SQLite for tests and desktop companies,
+one file each) with SQLAlchemy 2.0 and Alembic. Vanilla HTML/CSS/JS
+single-page app — no framework, no build step. WeasyPrint + Jinja2 for
+PDFs; self-hosted Chart.js (no CDN, LAN-deployable). Hosted-checkout
+payments only — card data never touches the app. Port 3001.
 
-The Windows and Apple Silicon macOS desktop builds freeze the same codebase
-with PyInstaller and pywebview, run Alembic in process, and bundle Pango for
-PDFs. Windows is signed in CI through Azure Trusted Signing; macOS transport
-artifacts are built in CI, then signed locally with an Apple Developer ID and
-notarized by Apple before publication.
+The Windows and Apple Silicon desktop builds freeze the same codebase
+with PyInstaller + pywebview. Windows signs in CI via Azure Trusted
+Signing; macOS transport artifacts build in CI, then are signed and
+notarized locally with the maintainer's Apple Developer ID.
 
-Full project layout in [docs/development.md](docs/development.md).
+Full layout in [docs/development.md](docs/development.md).
 
 ---
 
 ## License
 
-**Source Available — Free for personal and enterprise use. No commercial resale.**
-
-You can use, modify, and run Slowbooks Pro for any personal, educational, or internal business purpose. You cannot sell it or offer it as a paid service. See [LICENSE](LICENSE) for full terms.
+**Source Available — free for personal and enterprise use. No commercial
+resale.** Use it, modify it, run your business on it; don't sell it or
+offer it as a paid service. Full terms in [LICENSE](LICENSE).
 
 ---
 
 ## Acknowledgments
 
 - 14 years of QuickBooks 2003 Pro (1 license, $199.95, 2003 dollars)
-- IDA Pro and the reverse-engineering community, for the aesthetic this codebase cosplays
+- The reverse-engineering community, for the aesthetic the early
+  codebase cosplayed
 - The Pervasive PSQL documentation that nobody else has read since 2005
-- Every small business owner who lost software they paid for when activation servers died
+- Every small business owner who lost software they paid for when
+  activation servers died
 
 ---
 
@@ -250,9 +248,9 @@ You can use, modify, and run Slowbooks Pro for any personal, educational, or int
 - [VonHoltenCodes](https://github.com/VonHoltenCodes) — Creator
 - [PNWImport](https://github.com/PNWImport) — Security hardening (auth, CORS, path traversal, atomic writes, non-root Docker, rate limiting), analytics engine, AI insights with 7-provider support, Cloudflare Worker gateway, inventory ledger, drill-down reports, fuzzy duplicate detection, saved reports, payroll/HR module, tax-form audit chain, reseller-permit module, customer details popout
 - [jake-378](https://github.com/jake-378) — Backup UI fixes, report period selectors, invoice terms autofill, date validation fixes
-- [moshgrossman](https://github.com/moshgrossman) — Native Windows desktop mode groundwork: SQLite file-per-company with manifest, company picker, desktop launcher, SQLite-compatible migrations, print/PDF window handling; desktop download/save fixes (native save dialogs for CSV/PDF/backups, download-link interception)
+- [moshgrossman](https://github.com/moshgrossman) — Native Windows desktop mode groundwork: SQLite file-per-company with manifest, company picker, desktop launcher, SQLite-compatible migrations, print/PDF window handling; desktop download/save fixes
 - [WC3D](https://github.com/WC3D) — Jinja2 XSS security fix
-- [Alex Jordan (@LayoverLogic)](https://github.com/LayoverLogic) — Security hardening (company-DB creation quoting, DOM debug-string cleanup), IIF BILL/DEPOSIT import, class tracking design, multi-currency design with the Bank of Canada FX service, sortable list columns, country dropdowns
+- [Alex Jordan (@LayoverLogic)](https://github.com/LayoverLogic) — Security hardening, IIF BILL/DEPOSIT import, class tracking design, multi-currency design with the Bank of Canada FX service, sortable list columns, country dropdowns
 - [amazon1148](https://github.com/amazon1148) — CSV bank import with auto-detection for Chase and PayPal statement formats
 - [Joel Macklow (@joelmacklow)](https://github.com/joelmacklow) — Fixed assets, Xero import with dry-run, opening-balance wizard, report PDF pipeline, and security regression-suite concepts, specified in his NZ localization fork
-- [Keith (@ContractorKeith)](https://github.com/ContractorKeith) — macOS maintainer: native Apple Silicon `.app`/DMG build pipeline with local Developer ID signing and notarization, per-user Application Support data layout, frozen-bundle fontconfig self-containment, `.env` permission hardening; long-time macOS field tester
+- [Keith (@ContractorKeith)](https://github.com/ContractorKeith) — macOS maintainer: native Apple Silicon `.app`/DMG pipeline with local Developer ID signing and notarization, per-user Application Support data layout, frozen-bundle fontconfig self-containment, `.env` permission hardening; long-time macOS field tester
