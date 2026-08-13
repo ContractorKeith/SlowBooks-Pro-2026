@@ -115,3 +115,60 @@ def test_data_dir_flag_redirects_everything(tmp_path):
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert (target / "companies").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# Issue #52: the server child must die with its launcher parent
+# ---------------------------------------------------------------------------
+
+
+def test_parent_watcher_exits_when_parent_dies(tmp_path):
+    """Real process pair: a fake 'launcher' spawns a watcher child; killing
+    the launcher must take the child down within the poll interval."""
+    import subprocess
+    import sys as _sys
+    import time
+
+    child_script = tmp_path / "child.py"
+    child_script.write_text(
+        "import os, sys, time\n"
+        "sys.path.insert(0, %r)\n"
+        "import desktop_launcher\n"
+        "desktop_launcher._watch_parent(os.getppid(), poll_seconds=0.2)\n"
+        "time.sleep(30)\n"
+        % str(
+            tmp_path.parent
+            and __import__("pathlib").Path(__file__).resolve().parents[1].as_posix()
+        )
+    )
+    parent_script = tmp_path / "parent.py"
+    parent_script.write_text(
+        "import subprocess, sys, time\n"
+        f"p = subprocess.Popen([sys.executable, {str(child_script)!r}])\n"
+        "print(p.pid, flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    parent = subprocess.Popen(
+        [_sys.executable, str(parent_script)], stdout=subprocess.PIPE, text=True
+    )
+    child_pid = int(parent.stdout.readline().strip())
+
+    # While the parent lives, the child survives several poll cycles
+    time.sleep(1.0)
+    import os as _os
+
+    _os.kill(child_pid, 0)  # raises if dead — it must be alive
+
+    # Kill the launcher; the watcher must take the child down
+    parent.kill()
+    parent.wait()
+    deadline = time.time() + 5
+    alive = True
+    while time.time() < deadline:
+        try:
+            _os.kill(child_pid, 0)
+            time.sleep(0.2)
+        except OSError:
+            alive = False
+            break
+    assert not alive, "server child outlived its launcher parent"
