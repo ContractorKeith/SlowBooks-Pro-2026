@@ -30,8 +30,10 @@ def _get_smtp_settings(db: Session) -> dict:
         "smtp_from_name",
         "smtp_use_tls",
     ]
+    from app.services.settings_service import _maybe_decrypt
+
     rows = db.query(Settings).filter(Settings.key.in_(keys)).all()
-    settings = {r.key: r.value for r in rows}
+    settings = {r.key: _maybe_decrypt(r.key, r.value) for r in rows}
     return settings
 
 

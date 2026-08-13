@@ -27,14 +27,21 @@ from app.models.settings import Settings, DEFAULT_SETTINGS
 
 def _get_setting(db: Session, key: str) -> str:
     """Get a single setting value, falling back to DEFAULT_SETTINGS."""
+    from app.services.settings_service import _maybe_decrypt
+
     row = db.query(Settings).filter(Settings.key == key).first()
     if row:
-        return row.value or ""
+        return _maybe_decrypt(key, row.value) or ""
     return DEFAULT_SETTINGS.get(key, "")
 
 
 def _set_setting(db: Session, key: str, value: str):
-    """Upsert a single setting."""
+    """Upsert a single setting (encrypting credential keys at rest)."""
+    from app.services.crypto import encrypt_value, is_encrypted
+    from app.services.settings_service import ENCRYPTED_SETTINGS_KEYS
+
+    if key in ENCRYPTED_SETTINGS_KEYS and value and not is_encrypted(value):
+        value = encrypt_value(value)
     row = db.query(Settings).filter(Settings.key == key).first()
     if row:
         row.value = value
