@@ -349,6 +349,8 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"notarization log is unreadable; see {log_path}") from exc
     issues = log_payload.get("issues")
+    if issues is None:
+        issues = []
     if not isinstance(issues, list) or any(
         not isinstance(issue, dict) for issue in issues
     ):

@@ -146,7 +146,8 @@ def test_pre_notary_policy_allows_only_lone_unnotarized_rejection():
     )
 
 
-def test_notarize_inspects_accepted_log_and_staples(monkeypatch, tmp_path):
+@pytest.mark.parametrize("issues", [[], None])
+def test_notarize_inspects_accepted_log_and_staples(monkeypatch, tmp_path, issues):
     dmg = tmp_path / "SlowBooksPro.dmg"
     dmg.write_bytes(b"dmg")
     submission_id = "11111111-2222-3333-4444-555555555555"
@@ -164,7 +165,7 @@ def test_notarize_inspects_accepted_log_and_staples(monkeypatch, tmp_path):
         if args[1:3] == ("notarytool", "log"):
             Path(args[4]).write_text(
                 json.dumps(
-                    {"jobId": submission_id, "status": "Accepted", "issues": []}
+                    {"jobId": submission_id, "status": "Accepted", "issues": issues}
                 ),
                 encoding="utf-8",
             )
