@@ -13,9 +13,9 @@ cloud, no account, no telemetry, no caps, no paid tiers.
 [Docker / Linux](#quick-start) ·
 [slowbookspro.com](https://www.slowbookspro.com)
 
-![Company Snapshot in light and dark themes](screenshots/hero-themes.png)
+![Slowbooks Pro 2026 Edition and Server Edition](screenshots/hero-abouts.png)
 
-*Both themes ship in the box — toggle from the topbar or `Alt+D`; the choice persists.*
+*One free product, two shapes: your desktop — or the whole office from one PC.*
 
 ---
 
@@ -139,6 +139,10 @@ Full catalog (300+ entries) in **[docs/features.md](docs/features.md)**. Highlig
 - **Fixed assets** — register, depreciation runs, disposal with
   gain/loss, reconciliation report
 - **Duplicate detection** — fuzzy customer/vendor matching at create time
+
+![Company Snapshot in light and dark themes](screenshots/hero-themes.png)
+
+*Both themes ship in the box — toggle from the topbar or `Alt+D`; the choice persists.*
 
 ![Invoicing, analytics, inventory, and duplicate detection](screenshots/features-grid.png)
 
