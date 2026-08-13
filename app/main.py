@@ -187,9 +187,11 @@ async def lifespan(app: FastAPI):
 
         _db = SessionLocal()
         try:
-            n = upgrade_plaintext_secrets(_db)
-            if n:
-                print(f"Encrypted {n} legacy plaintext secret setting(s) at rest")
+            # Log a constant message only: interpolating anything derived
+            # from the secret-touching upgrader trips CodeQL's clear-text-
+            # logging taint (alert #38), and the count isn't worth arguing.
+            if upgrade_plaintext_secrets(_db):
+                print("Encrypted legacy plaintext secret settings at rest")
         finally:
             _db.close()
     except Exception:
