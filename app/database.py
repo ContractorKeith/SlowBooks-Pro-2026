@@ -69,6 +69,12 @@ def get_db(request: HTTPConnection = None):
         session = getattr(request, "session", None) if request is not None else None
         if isinstance(session, dict) and session.get("authenticated") is True:
             db.info["acting_username"] = session.get("username") or "operator"
+        elif request is not None:
+            # Scoped API tokens: the middleware stashes the principal on
+            # request.state — audit rows attribute to "token:<label>".
+            tp = getattr(getattr(request, "state", None), "token_principal", None)
+            if isinstance(tp, dict) and tp.get("username"):
+                db.info["acting_username"] = tp["username"]
     except Exception:
         pass  # attribution must never break a request
     try:
