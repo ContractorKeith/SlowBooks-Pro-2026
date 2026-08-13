@@ -187,3 +187,19 @@ def test_audit_never_stores_password_hashes(client, db_session):
     assert row.username == "admin"
     assert row.new_values.get("password_hash") == "***"
     assert "argon2" not in str(row.new_values)
+
+
+def test_audit_api_returns_username_field(client, db_session):
+    """Regression: the /api/audit response model must expose `username`.
+
+    The write path was verified against the DB while the response model
+    silently stripped the field — every layer looked healthy except the
+    one users see. Read THROUGH THE API, like the UI does."""
+    _mk_user(db_session, "keeper", "keeper-password-1", ROLE_BOOKKEEPER)
+    _login_as(client, "keeper", "keeper-password-1")
+    client.post("/api/customers", json={"name": "API Visibility Inc"})
+
+    rows = client.get("/api/audit", params={"table_name": "customers"}).json()
+    assert rows, "expected at least one customers audit row"
+    assert "username" in rows[0], "response model is stripping username"
+    assert rows[0]["username"] == "keeper"
