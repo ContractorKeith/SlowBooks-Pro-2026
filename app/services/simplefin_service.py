@@ -77,20 +77,24 @@ def send(request: dict, timeout: float = DEFAULT_TIMEOUT) -> httpx.Response:
     Every outbound URL passes the SSRF guard first — this is the single
     network chokepoint for the SimpleFIN feature."""
     _assert_public_https(request["url"])
-    with httpx.Client(
-        verify=True,
-        follow_redirects=False,
-        timeout=timeout,
-        headers={"User-Agent": "slowbooks-bankfeed"},
-        trust_env=False,
-    ) as client:
-        return client.request(
-            request["method"],
-            request["url"],
-            params=request.get("params"),
-            auth=request.get("auth"),
-            content=request.get("content"),
-        )
+    try:
+        with httpx.Client(
+            verify=True,
+            follow_redirects=False,
+            timeout=timeout,
+            headers={"User-Agent": "slowbooks-bankfeed"},
+            trust_env=False,
+        ) as client:
+            return client.request(
+                request["method"],
+                request["url"],
+                params=request.get("params"),
+                auth=request.get("auth"),
+                content=request.get("content"),
+            )
+    except httpx.RequestError:
+        logger.warning("SimpleFIN bridge request failed", exc_info=True)
+        raise SimpleFINError("Could not reach the SimpleFIN bridge right now")
 
 
 def decode_setup_token(setup_token: str) -> str:
