@@ -175,8 +175,9 @@ const BankingPage = {
     },
 
     async showAccountForm() {
-        const coaAccounts = await API.get('/accounts?account_type=asset');
-        const opts = coaAccounts.map(a => `<option value="${a.id}">${a.account_number} - ${escapeHtml(a.name)}</option>`).join('');
+        const accounts = await API.get('/accounts');
+        const coaAccounts = accounts.filter(a => ['asset', 'liability'].includes(String(a.account_type || '').toLowerCase()));
+        const opts = coaAccounts.map(a => `<option value="${a.id}">${a.account_number} - ${escapeHtml(a.name)} (${escapeHtml(a.account_type)})</option>`).join('');
 
         openModal('New Bank Account', `
             <form onsubmit="BankingPage.saveAccount(event)">
