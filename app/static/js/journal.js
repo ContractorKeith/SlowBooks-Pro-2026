@@ -72,6 +72,7 @@ const JournalPage = {
         const classGroup = await classFormGroupHtml();
         const jobGroup = await jobFormGroupHtml(null);
         await CostCodes.load();
+        await Nonprofit.loadFunds();
         JournalPage._accounts = accounts;
         JournalPage._lineCount = 2;
 
@@ -142,6 +143,33 @@ const JournalPage = {
             </tr>`);
     },
 
+    // Split support (nonprofit): the line's amount, and the expansion of
+    // one row into the rule's shares — same account, the debit/credit
+    // side preserved, fund and function set per share.
+    lineAmount(row) {
+        return (parseFloat(row.querySelector('.je-debit')?.value) || 0) || (parseFloat(row.querySelector('.je-credit')?.value) || 0);
+    },
+    splitApply(row, res) {
+        const isDebit = (parseFloat(row.querySelector('.je-debit')?.value) || 0) > 0;
+        const baseDesc = row.querySelector('.je-desc')?.value || '';
+        let anchor = row;
+        res.lines.forEach((ln, i) => {
+            const clone = row.cloneNode(true);
+            clone.dataset.jeline = JournalPage._lineCount++;
+            // cloneNode drops <select> state; copy it by hand
+            row.querySelectorAll('select').forEach((sel, k) => { clone.querySelectorAll('select')[k].value = sel.value; });
+            clone.querySelector('.je-desc').value = `${baseDesc} (${res.rule_name}: ${Nonprofit.label(ln.function) || ln.class_name || 'share'})`;
+            clone.querySelector(isDebit ? '.je-debit' : '.je-credit').value = Number(ln.amount).toFixed(2);
+            clone.querySelector(isDebit ? '.je-credit' : '.je-debit').value = 0;
+            const fund = clone.querySelector('.je-function-fund'); if (fund) fund.value = ln.class_id || '';
+            const fn = clone.querySelector('.je-function'); if (fn) fn.value = ln.function || '';
+            anchor.insertAdjacentElement('afterend', clone);
+            anchor = clone;
+        });
+        row.remove();
+        JournalPage.recalc();
+    },
+
     recalc() {
         let totalDebit = 0, totalCredit = 0;
         $$('#je-lines tr').forEach(row => {
@@ -177,6 +205,7 @@ const JournalPage = {
                     debit, credit,
                     description: row.querySelector('.je-desc')?.value || '',
                     cost_code_id: CostCodes.fromRow(row, 'je-cost-code'),
+                    class_id: Nonprofit.fundFromRow(row, 'je-function'),
                     function: Nonprofit.fromRow(row, 'je-function'),
                 });
             }

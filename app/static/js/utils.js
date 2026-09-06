@@ -311,13 +311,61 @@ const Nonprofit = {
         return `<div class="form-group"><label>Function</label>
             <select name="function">${Nonprofit.optionsHtml(selected)}</select></div>`;
     },
-    // Per-line cell + header for multi-line documents (journal, bill)
-    headHtml() { return Nonprofit.enabled() ? '<th scope="col">Function</th>' : ''; },
-    cellHtml(cls, selected) {
-        return Nonprofit.enabled() ? `<td><select class="${cls}">${Nonprofit.optionsHtml(selected, '—')}</select></td>` : '';
+    label(fn) { const f = Nonprofit.FUNCTIONS.find(([v]) => v === fn); return f ? f[1] : (fn || ''); },
+    // Per-line cells + header for multi-line documents (journal, bill):
+    // a fund, a function, and the Split button that expands the line by a
+    // saved allocation rule. Call loadFunds() before rendering rows.
+    _funds: null,
+    _rules: null,
+    async loadFunds() {
+        if (!Nonprofit.enabled()) return;
+        try {
+            [Nonprofit._funds, Nonprofit._rules] = await Promise.all([API.get('/classes'), API.get('/nonprofit/allocation-rules')]);
+        } catch (e) { Nonprofit._funds = Nonprofit._funds || []; Nonprofit._rules = Nonprofit._rules || []; }
+    },
+    headHtml() { return Nonprofit.enabled() ? `<th scope="col">${T('Class')}</th><th scope="col">Function</th>` : ''; },
+    cellHtml(cls, selected, fundSelected) {
+        if (!Nonprofit.enabled()) return '';
+        const funds = (Nonprofit._funds || []).map(f => `<option value="${f.id}" ${fundSelected === f.id ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('');
+        const split = (Nonprofit._rules || []).length ? ` <button type="button" class="btn btn-sm btn-secondary np-split" title="Split this line by an allocation rule" onclick="Nonprofit.splitRow(this)">Split</button>` : '';
+        return `<td><select class="${cls}-fund"><option value="">header</option>${funds}</select></td>` +
+            `<td style="white-space:nowrap"><select class="${cls}">${Nonprofit.optionsHtml(selected, '—')}</select>${split}</td>`;
     },
     fromRow(row, cls) { return row.querySelector(`.${cls}`)?.value || null; },
+    fundFromRow(row, cls) { const v = row.querySelector(`.${cls}-fund`)?.value; return v ? parseInt(v) : null; },
     fromForm(form) { return form.function ? (form.function.value || null) : null; },
+
+    // Split: an inline chooser under the row; on Apply the page's
+    // splitApply(row, lines) clones the row into one line per share.
+    splitRow(btn) {
+        const row = btn.closest('tr');
+        const next = row.nextElementSibling;
+        if (next && next.classList.contains('np-split-row')) { next.remove(); return; }
+        const rules = (Nonprofit._rules || []).map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+        row.insertAdjacentHTML('afterend', `<tr class="np-split-row"><td colspan="12" style="background:var(--gray-50);font-size:11px;">
+            Split this line by <select class="np-split-rule">${rules}</select>
+            <button type="button" class="btn btn-sm btn-primary" onclick="Nonprofit.splitApply(this)">Apply</button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.closest('tr').remove()">Cancel</button>
+            <span class="np-split-msg" style="margin-left:8px;color:var(--gray-500)"></span></td></tr>`);
+    },
+    async splitApply(btn) {
+        const chooser = btn.closest('tr');
+        const row = chooser.previousElementSibling;
+        const page = row.dataset.jeline !== undefined ? JournalPage : (row.dataset.billline !== undefined ? BillsPage : null);
+        if (!page || !page.splitApply) return;
+        const amount = page.lineAmount(row);
+        const msg = chooser.querySelector('.np-split-msg');
+        if (!(amount > 0)) { msg.textContent = 'Enter an amount first'; return; }
+        const ruleId = chooser.querySelector('.np-split-rule').value;
+        const form = row.closest('form');
+        const headerFund = form && form.class_id && form.class_id.value ? `&class_id=${form.class_id.value}` : '';
+        const rowFund = row.querySelector('select[class$="-fund"]')?.value;
+        try {
+            const res = await API.get(`/nonprofit/allocation-rules/${ruleId}/split?amount=${amount}${rowFund ? `&class_id=${rowFund}` : headerFund}`);
+            chooser.remove();
+            page.splitApply(row, res);
+        } catch (err) { msg.textContent = err.message; }
+    },
 };
 
 // Normalize a form's class_id string to int-or-null for the API payload.

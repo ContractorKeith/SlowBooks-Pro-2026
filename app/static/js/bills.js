@@ -108,6 +108,7 @@ const BillsPage = {
         const classGroup = await classFormGroupHtml();
         const jobGroup = await jobFormGroupHtml(null);
         await CostCodes.load();
+        await Nonprofit.loadFunds();
 
         BillsPage._vendors = vendors;
         const itemOpts = items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
@@ -256,6 +257,30 @@ const BillsPage = {
         });
     },
 
+    // Split support (nonprofit): one line becomes the rule's shares, each
+    // with quantity 1 and the share as its rate.
+    lineAmount(row) {
+        return (parseFloat(row.querySelector('.line-qty')?.value) || 0) * (parseFloat(row.querySelector('.line-rate')?.value) || 0);
+    },
+    splitApply(row, res) {
+        const baseDesc = row.querySelector('.line-desc')?.value || '';
+        let anchor = row;
+        res.lines.forEach(ln => {
+            const clone = row.cloneNode(true);
+            clone.dataset.billline = BillsPage.lineCount++;
+            row.querySelectorAll('select').forEach((sel, k) => { clone.querySelectorAll('select')[k].value = sel.value; });
+            clone.querySelector('.line-desc').value = `${baseDesc} (${res.rule_name}: ${Nonprofit.label(ln.function) || ln.class_name || 'share'})`;
+            clone.querySelector('.line-qty').value = 1;
+            clone.querySelector('.line-rate').value = Number(ln.amount).toFixed(2);
+            const fund = clone.querySelector('.line-function-fund'); if (fund) fund.value = ln.class_id || '';
+            const fn = clone.querySelector('.line-function'); if (fn) fn.value = ln.function || '';
+            anchor.insertAdjacentElement('afterend', clone);
+            anchor = clone;
+        });
+        row.remove();
+        BillsPage.recalc();
+    },
+
     addLine() {
         const idx = BillsPage.lineCount++;
         const itemOpts = BillsPage._items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
@@ -282,6 +307,7 @@ const BillsPage = {
                 quantity: parseFloat(row.querySelector('.line-qty')?.value) || 1,
                 rate: parseFloat(row.querySelector('.line-rate')?.value) || 0,
                 cost_code_id: CostCodes.fromRow(row, 'line-cost-code'),
+                class_id: Nonprofit.fundFromRow(row, 'line-function'),
                 function: Nonprofit.fromRow(row, 'line-function'),
                 is_billable: !!row.querySelector('.line-billable')?.checked,
                 line_order: i,

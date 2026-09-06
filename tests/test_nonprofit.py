@@ -434,3 +434,304 @@ def test_release_respects_closing_date(client, db_session, seed_accounts):
     assert (
         client.post(f"/api/nonprofit/releases/{r.json()['id']}/void").status_code == 403
     )
+
+
+# ---------------------------------------------------------------------------
+# Allocation rules, Split, and the period-end functional allocation
+# ---------------------------------------------------------------------------
+
+
+def _rule(client, name="Rent by square footage", **extra):
+    body = {
+        "name": name,
+        "basis": "percent",
+        "targets": [
+            {"function": "program", "weight": 70},
+            {"function": "management", "weight": 20},
+            {"function": "fundraising", "weight": 10},
+        ],
+    }
+    body.update(extra)
+    r = client.post("/api/nonprofit/allocation-rules", json=body)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_allocation_rule_crud_and_validation(client, seed_accounts):
+    rule = _rule(client)
+    assert [t["function"] for t in rule["targets"]] == [
+        "program",
+        "management",
+        "fundraising",
+    ]
+    assert rule["basis"] == "percent" and rule["is_active"] is True
+
+    # duplicate name, bad basis, empty targets, target with nothing
+    assert (
+        client.post(
+            "/api/nonprofit/allocation-rules",
+            json={
+                "name": "rent BY square footage",
+                "targets": [{"function": "program"}],
+            },
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            "/api/nonprofit/allocation-rules",
+            json={"name": "x", "basis": "moon", "targets": [{"function": "program"}]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/nonprofit/allocation-rules", json={"name": "y", "targets": []}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/nonprofit/allocation-rules",
+            json={"name": "z", "targets": [{"weight": 1}]},
+        ).status_code
+        == 422
+    )
+    # hours basis needs a job on every target
+    assert (
+        client.post(
+            "/api/nonprofit/allocation-rules",
+            json={"name": "h", "basis": "hours", "targets": [{"function": "program"}]},
+        ).status_code
+        == 422
+    )
+
+    # update replaces targets; deactivate hides from the default list
+    r = client.put(
+        f"/api/nonprofit/allocation-rules/{rule['id']}",
+        json={
+            "name": "Rent",
+            "basis": "square_feet",
+            "is_active": False,
+            "targets": [
+                {"function": "program", "weight": 1200},
+                {"function": "management", "weight": 300},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert len(r.json()["targets"]) == 2 and r.json()["basis"] == "square_feet"
+    assert client.get("/api/nonprofit/allocation-rules").json() == []
+    assert (
+        len(client.get("/api/nonprofit/allocation-rules?include_inactive=true").json())
+        == 1
+    )
+    assert (
+        client.delete(f"/api/nonprofit/allocation-rules/{rule['id']}").status_code
+        == 200
+    )
+    assert (
+        client.get(f"/api/nonprofit/allocation-rules/{rule['id']}").status_code == 404
+    )
+
+
+def test_split_is_cents_exact_and_hours_basis_reads_time_entries(
+    client, db_session, seed_accounts, seed_customer
+):
+    rule = _rule(client)
+    r = client.get(f"/api/nonprofit/allocation-rules/{rule['id']}/split?amount=100.01")
+    assert r.status_code == 200, r.text
+    lines = r.json()["lines"]
+    amounts = {ln["function"]: Decimal(ln["amount"]) for ln in lines}
+    assert sum(amounts.values()) == Decimal("100.01")
+    assert amounts["management"] == Decimal("20.00")
+    assert amounts["fundraising"] == Decimal("10.00")
+    assert amounts["program"] == Decimal("70.01")  # remainder to the largest weight
+    assert (
+        client.get(
+            f"/api/nonprofit/allocation-rules/{rule['id']}/split?amount=0"
+        ).status_code
+        == 422
+    )
+
+    # hours: two grants (jobs), 30 h and 10 h in July
+    a = client.post(
+        "/api/jobs", json={"customer_id": seed_customer.id, "name": "Grant A"}
+    ).json()
+    b = client.post(
+        "/api/jobs", json={"customer_id": seed_customer.id, "name": "Grant B"}
+    ).json()
+    fa = client.post("/api/classes", json={"name": "Fund A"}).json()
+    fb = client.post("/api/classes", json={"name": "Fund B"}).json()
+    emp = client.post(
+        "/api/employees",
+        json={
+            "first_name": "Bo",
+            "last_name": "Hours",
+            "pay_type": "hourly",
+            "pay_rate": 20,
+        },
+    ).json()
+    for job, hrs in ((a, 30), (b, 10)):
+        client.post(
+            "/api/time-entries",
+            json={
+                "employee_id": emp["id"],
+                "date": "2026-07-12",
+                "hours_regular": hrs,
+                "job_id": job["id"],
+            },
+        )
+    hours_rule = _rule(
+        client,
+        "Wages by grant hours",
+        basis="hours",
+        targets=[
+            {"class_id": fa["id"], "function": "program", "job_id": a["id"]},
+            {"class_id": fb["id"], "function": "program", "job_id": b["id"]},
+        ],
+    )
+    r = client.get(
+        f"/api/nonprofit/allocation-rules/{hours_rule['id']}/split?amount=1000&start_date=2026-07-01&end_date=2026-07-31"
+    )
+    assert r.status_code == 200, r.text
+    shares = {ln["class_name"]: Decimal(ln["amount"]) for ln in r.json()["lines"]}
+    assert shares == {"Fund A": Decimal("750.00"), "Fund B": Decimal("250.00")}
+    # no hours in June -> nothing to split on
+    r = client.get(
+        f"/api/nonprofit/allocation-rules/{hours_rule['id']}/split?amount=1000&start_date=2026-06-01&end_date=2026-06-30"
+    )
+    assert r.status_code == 422
+
+
+def test_functional_allocation_reclasses_and_is_idempotent_for_period(
+    client, db_session, seed_accounts
+):
+    general = client.post(
+        "/api/classes", json={"name": "General Fund", "default_function": "management"}
+    ).json()
+    rent = seed_accounts["6100"] if "6100" in seed_accounts else None
+    if rent is None:
+        rent = client.post(
+            "/api/accounts",
+            json={"name": "Rent", "account_number": "6100", "account_type": "expense"},
+        ).json()
+        rent_id = rent["id"]
+    else:
+        rent_id = rent.id
+    checking = seed_accounts["1010"]
+    # rent posted with NO function (explicit None) -> the unassigned pool
+    create_journal_entry(
+        db_session,
+        date(2026, 7, 5),
+        "July rent",
+        [
+            {
+                "account_id": rent_id,
+                "debit": Decimal("1000"),
+                "credit": Decimal("0"),
+                "class_id": general["id"],
+                "function": None,
+            },
+            {
+                "account_id": checking.id,
+                "debit": Decimal("0"),
+                "credit": Decimal("1000"),
+            },
+        ],
+    )
+    db_session.commit()
+    rule = _rule(client, source_account_id=rent_id)
+
+    pl_before = client.get(
+        "/api/reports/profit-loss?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+    byc_before = client.get(
+        "/api/reports/profit-loss-by-class?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+
+    preview = client.get(
+        f"/api/nonprofit/allocation-rules/{rule['id']}/preview?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+    assert Decimal(preview["total"]) == Decimal("1000")
+    assert [Decimal(ln["amount"]) for ln in preview["lines"]] == [
+        Decimal("700"),
+        Decimal("200"),
+        Decimal("100"),
+    ]
+
+    r = client.post(
+        "/api/nonprofit/allocations",
+        json={
+            "date": "2026-07-31",
+            "rule_id": rule["id"],
+            "period_start": "2026-07-01",
+            "period_end": "2026-07-31",
+        },
+    )
+    assert r.status_code == 201, r.text
+    fa = r.json()
+    assert fa["number"].startswith("FA-") and Decimal(fa["total"]) == Decimal("1000")
+    assert {ln["function"]: Decimal(ln["amount"]) for ln in fa["lines"]} == {
+        "program": Decimal("700"),
+        "management": Decimal("200"),
+        "fundraising": Decimal("100"),
+    }
+    txn = db_session.get(Transaction, fa["transaction_id"])
+    assert txn.source_type == "functional_allocation"
+    by_fn = {}
+    for ln in txn.lines:
+        by_fn[ln.function] = by_fn.get(ln.function, Decimal("0")) + ln.debit - ln.credit
+    assert by_fn == {
+        "program": Decimal("700"),
+        "management": Decimal("200"),
+        "fundraising": Decimal("100"),
+        None: Decimal("-1000"),
+    }
+    assert all(ln.class_id == general["id"] for ln in txn.lines)  # fund-neutral reclass
+    assert _ledger_balanced(db_session)
+
+    # P&L and P&L by Class unchanged by the reclass
+    pl_after = client.get(
+        "/api/reports/profit-loss?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+    assert pl_after["total_expenses"] == pl_before["total_expenses"]
+    byc_after = client.get(
+        "/api/reports/profit-loss-by-class?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+    assert {c["class_name"]: c["expenses"] for c in byc_after["classes"]} == {
+        c["class_name"]: c["expenses"] for c in byc_before["classes"]
+    }
+
+    # the pool is empty now: a second run for the period is refused
+    preview = client.get(
+        f"/api/nonprofit/allocation-rules/{rule['id']}/preview?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+    assert preview["pool"] == [] and Decimal(preview["total"]) == Decimal("0")
+    again = client.post(
+        "/api/nonprofit/allocations",
+        json={
+            "date": "2026-07-31",
+            "rule_id": rule["id"],
+            "period_start": "2026-07-01",
+            "period_end": "2026-07-31",
+        },
+    )
+    assert again.status_code == 422
+    # a rule with posted runs cannot be deleted
+    assert (
+        client.delete(f"/api/nonprofit/allocation-rules/{rule['id']}").status_code
+        == 409
+    )
+
+    # void puts the cost back in the pool
+    r = client.post(f"/api/nonprofit/allocations/{fa['id']}/void")
+    assert r.status_code == 200 and r.json()["status"] == "void"
+    assert _ledger_balanced(db_session)
+    preview = client.get(
+        f"/api/nonprofit/allocation-rules/{rule['id']}/preview?start_date=2026-07-01&end_date=2026-07-31"
+    ).json()
+    assert Decimal(preview["total"]) == Decimal("1000")
+    assert client.post(f"/api/nonprofit/allocations/{fa['id']}/void").status_code == 400
+    listed = client.get("/api/nonprofit/allocations").json()
+    assert [x["status"] for x in listed] == ["void"]

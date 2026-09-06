@@ -218,3 +218,48 @@ def test_list_pto_requests_query_count_constant(client, db_session, db_engine):
     assert (
         len(stmts) < MAX_QUERIES + N_ROWS
     ), f"got {len(stmts)} SELECTs for {N_ROWS} pto requests"
+
+
+# ── Nonprofit documents ───────────────────────────────────────────────────
+
+
+def _seed_nonprofit_docs(client, n):
+    funds = [
+        client.post(
+            "/api/classes",
+            json={"name": f"Fund {i}", "restriction": "temporarily_restricted"},
+        ).json()
+        for i in range(n)
+    ]
+    for i, f in enumerate(funds):
+        r = client.post(
+            "/api/nonprofit/allocation-rules",
+            json={
+                "name": f"Rule {i}",
+                "targets": [
+                    {"class_id": f["id"], "function": "program", "weight": 70},
+                    {"function": "management", "weight": 30},
+                ],
+            },
+        )
+        assert r.status_code == 201, r.text
+        r = client.post(
+            "/api/nonprofit/releases",
+            json={"date": "2026-06-30", "class_id": f["id"], "amount": "10"},
+        )
+        assert r.status_code == 201, r.text
+
+
+def test_list_nonprofit_documents_query_count_constant(
+    client, db_session, db_engine, seed_accounts
+):
+    _seed_nonprofit_docs(client, N_ROWS)
+    for path, cap in (
+        ("/api/nonprofit/allocation-rules", MAX_QUERIES),
+        ("/api/nonprofit/releases", MAX_QUERIES),
+        ("/api/nonprofit/allocations", MAX_QUERIES),
+    ):
+        with _count_selects(db_engine) as stmts:
+            r = client.get(path)
+        assert r.status_code == 200, r.text
+        assert len(stmts) <= cap, f"{path}: {len(stmts)} SELECTs\n" + "\n".join(stmts)
