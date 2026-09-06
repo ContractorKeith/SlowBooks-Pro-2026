@@ -248,7 +248,12 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
                     "class_id": line_data.class_id,
                     "cost_code_id": line_data.cost_code_id,
                     "is_billable": line_data.is_billable,
-                    **({"function": line_data.function} if line_data.function else {}),
+                    # absent = default from the fund; explicit null = unassigned
+                    **(
+                        {"function": line_data.function}
+                        if "function" in line_data.model_fields_set
+                        else {}
+                    ),
                 }
             )
 

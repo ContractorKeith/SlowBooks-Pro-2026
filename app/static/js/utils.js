@@ -301,10 +301,21 @@ async function classFormGroupHtml(selectedId) {
 const Nonprofit = {
     FUNCTIONS: [['program', 'Program services'], ['management', 'Management & general'], ['fundraising', 'Fundraising']],
     enabled() { return Terms.isNonprofit(); },
+    NONE: '__none__',
     optionsHtml(selected, blank = 'From fund') {
         return `<option value="">${blank}</option>` + Nonprofit.FUNCTIONS.map(([v, l]) =>
-            `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+            `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('')
+            + `<option value="${Nonprofit.NONE}" ${selected === null ? '' : ''}>Unassigned (allocate later)</option>`;
     },
+    // The API distinction: no key = take the fund's default function;
+    // an explicit null = leave the line unassigned for a period-end rule.
+    _payload(v) {
+        if (!v) return {};
+        if (v === Nonprofit.NONE) return { function: null };
+        return { function: v };
+    },
+    linePayload(row, cls) { return Nonprofit._payload(row.querySelector(`.${cls}`)?.value); },
+    formPayload(form) { return Nonprofit._payload(form.function ? form.function.value : ''); },
     // Header-level picker for one-line documents (expense, CC charge)
     functionFormGroupHtml(selected) {
         if (!Nonprofit.enabled()) return '';

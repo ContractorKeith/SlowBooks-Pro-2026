@@ -206,7 +206,7 @@ const JournalPage = {
                     description: row.querySelector('.je-desc')?.value || '',
                     cost_code_id: CostCodes.fromRow(row, 'je-cost-code'),
                     class_id: Nonprofit.fundFromRow(row, 'je-function'),
-                    function: Nonprofit.fromRow(row, 'je-function'),
+                    ...Nonprofit.linePayload(row, 'je-function'),
                 });
             }
         });

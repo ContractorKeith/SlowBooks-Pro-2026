@@ -308,7 +308,7 @@ const BillsPage = {
                 rate: parseFloat(row.querySelector('.line-rate')?.value) || 0,
                 cost_code_id: CostCodes.fromRow(row, 'line-cost-code'),
                 class_id: Nonprofit.fundFromRow(row, 'line-function'),
-                function: Nonprofit.fromRow(row, 'line-function'),
+                ...Nonprofit.linePayload(row, 'line-function'),
                 is_billable: !!row.querySelector('.line-billable')?.checked,
                 line_order: i,
             });

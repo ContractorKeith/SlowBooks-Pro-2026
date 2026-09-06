@@ -177,7 +177,11 @@ def create_expense(data: ExpenseCreate, db: Session = Depends(get_db)):
             "description": line_desc,
             "cost_code_id": data.cost_code_id,
             "is_billable": data.is_billable,
-            **({"function": data.function} if data.function else {}),
+            **(
+                {"function": data.function}
+                if "function" in data.model_fields_set
+                else {}
+            ),
         },
         {
             "account_id": paid_from.id,

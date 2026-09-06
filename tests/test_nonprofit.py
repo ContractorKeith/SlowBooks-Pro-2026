@@ -1033,3 +1033,54 @@ def test_saved_reports_accept_nonprofit_types(client, seed_accounts):
             },
         )
         assert r.status_code in (200, 201), r.text
+
+
+def test_bill_line_explicit_null_function_stays_unassigned(
+    client, db_session, seed_accounts
+):
+    """An agent posting a shared cost says `function: null` to keep the line
+    out of every column until a rule allocates it; omitting the key takes
+    the fund's default."""
+    general = client.post(
+        "/api/classes", json={"name": "General", "default_function": "management"}
+    ).json()
+    vendor = client.post("/api/vendors", json={"name": "Landlord"}).json()
+    rent = (
+        seed_accounts["6100"].id
+        if "6100" in seed_accounts
+        else seed_accounts["6000"].id
+    )
+    r = client.post(
+        "/api/bills",
+        json={
+            "vendor_id": vendor["id"],
+            "date": "2026-07-01",
+            "terms": "Net 30",
+            "class_id": general["id"],
+            "lines": [
+                {
+                    "account_id": rent,
+                    "description": "rent",
+                    "quantity": 1,
+                    "rate": "1000",
+                    "function": None,
+                },
+                {
+                    "account_id": rent,
+                    "description": "admin share",
+                    "quantity": 1,
+                    "rate": "50",
+                },
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+    txn = (
+        db_session.query(Transaction)
+        .filter(
+            Transaction.source_type == "bill", Transaction.source_id == r.json()["id"]
+        )
+        .one()
+    )
+    by_desc = {ln.description: ln.function for ln in txn.lines if ln.account_id == rent}
+    assert by_desc == {"rent": None, "admin share": "management"}

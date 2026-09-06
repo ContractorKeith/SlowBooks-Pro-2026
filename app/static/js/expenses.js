@@ -200,7 +200,7 @@ const ExpensesPage = {
                 reference: form.reference.value || null,
                 memo: form.memo.value || null,
                 class_id: classIdFromForm(form),
-                function: Nonprofit.fromForm(form),
+                ...Nonprofit.formPayload(form),
                 job_id: jobIdFromForm(form),
                 cost_code_id: form.cost_code_id ? (form.cost_code_id.value ? parseInt(form.cost_code_id.value) : null) : null,
                 is_billable: !!(form.is_billable && form.is_billable.checked),

@@ -111,7 +111,11 @@ def create_manual_journal_entry(
                 "class_id": line.class_id,
                 "cost_code_id": line.cost_code_id,
                 "is_billable": line.is_billable,
-                **({"function": line.function} if line.function else {}),
+                **(
+                    {"function": line.function}
+                    if "function" in line.model_fields_set
+                    else {}
+                ),
             }
         )
 

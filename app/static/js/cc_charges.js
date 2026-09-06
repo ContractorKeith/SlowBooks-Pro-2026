@@ -75,7 +75,7 @@ const CCChargesPage = {
                 reference: form.reference.value || null,
                 memo: form.memo.value || null,
                 class_id: classIdFromForm(form),
-                function: Nonprofit.fromForm(form),
+                ...Nonprofit.formPayload(form),
                 job_id: jobIdFromForm(form),
             });
             toast('Credit card charge recorded');
