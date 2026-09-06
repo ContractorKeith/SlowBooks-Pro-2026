@@ -116,9 +116,41 @@ def company_db_path(filename: str) -> Path | None:
     return companies_dir() / safe
 
 
+_warned_missing_manifest = False
+
+
+def warn_if_manifest_missing() -> str | None:
+    """Log (once) when the desktop manifest is absent.
+
+    The launcher writes companies.json under data_dir(); a wrong
+    SLOWBOOKS_DATA_DIR (a typo, a stale value from another install) makes
+    GET /api/companies answer `[]` while every ledger endpoint keeps
+    serving the file DATABASE_URL points at, so the symptom is "my
+    companies vanished" with nothing in the log. Called at startup and on
+    the company list. Returns the message it logged, for the caller."""
+    global _warned_missing_manifest
+    if not _is_sqlite():
+        return None
+    path = manifest_path()
+    if path.exists():
+        return None
+    override = os.environ.get("SLOWBOOKS_DATA_DIR")
+    message = (
+        f"Company manifest not found at {path}"
+        + (f" (SLOWBOOKS_DATA_DIR={override})" if override else "")
+        + "; the company list will be empty until a company is created or "
+        "the data directory points at the existing one"
+    )
+    if not _warned_missing_manifest:
+        _warned_missing_manifest = True
+        logger.warning(message)
+    return message
+
+
 def _read_manifest() -> dict:
     path = manifest_path()
     if not path.exists():
+        warn_if_manifest_missing()
         return {"companies": [], "last_opened": None}
     try:
         # utf-8-sig: a manifest saved by Notepad or PowerShell carries a BOM
@@ -217,6 +249,10 @@ def _init_company_db(url: str) -> None:
                             is_system=True,
                         )
                     )
+                session.flush()
+                from app.seed.fixed_assets import ensure_default_asset_type
+
+                ensure_default_asset_type(session)
                 session.commit()
     finally:
         engine.dispose()

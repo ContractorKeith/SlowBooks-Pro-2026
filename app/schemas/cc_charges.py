@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class CCChargeCreate(BaseModel):
+class CCChargeCreate(StrictModel):
     date: dt_date
     payee: Optional[str] = None
     account_id: int

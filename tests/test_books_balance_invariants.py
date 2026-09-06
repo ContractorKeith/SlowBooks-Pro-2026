@@ -172,7 +172,7 @@ def _build_scenario(client, customer_id, vendor_id):
             "date": "2026-05-25",
             "amount": float(bill_paid["total"]),
             "method": "check",
-            "reference": "CHK-5001",
+            "check_number": "CHK-5001",
             "allocations": [
                 {"bill_id": bill_paid["id"], "amount": float(bill_paid["total"])}
             ],

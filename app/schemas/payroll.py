@@ -1,6 +1,7 @@
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, model_validator
+from app.schemas.common import StrictModel
 
 from app.models.payroll import EmployeeRole, FilingStatus, PayFrequency, PayType
 from app.schemas.benefits import PayStubBenefitResponse
@@ -9,7 +10,7 @@ from app.schemas.benefits import PayStubBenefitResponse
 # ---------------------------------------------------------------------------
 # Employees — 2020+ Form W-4 (no "allowances"), per-employee pay frequency
 # ---------------------------------------------------------------------------
-class EmployeeCreate(BaseModel):
+class EmployeeCreate(StrictModel):
     first_name: str
     last_name: str
     ssn_last_four: Optional[str] = None
@@ -47,7 +48,7 @@ class EmployeeCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class EmployeeUpdate(BaseModel):
+class EmployeeUpdate(StrictModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     ssn_last_four: Optional[str] = None
@@ -123,7 +124,7 @@ class EmployeeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Pay runs / pay stubs
 # ---------------------------------------------------------------------------
-class PayStubInput(BaseModel):
+class PayStubInput(StrictModel):
     employee_id: int
     hours: float = 0  # total hours (hourly employees)
     regular_hours: Optional[float] = None
@@ -166,7 +167,7 @@ class PayStubInput(BaseModel):
         return self
 
 
-class PayRunCreate(BaseModel):
+class PayRunCreate(StrictModel):
     period_start: date
     period_end: date
     pay_date: date
@@ -237,7 +238,7 @@ class YTDResponse(BaseModel):
     net: float = 0
 
 
-class BankAccountCreate(BaseModel):
+class BankAccountCreate(StrictModel):
     nickname: Optional[str] = None
     account_kind: str = "checking"
     routing_number: str

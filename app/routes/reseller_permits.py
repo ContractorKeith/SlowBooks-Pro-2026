@@ -10,6 +10,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -82,7 +83,7 @@ _LOOKUP_URLS: dict[str, str] = {
 }
 
 
-class ResellerPermitIn(BaseModel):
+class ResellerPermitIn(StrictModel):
     entity_type: str  # "customer" / "vendor" / "company"
     entity_id: Optional[int] = None
     jurisdiction: str
@@ -276,7 +277,7 @@ def delete_permit(permit_id: int, db: Session = Depends(get_db)):
     return {"deleted": permit_id}
 
 
-class VerificationStamp(BaseModel):
+class VerificationStamp(StrictModel):
     verified_by: Optional[str] = None
 
 

@@ -3,10 +3,10 @@ from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
 
-from app.schemas.common import validate_non_negative_line
+from app.schemas.common import StrictModel, TaxRateFloat, validate_non_negative_line
 
 
-class CreditMemoLineCreate(BaseModel):
+class CreditMemoLineCreate(StrictModel):
     item_id: Optional[int] = None
     description: Optional[str] = None
     quantity: float = 1
@@ -30,16 +30,16 @@ class CreditMemoLineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CreditApplicationCreate(BaseModel):
+class CreditApplicationCreate(StrictModel):
     invoice_id: int
     amount: float
 
 
-class CreditMemoCreate(BaseModel):
+class CreditMemoCreate(StrictModel):
     customer_id: int
     date: dt_date
     original_invoice_id: Optional[int] = None
-    tax_rate: float = 0
+    tax_rate: TaxRateFloat = 0
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None

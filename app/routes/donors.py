@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 GIFT_KINDS = ("invoice", "payment", "in-kind")
 
 
-class AcknowledgmentEmail(BaseModel):
+class AcknowledgmentEmail(StrictModel):
     recipient: str | None = None
     subject: str | None = None
 
@@ -126,7 +126,7 @@ def acknowledgment_email(
 # ── Year-end giving statements ───────────────────────────────────────────
 
 
-class GivingStatementBatch(BaseModel):
+class GivingStatementBatch(StrictModel):
     year: int
     customer_ids: Optional[list[int]] = None
 

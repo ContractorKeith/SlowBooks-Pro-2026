@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -35,7 +35,7 @@ def _resp(entry: TimeEntry) -> TimeEntryResponse:
     return r
 
 
-class PostToJobRequest(BaseModel):
+class PostToJobRequest(StrictModel):
     ids: list[int]
 
 
@@ -218,7 +218,7 @@ def reject_time_entry(entry_id: int, db: Session = Depends(get_db)):
     return _resp(entry)
 
 
-class ClassifyRequest(BaseModel):
+class ClassifyRequest(StrictModel):
     weeks: list[list[float]]  # each inner list = daily hours for one workweek
     state: str = "WA"
 

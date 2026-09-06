@@ -71,6 +71,15 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 @router.get("")
 def get_settings(db: Session = Depends(get_db)):
+    """Every company setting, secrets redacted.
+
+    Units to know before copying a value onto a document:
+    `default_tax_rate` is a PERCENT string as the user types it ("8.9" =
+    8.9%); a document's `tax_rate` (invoices, bills, estimates, credit
+    memos, sales receipts, purchase orders, recurring templates) is a
+    FRACTION (0.089). Divide by 100 before posting; the API rejects a
+    document `tax_rate` above 1.
+    """
     return _redact_secrets(get_all_settings(db))
 
 

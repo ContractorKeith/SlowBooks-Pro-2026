@@ -13,7 +13,8 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import Field
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -48,13 +49,13 @@ def _record_login_attempt(db: Session, request: Request, success: bool) -> None:
         db.rollback()
 
 
-class PasswordPayload(BaseModel):
+class PasswordPayload(StrictModel):
     password: str = Field(..., min_length=1, max_length=512)
     # Server Edition: required only when more than one user exists.
     username: Optional[str] = Field(None, max_length=100)
 
 
-class SetupPayload(BaseModel):
+class SetupPayload(StrictModel):
     """First-run setup. Password is required; everything else is optional and
     falls back to the DEFAULT_SETTINGS values if blank."""
 

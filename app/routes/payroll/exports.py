@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import Depends, HTTPException
 from fastapi.responses import Response, PlainTextResponse
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -50,7 +50,7 @@ def download_paystub(run_id: int, stub_id: int, db: Session = Depends(get_db)):
     )
 
 
-class NachaOriginating(BaseModel):
+class NachaOriginating(StrictModel):
     immediate_destination: str  # receiving bank routing number
     immediate_origin: str  # company identifier (10 chars)
     destination_name: str = "BANK"

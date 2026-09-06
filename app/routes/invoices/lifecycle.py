@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from app.schemas.credit_memos import CreditMemoResponse
@@ -237,7 +237,7 @@ def apply_late_fees(db: Session = Depends(get_db)):
     return {"applied": applied, "total_overdue": len(overdue)}
 
 
-class WriteOffRequest(BaseModel):
+class WriteOffRequest(StrictModel):
     date: dt_date
     amount: Optional[Decimal] = None  # default: the whole open balance
     memo: Optional[str] = None

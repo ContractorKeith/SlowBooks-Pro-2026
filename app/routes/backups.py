@@ -7,7 +7,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from typing import Optional
 
 from app.database import get_db
@@ -21,11 +21,11 @@ from app.services.backup_service import (
 router = APIRouter(prefix="/api/backups", tags=["backups"])
 
 
-class BackupCreate(BaseModel):
+class BackupCreate(StrictModel):
     notes: Optional[str] = None
 
 
-class RestoreRequest(BaseModel):
+class RestoreRequest(StrictModel):
     filename: str
 
 

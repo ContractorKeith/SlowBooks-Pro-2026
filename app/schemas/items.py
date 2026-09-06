@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 from app.models.items import ItemType, MovementType
 
 
-class ItemCreate(BaseModel):
+class ItemCreate(StrictModel):
     name: str
     item_type: ItemType
     description: Optional[str] = None
@@ -23,7 +24,7 @@ class ItemCreate(BaseModel):
     asset_account_id: Optional[int] = None
 
 
-class ItemUpdate(BaseModel):
+class ItemUpdate(StrictModel):
     name: Optional[str] = None
     item_type: Optional[ItemType] = None
     description: Optional[str] = None
@@ -80,7 +81,7 @@ class InventoryMovementResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class InventoryAdjustmentRequest(BaseModel):
+class InventoryAdjustmentRequest(StrictModel):
     quantity_delta: Decimal
     unit_cost: Optional[Decimal] = None
     memo: Optional[str] = None

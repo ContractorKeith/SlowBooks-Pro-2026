@@ -21,7 +21,7 @@ from app.services.job_costing import (
     parse_cost_code_csv,
     would_cycle,
 )
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from typing import Optional
 
 router = APIRouter(prefix="/api/cost-codes", tags=["cost-codes"])
@@ -102,7 +102,7 @@ def cost_code_tree(include_inactive: bool = False, db: Session = Depends(get_db)
     return _tree_nodes(code_tree(q.all()), db)
 
 
-class CostCodeImport(BaseModel):
+class CostCodeImport(StrictModel):
     rows: list[dict] = []
     csv: Optional[str] = None
 

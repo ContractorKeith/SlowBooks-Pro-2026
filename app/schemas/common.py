@@ -2,7 +2,14 @@ import re
 from decimal import Decimal
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, BeforeValidator, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+)
 
 # A required display name that cannot be blank.
 #
@@ -76,3 +83,51 @@ def validate_non_negative_line(quantity, rate) -> None:
         raise ValueError("quantity must be non-negative; use a credit memo for refunds")
     if r < 0:
         raise ValueError("rate must be non-negative; use a credit memo for refunds")
+
+
+class StrictModel(BaseModel):
+    """Base for every request body: unknown fields are a 422, not silence.
+
+    Field report (2.9.0 gate, both platforms): ``POST /api/invoices`` with
+    ``line_items`` instead of ``lines`` returned 201 and a $0.00 invoice.
+    Pydantic's default is to drop keys it does not know, which is the
+    worst possible answer for an API agents drive from the spec — the
+    caller supplied the data and was told it worked. ``extra="forbid"``
+    turns that into an error naming the field. Response models keep the
+    default; only what the client sends is checked.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _check_tax_rate(value):
+    """A document tax rate is a FRACTION of the subtotal (0.089 = 8.9%).
+    The company default in Settings (``default_tax_rate``) is a PERCENT
+    string ("8.9") because it is what the user types; the invoice form
+    divides by 100 before posting. An agent that copies the setting onto
+    a document books 890% tax with a 201 (2.9.0 gate: $1.94M of tax on
+    $731K of revenue, and the trial balance still balanced). Anything
+    above 1 cannot be a fraction, so reject it and say which unit."""
+    if value is not None and value > 1:
+        raise ValueError(
+            f"tax_rate is a fraction of the subtotal (0.089 = 8.9%); {value} "
+            "looks like a percent — divide by 100"
+        )
+    if value is not None and value < 0:
+        raise ValueError("tax_rate cannot be negative")
+    return value
+
+
+_TAX_RATE_DOC = dict(
+    description=(
+        "Tax rate as a FRACTION of the taxable subtotal: 0.089 means 8.9%. "
+        "Not a percent — Settings.default_tax_rate is the percent form "
+        "('8.9'); divide it by 100 before sending. Values above 1 are rejected."
+    ),
+    examples=[0.089],
+    json_schema_extra={"minimum": 0, "maximum": 1},
+)
+
+# Reusable annotated types: `tax_rate: TaxRate = Decimal("0")`.
+TaxRate = Annotated[Decimal, AfterValidator(_check_tax_rate), Field(**_TAX_RATE_DOC)]
+TaxRateFloat = Annotated[float, AfterValidator(_check_tax_rate), Field(**_TAX_RATE_DOC)]

@@ -1,9 +1,10 @@
 from typing import Optional
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
 # --- Garnishment orders ----------------------------------------------------
-class GarnishmentOrderCreate(BaseModel):
+class GarnishmentOrderCreate(StrictModel):
     employee_id: int
     garnishment_type: str = "creditor"
     calc_method: str = "fixed"
@@ -29,7 +30,7 @@ class GarnishmentOrderResponse(BaseModel):
 
 
 # --- Gross-up --------------------------------------------------------------
-class GrossUpRequest(BaseModel):
+class GrossUpRequest(StrictModel):
     employee_id: int
     target_net: float
     supplemental: bool = True  # gross-ups are typically bonuses

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
+from app.schemas.common import StrictModel
 
 from app.models.classes import FUNCTIONS, RESTRICTIONS
 
@@ -22,7 +23,7 @@ def _check_function(v):
     return v
 
 
-class ClassCreate(BaseModel):
+class ClassCreate(StrictModel):
     name: str
     restriction: str = "unrestricted"
     default_function: Optional[str] = None
@@ -41,7 +42,7 @@ class ClassCreate(BaseModel):
     _f = field_validator("default_function")(_check_function)
 
 
-class ClassUpdate(BaseModel):
+class ClassUpdate(StrictModel):
     name: Optional[str] = None
     is_archived: Optional[bool] = None
     restriction: Optional[str] = None

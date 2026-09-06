@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from app.schemas.common import StrictModel
 
 from app.models.classes import FUNCTIONS
 from app.models.nonprofit import ALLOCATION_BASES
@@ -19,7 +20,7 @@ def _function_ok(v):
 # ── Release from restriction ─────────────────────────────────────────────
 
 
-class ReleaseCreate(BaseModel):
+class ReleaseCreate(StrictModel):
     date: dt_date
     class_id: int
     # None = release what the fund spent in the period (the suggestion)
@@ -58,7 +59,7 @@ class ReleaseSuggestion(BaseModel):
 # ── Allocation rules ─────────────────────────────────────────────────────
 
 
-class AllocationTargetIn(BaseModel):
+class AllocationTargetIn(StrictModel):
     class_id: Optional[int] = None
     function: Optional[str] = None
     job_id: Optional[int] = None
@@ -87,7 +88,7 @@ class AllocationTargetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AllocationRuleCreate(BaseModel):
+class AllocationRuleCreate(StrictModel):
     name: str = Field(..., max_length=100)
     basis: str = "percent"
     source_account_id: Optional[int] = None
@@ -176,7 +177,7 @@ class AllocationPreview(BaseModel):
 # ── Functional allocation (a run of a rule) ──────────────────────────────
 
 
-class FunctionalAllocationCreate(BaseModel):
+class FunctionalAllocationCreate(StrictModel):
     date: dt_date
     rule_id: int
     period_start: dt_date

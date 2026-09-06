@@ -152,6 +152,11 @@ CHART_OF_ACCOUNTS = [
         "account_type": "expense",
     },
     {"account_number": "6800", "name": "Tools & Equipment", "account_type": "expense"},
+    {
+        "account_number": "6810",
+        "name": "Depreciation Expense",
+        "account_type": "expense",
+    },
     {"account_number": "6900", "name": "Utilities", "account_type": "expense"},
     {
         "account_number": "6950",

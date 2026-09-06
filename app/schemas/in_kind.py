@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, field_validator, model_validator
+from app.schemas.common import StrictModel
 
 
-class InKindLineCreate(BaseModel):
+class InKindLineCreate(StrictModel):
     description: str
     quantity: Decimal = Decimal("1")
     fair_value: Decimal = Decimal("0")  # per unit, the donor's estimate
@@ -47,7 +48,7 @@ class InKindLineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class InKindGiftCreate(BaseModel):
+class InKindGiftCreate(StrictModel):
     customer_id: int
     date: dt_date
     memo: Optional[str] = None

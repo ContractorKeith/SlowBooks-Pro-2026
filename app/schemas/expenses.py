@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from app.schemas.common import StrictModel
 
 
-class ExpenseCreate(BaseModel):
+class ExpenseCreate(StrictModel):
     """One paid receipt: money already left a bank or credit-card account.
     DR expense account, CR the account it was paid from."""
 

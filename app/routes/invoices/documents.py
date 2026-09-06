@@ -2,7 +2,7 @@ from typing import Optional as _Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,7 +15,7 @@ from app.services.donor_documents import invoice_doc_kind, invoice_pdf_context
 from app.routes.invoices._router import router
 
 
-class _EmailInvoiceRequest(BaseModel):
+class _EmailInvoiceRequest(StrictModel):
     recipient: str
     subject: _Optional[str] = None
 

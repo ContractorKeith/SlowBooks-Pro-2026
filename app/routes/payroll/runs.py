@@ -120,6 +120,29 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=400, detail=f"Invalid run_type: {data.run_type}"
         )
+    if not data.stubs:
+        # A run with nobody on it used to be a 201 that paid no one. An
+        # agent told to "run payroll for every period" posted 26 of them
+        # and saw 26 successes (2.9.0 gate). Refuse, and name the roster
+        # so the caller knows who a stub is expected for.
+        roster = (
+            db.query(Employee)
+            .filter(Employee.is_active)
+            .order_by(Employee.last_name, Employee.first_name)
+            .all()
+        )
+        names = ", ".join(f"{e.first_name} {e.last_name} (id {e.id})" for e in roster)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "stubs is empty: a pay run needs one stub per employee to pay. "
+                + (
+                    f"Active employees: {names}."
+                    if roster
+                    else "There are no active employees."
+                )
+            ),
+        )
 
     run = PayRun(
         period_start=data.period_start,

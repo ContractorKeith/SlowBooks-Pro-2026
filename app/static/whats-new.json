@@ -8,7 +8,9 @@
       "Donation receipts and acknowledgment letters with the IRS language; in-kind gifts; year-end giving statements",
       "Pledge report over recurring pledges; write-offs to Bad Debt Expense; credit memos can be voided",
       "P&L by Class groups on the line's class; voids carry every dimension",
-      "Save PDF lands in Documents → SlowBooks Pro → Reports and says so; saved reports are a compact list; statements compare to the prior year"
+      "Save PDF lands in Documents → SlowBooks Pro → Reports and says so; saved reports are a compact list; statements compare to the prior year",
+      "Agents: unknown request fields are rejected (422), tax_rate is documented as a fraction and bounded, DELETE on a posted document names the void route, PTO enums in the spec",
+      "Desktop: Save PDF explains a refused Documents folder and says where the file went; macOS app stapled before the DMG; a fresh company can run depreciation"
     ]
   },
   "2.8.0": {

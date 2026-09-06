@@ -600,9 +600,101 @@ window.addEventListener('pywebviewready', refresh);
 
 
 def _documents_dir() -> Path:
-    """The user's Documents folder (falls back to home)."""
+    """The user's Documents folder, or home when the account has none.
+
+    On Windows the real folder is asked of the shell: with OneDrive
+    "Known Folder Move" it lives under OneDrive, and ~/Documents may be
+    absent or an empty leftover. Elsewhere ~/Documents is the convention.
+    This is only a location; whether the app may WRITE there is a
+    separate question that only a write can answer (see _save_report).
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            # FOLDERID_Documents {FDD39AD0-238F-46AF-ADB4-6C85480369C7}
+            fid = (ctypes.c_byte * 16)(
+                *bytes.fromhex("D09AD3FD8F23AF46ADB46C85480369C7")
+            )
+            out = ctypes.c_wchar_p()
+            if (
+                ctypes.windll.shell32.SHGetKnownFolderPath(
+                    ctypes.byref(fid), 0, None, ctypes.byref(out)
+                )
+                == 0
+                and out.value
+            ):
+                path = Path(out.value)
+                ctypes.windll.ole32.CoTaskMemFree(out)
+                return path
+        except Exception:
+            pass
     docs = Path.home() / "Documents"
     return docs if docs.is_dir() else Path.home()
+
+
+def _fallback_reports_dir() -> Path:
+    """Where Save PDF lands when the Documents folder refuses the write:
+    the app's own data directory, which no folder-protection feature
+    guards (Application Support on macOS, LOCALAPPDATA on Windows)."""
+    return get_data_dir() / "Reports"
+
+
+def _write_unique(folder: Path, name: str, data: bytes) -> Path:
+    """Write ``data`` as ``name`` under ``folder`` without overwriting:
+    a " (2)", " (3)" suffix when the name is taken."""
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / name
+    stem, suffix = dest.stem, dest.suffix
+    n = 2
+    while dest.exists():
+        dest = folder / f"{stem} ({n}){suffix}"
+        n += 1
+    dest.write_bytes(data)
+    return dest
+
+
+def _folder_permission_remedy(folder: Path) -> str:
+    """One sentence telling the user how to let the app into ``folder``.
+    macOS: TCC "Files and Folders" consent (per app, remembered after the
+    first prompt). Windows: Defender's Controlled Folder Access is the
+    usual cause. Linux: a plain permission problem."""
+    if sys.platform == "darwin":
+        return (
+            "To allow it, open System Settings > Privacy & Security > "
+            f"Files and Folders > SlowBooks Pro and turn on {folder.name} Folder."
+        )
+    if sys.platform == "win32":
+        return (
+            "If Controlled Folder Access is on, allow SlowBooks Pro under "
+            "Windows Security > Virus & threat protection > Ransomware protection."
+        )
+    return f"Check the permissions on {folder}."
+
+
+def _save_report(name: str, data: bytes) -> tuple[Path, str | None]:
+    """Save a report PDF where the user can find it.
+
+    Documents/SlowBooks Pro/Reports first. Existence of the Documents
+    folder says nothing about permission -- on macOS the system decides
+    per application (a consent prompt on first use; a denial is
+    remembered), on Windows Controlled Folder Access can block it -- so
+    the write itself is the test. When it is refused the file goes to
+    the app's data directory instead and the second value is a note for
+    the user saying so, naming both folders and the remedy. Any other
+    failure propagates.
+    """
+    preferred = _documents_dir() / "SlowBooks Pro" / "Reports"
+    try:
+        return _write_unique(preferred, name, data), None
+    except PermissionError:
+        dest = _write_unique(_fallback_reports_dir(), name, data)
+        note = (
+            f"SlowBooks Pro was not allowed to write to {preferred}, so the "
+            f"file was saved to {dest.parent} instead. "
+            + _folder_permission_remedy(_documents_dir())
+        )
+        return dest, note
 
 
 def _safe_temp_filename(title: str, suffix: str) -> str:
@@ -683,16 +775,20 @@ class PickerApi:
     def open_document_pdf(self, title: str, base64_data: str) -> dict:
         """Save an already-fetched PDF (base64-encoded by the caller) under
         Documents/SlowBooks Pro/Reports and show it in a new native window.
-        Chromium's built-in PDF viewer renders file:// URLs with its own
-        print/zoom controls, and a local file needs no authentication at
-        all -- sidestepping the same cross-window-cookie problem
+        The platform web view renders a file:// PDF with its own viewer
+        (WebView2/Chromium on Windows, WKWebView on macOS, WebKitGTK on
+        Linux), and a local file needs no authentication at all --
+        sidestepping the same cross-window-cookie problem
         open_document_html's docstring describes.
 
         Field note (v2.9 lap): the file used to land in a temp folder, so
         "Save PDF" produced a window and nothing the user could find
         afterwards. Now it is a real file in a predictable place, never
         overwritten (a " (2)" suffix when the name is taken), and the path
-        goes back to the page so it can say where.
+        goes back to the page so it can say where. If the Documents folder
+        refuses the write (macOS consent denied, Controlled Folder Access)
+        the file goes to the app's data directory and ``note`` explains,
+        so a denial never looks like a crash.
         """
         import base64
 
@@ -700,20 +796,14 @@ class PickerApi:
             import webview
 
             data = base64.b64decode(base64_data)
-            out_dir = _documents_dir() / "SlowBooks Pro" / "Reports"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            name = _safe_temp_filename(title, ".pdf")
-            dest = out_dir / name
-            stem, suffix = dest.stem, dest.suffix
-            n = 2
-            while dest.exists():
-                dest = out_dir / f"{stem} ({n}){suffix}"
-                n += 1
-            dest.write_bytes(data)
+            dest, note = _save_report(_safe_temp_filename(title, ".pdf"), data)
             webview.create_window(title or "SlowBooks Pro 2026", dest.as_uri())
         except Exception as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "path": str(dest)}
+        result = {"success": True, "path": str(dest)}
+        if note:
+            result["note"] = note
+        return result
 
     def reveal_path(self, path: str) -> dict:
         """Open the folder that holds a file this app saved (Explorer /
@@ -723,6 +813,7 @@ class PickerApi:
             target = Path(str(path or "")).resolve()
             allowed = (
                 (_documents_dir() / "SlowBooks Pro").resolve(),
+                _fallback_reports_dir().resolve(),
                 (Path.home() / "Downloads").resolve(),
             )
             if not any(target.is_relative_to(base) for base in allowed):
@@ -779,14 +870,26 @@ class PickerApi:
                 return {"success": False, "error": "Backup file not found"}
 
             downloads = Path.home() / "Downloads"
-            downloads.mkdir(parents=True, exist_ok=True)
-            dest = downloads / src.name
-            stem, suffix = src.stem, src.suffix
-            n = 1
-            while dest.exists():
-                dest = downloads / f"{stem} ({n}){suffix}"
-                n += 1
-            shutil.copy2(src, dest)
+            try:
+                downloads.mkdir(parents=True, exist_ok=True)
+                dest = downloads / src.name
+                stem, suffix = src.stem, src.suffix
+                n = 1
+                while dest.exists():
+                    dest = downloads / f"{stem} ({n}){suffix}"
+                    n += 1
+                shutil.copy2(src, dest)
+            except PermissionError:
+                # A refused folder is not a crash: say which folder, where
+                # the backup already is, and how to allow it next time.
+                return {
+                    "success": False,
+                    "error": (
+                        f"SlowBooks Pro was not allowed to write to {downloads}. "
+                        f"The backup is still at {src}. "
+                        + _folder_permission_remedy(downloads)
+                    ),
+                }
         except Exception as exc:
             return {"success": False, "error": str(exc)}
         return {"success": True, "path": str(dest)}
@@ -1255,11 +1358,17 @@ def main() -> int:
     # parked the process on an error dialog nobody can see. Field
     # report: one such process survived ~7 hours. With errors="replace"
     # the worst case is a "?" instead of an arrow.
+    # And make the encoding UTF-8, not the console codepage: a frozen
+    # console=False build with piped stdio (SSH, CI, an agent) inherits
+    # cp1252 on US Windows and prints "?" for every arrow and dash in
+    # --help and in a fatal-startup message (2.9.0 Windows gate). A real
+    # Windows console uses the wide-character API regardless of this
+    # setting, so it costs nothing there.
     for _stream in (sys.stdout, sys.stderr):
         if _stream is not None:
             try:
-                _stream.reconfigure(errors="replace")
-            except (AttributeError, OSError):
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, OSError, ValueError):
                 pass  # not a TextIOWrapper (test harness, log redirect)
 
     # Not a user flag — the frozen server child (see start_server) and

@@ -5,10 +5,10 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.invoices import InvoiceStatus
-from app.schemas.common import validate_non_negative_line
+from app.schemas.common import StrictModel, TaxRate, validate_non_negative_line
 
 
-class InvoiceLineCreate(BaseModel):
+class InvoiceLineCreate(StrictModel):
     item_id: Optional[int] = None
     description: Optional[str] = None
     quantity: Decimal = Decimal("1")
@@ -45,7 +45,7 @@ class InvoiceLineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class InvoiceCreate(BaseModel):
+class InvoiceCreate(StrictModel):
     customer_id: int
     date: dt_date
     due_date: Optional[dt_date] = None
@@ -61,7 +61,7 @@ class InvoiceCreate(BaseModel):
     ship_city: Optional[str] = None
     ship_state: Optional[str] = None
     ship_zip: Optional[str] = None
-    tax_rate: Decimal = Decimal("0")
+    tax_rate: TaxRate = Decimal("0")
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None
@@ -81,14 +81,14 @@ class InvoiceCreate(BaseModel):
         return v
 
 
-class InvoiceUpdate(BaseModel):
+class InvoiceUpdate(StrictModel):
     customer_id: Optional[int] = None
     date: Optional[dt_date] = None
     due_date: Optional[dt_date] = None
     terms: Optional[str] = None
     po_number: Optional[str] = None
     status: Optional[InvoiceStatus] = None
-    tax_rate: Optional[Decimal] = None
+    tax_rate: Optional[TaxRate] = None
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None

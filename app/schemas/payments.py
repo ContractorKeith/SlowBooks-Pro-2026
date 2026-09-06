@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class PaymentAllocationCreate(BaseModel):
+class PaymentAllocationCreate(StrictModel):
     invoice_id: int
     amount: Decimal
 
@@ -18,7 +19,7 @@ class PaymentAllocationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class PaymentCreate(BaseModel):
+class PaymentCreate(StrictModel):
     customer_id: int
     date: dt_date
     amount: Decimal

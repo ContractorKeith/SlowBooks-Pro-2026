@@ -75,7 +75,7 @@ def _seed(client, db_session, seed_customer):
             "date": "2026-07-04",
             "class_id": cls["id"],
             "deposit_to_account_id": bank.id,
-            "payment_method": "cash",
+            "method": "cash",
             "lines": [{"description": "Walk-in sale", "quantity": 2, "rate": 30}],
         },
     )

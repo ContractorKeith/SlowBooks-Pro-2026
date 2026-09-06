@@ -166,13 +166,16 @@
                 const result = await window.pywebview.api.open_document_pdf(title, base64);
                 if (result && result.success && result.path) {
                     // The viewer window has no address bar; tell the user where
-                    // the file actually is and offer to open that folder.
+                    // the file actually is and offer to open that folder. A
+                    // `note` means Documents refused the write and the file
+                    // went to the app's data folder instead: say so, at length.
+                    const message = result.note || ('Saved to ' + result.path);
                     if (typeof toastAction === 'function') {
-                        toastAction('Saved to ' + result.path, 'Show in folder', function () {
+                        toastAction(message, 'Show in folder', function () {
                             window.pywebview.api.reveal_path(result.path);
-                        }, 10000);
+                        }, result.note ? 20000 : 10000);
                     } else if (typeof toast === 'function') {
-                        toast('Saved to ' + result.path);
+                        toast(message);
                     }
                 } else if (result && result.error && typeof toast === 'function') {
                     toast('Could not save the PDF: ' + result.error, 'error');

@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,12 +28,12 @@ router = APIRouter(prefix="/api/opening-balances", tags=["opening_balances"])
 _BALANCE_SHEET_TYPES = (AccountType.ASSET, AccountType.LIABILITY, AccountType.EQUITY)
 
 
-class OpeningBalanceLine(BaseModel):
+class OpeningBalanceLine(StrictModel):
     account_id: int
     amount: Decimal
 
 
-class OpeningBalanceCreate(BaseModel):
+class OpeningBalanceCreate(StrictModel):
     date: dt_date
     description: str = "Opening balances"
     reference: Optional[str] = None

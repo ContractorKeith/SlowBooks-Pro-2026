@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -46,13 +47,13 @@ _ALLOWED_TYPES = {
 }
 
 
-class SavedReportCreate(BaseModel):
+class SavedReportCreate(StrictModel):
     name: str
     report_type: str
     parameters: dict[str, Any] = {}
 
 
-class SavedReportUpdate(BaseModel):
+class SavedReportUpdate(StrictModel):
     name: Optional[str] = None
     parameters: Optional[dict[str, Any]] = None
 

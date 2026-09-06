@@ -11,7 +11,8 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import Field
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -49,14 +50,14 @@ def _other_active_admin_exists(db: Session, user: User) -> bool:
     )
 
 
-class UserCreate(BaseModel):
+class UserCreate(StrictModel):
     username: str = Field(..., min_length=3, max_length=50)
     display_name: str = Field("", max_length=200)
     password: str = Field(..., min_length=1, max_length=512)
     role: str = Field(...)
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(StrictModel):
     display_name: Optional[str] = Field(None, max_length=200)
     role: Optional[str] = None
     is_active: Optional[bool] = None

@@ -1,9 +1,10 @@
 from datetime import date as dt_date, datetime
 from typing import Optional
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class TimeEntryCreate(BaseModel):
+class TimeEntryCreate(StrictModel):
     employee_id: int
     date: dt_date
     hours_regular: float = 0
@@ -15,7 +16,7 @@ class TimeEntryCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class TimeEntryUpdate(BaseModel):
+class TimeEntryUpdate(StrictModel):
     date: Optional[dt_date] = None
     hours_regular: Optional[float] = None
     hours_overtime: Optional[float] = None
@@ -49,5 +50,5 @@ class TimeEntryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TimeEntryApprove(BaseModel):
+class TimeEntryApprove(StrictModel):
     approved_by: str = "manager"

@@ -2,6 +2,7 @@ from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
+from app.schemas.common import StrictModel
 
 from app.models.benefits import (
     BENEFIT_CATEGORIES,
@@ -19,7 +20,7 @@ def _one_of(value, allowed, label):
 
 
 # --- Rates -----------------------------------------------------------------
-class BenefitRateIn(BaseModel):
+class BenefitRateIn(StrictModel):
     effective_from: Optional[date] = None
     effective_to: Optional[date] = None
     employee_rate: float = 0
@@ -40,7 +41,7 @@ class BenefitRateResponse(BenefitRateIn):
 
 
 # --- Codes -----------------------------------------------------------------
-class _CodeValidators(BaseModel):
+class _CodeValidators(StrictModel):
     """Shared enum checks (check_fields=False so the Update model, where
     every field is Optional, gets the same guards)."""
 
@@ -130,7 +131,7 @@ class BenefitCodeResponse(BenefitCodeBase):
 
 
 # --- Groups ----------------------------------------------------------------
-class GroupCodeIn(BaseModel):
+class GroupCodeIn(StrictModel):
     benefit_code_id: int
     employee_rate: Optional[float] = None
     employer_rate: Optional[float] = None
@@ -145,13 +146,13 @@ class GroupCodeResponse(GroupCodeIn):
     model_config = {"from_attributes": True}
 
 
-class EmployeeGroupCreate(BaseModel):
+class EmployeeGroupCreate(StrictModel):
     name: str
     description: Optional[str] = None
     codes: list[GroupCodeIn] = []
 
 
-class EmployeeGroupUpdate(BaseModel):
+class EmployeeGroupUpdate(StrictModel):
     name: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
@@ -167,12 +168,12 @@ class EmployeeGroupResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class GroupMembersIn(BaseModel):
+class GroupMembersIn(StrictModel):
     employee_ids: list[int]
 
 
 # --- Assignments -----------------------------------------------------------
-class EmployeeBenefitCreate(BaseModel):
+class EmployeeBenefitCreate(StrictModel):
     employee_id: int
     benefit_code_id: int
     employee_rate: Optional[float] = None
@@ -185,7 +186,7 @@ class EmployeeBenefitCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class EmployeeBenefitUpdate(BaseModel):
+class EmployeeBenefitUpdate(StrictModel):
     employee_rate: Optional[float] = None
     employer_rate: Optional[float] = None
     per_period_cap: Optional[float] = None
@@ -263,7 +264,7 @@ class PayStubBenefitResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RemittanceBillIn(BaseModel):
+class RemittanceBillIn(StrictModel):
     vendor_id: int
     start_date: date
     end_date: date

@@ -3,10 +3,10 @@ from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
 
-from app.schemas.common import validate_non_negative_line
+from app.schemas.common import StrictModel, TaxRateFloat, validate_non_negative_line
 
 
-class POLineCreate(BaseModel):
+class POLineCreate(StrictModel):
     item_id: Optional[int] = None
     description: Optional[str] = None
     quantity: float = 1
@@ -35,12 +35,12 @@ class POLineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class POCreate(BaseModel):
+class POCreate(StrictModel):
     vendor_id: int
     date: dt_date
     expected_date: Optional[dt_date] = None
     ship_to: Optional[str] = None
-    tax_rate: float = 0
+    tax_rate: TaxRateFloat = 0
     notes: Optional[str] = None
     job_id: Optional[int] = None
     lines: list[POLineCreate] = []
@@ -53,13 +53,13 @@ class POCreate(BaseModel):
         return v
 
 
-class POUpdate(BaseModel):
+class POUpdate(StrictModel):
     vendor_id: Optional[int] = None
     date: Optional[dt_date] = None
     expected_date: Optional[dt_date] = None
     ship_to: Optional[str] = None
     status: Optional[str] = None
-    tax_rate: Optional[float] = None
+    tax_rate: Optional[TaxRateFloat] = None
     notes: Optional[str] = None
     job_id: Optional[int] = None
     lines: Optional[list[POLineCreate]] = None

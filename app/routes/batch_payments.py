@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from typing import Optional
 
 from app.database import get_db
@@ -24,13 +24,13 @@ from app.services.closing_date import check_closing_date
 router = APIRouter(prefix="/api/batch-payments", tags=["batch_payments"])
 
 
-class BatchAllocation(BaseModel):
+class BatchAllocation(StrictModel):
     customer_id: int
     invoice_id: int
     amount: float
 
 
-class BatchPaymentCreate(BaseModel):
+class BatchPaymentCreate(StrictModel):
     date: str
     deposit_to_account_id: Optional[int] = None
     method: Optional[str] = None

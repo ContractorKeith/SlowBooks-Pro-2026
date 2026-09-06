@@ -2,16 +2,17 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class EmailTemplateCreate(BaseModel):
+class EmailTemplateCreate(StrictModel):
     name: str
     subject_template: str
     body_template: str
     template_type: str
 
 
-class EmailTemplateUpdate(BaseModel):
+class EmailTemplateUpdate(StrictModel):
     name: Optional[str] = None
     subject_template: Optional[str] = None
     body_template: Optional[str] = None

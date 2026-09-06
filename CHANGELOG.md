@@ -80,6 +80,21 @@ statement reconciles to the cent and that a readonly agent cannot write.
 Design notes: [docs/design/nonprofit.md](docs/design/nonprofit.md); user
 guide: [docs/nonprofit-module.md](docs/nonprofit-module.md).
 
+**From the release gate (SlowBooks-Pro-Testing, 2.9.0).** The macOS app is
+now notarized and stapled *before* the disk image is built, so the copy a
+user drags to Applications carries its own ticket and launches offline;
+the bundle declares why it writes to Documents and Downloads, and a refused
+folder is explained (the file goes to the app's data folder and the notice
+says so) instead of failing like a crash. For agents driving the API: an
+unknown request field is a 422 naming the field, never silently dropped;
+`tax_rate` is documented as a fraction and a percent-looking value is
+rejected with the unit in the message; `pto_type` and `accrual_method` are
+enums in the spec; an empty pay run is refused with the roster named;
+`DELETE` on a posted document names the `/void` route; a fresh company has
+6810 Depreciation Expense and a default Equipment asset type so depreciation
+runs first time; a missing `companies.json` is logged with the data
+directory that was searched.
+
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 
 ### Export parity with import (#70)

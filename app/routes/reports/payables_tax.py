@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sqlfunc
 
@@ -15,7 +15,7 @@ from app.models.contacts import Vendor
 from app.routes.reports._router import router
 
 
-class SalesTaxPaymentRequest(BaseModel):
+class SalesTaxPaymentRequest(StrictModel):
     date: Optional[date] = None
     amount: Decimal
     pay_from_account_id: int

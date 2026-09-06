@@ -173,11 +173,25 @@ def test_notarize_inspects_accepted_log_and_staples(monkeypatch, tmp_path, issue
 
     monkeypatch.setattr(release, "_run", fake_run)
 
-    release._notarize(dmg, "slowbooks-notary", tmp_path)
+    release._notarize(dmg, "slowbooks-notary", tmp_path, "dmg")
+    release._staple(dmg, tmp_path)
 
-    assert (tmp_path / "notary-log.json").is_file()
+    assert (tmp_path / "notary-dmg-log.json").is_file()
     assert any(args[1:3] == ("stapler", "staple") for args in calls)
     assert any(args[1:3] == ("stapler", "validate") for args in calls)
+
+
+def test_staple_fails_when_validate_fails(monkeypatch, tmp_path):
+    app = tmp_path / "SlowBooks Pro.app"
+    app.mkdir()
+
+    def fake_run(*args, check=True):
+        rc = 65 if args[1:3] == ("stapler", "validate") else 0
+        return subprocess.CompletedProcess(args, rc, stdout="", stderr="no ticket")
+
+    monkeypatch.setattr(release, "_run", fake_run)
+    with pytest.raises(RuntimeError, match="no notarization ticket"):
+        release._staple(app, tmp_path)
 
 
 def test_notarize_rejects_log_with_errors(monkeypatch, tmp_path):
@@ -209,4 +223,4 @@ def test_notarize_rejects_log_with_errors(monkeypatch, tmp_path):
     monkeypatch.setattr(release, "_run", fake_run)
 
     with pytest.raises(RuntimeError, match="did not pass inspection"):
-        release._notarize(dmg, "slowbooks-notary", tmp_path)
+        release._notarize(dmg, "slowbooks-notary", tmp_path, "dmg")

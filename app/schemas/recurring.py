@@ -2,10 +2,10 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
 
-from app.schemas.common import validate_non_negative_line
+from app.schemas.common import StrictModel, TaxRateFloat, validate_non_negative_line
 
 
-class RecurringLineCreate(BaseModel):
+class RecurringLineCreate(StrictModel):
     item_id: Optional[int] = None
     description: Optional[str] = None
     quantity: float = 1
@@ -30,13 +30,13 @@ class RecurringLineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RecurringCreate(BaseModel):
+class RecurringCreate(StrictModel):
     customer_id: int
     frequency: str  # weekly, monthly, quarterly, yearly
     start_date: date
     end_date: Optional[date] = None
     terms: str = "Net 30"
-    tax_rate: float = 0
+    tax_rate: TaxRateFloat = 0
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None
@@ -50,12 +50,12 @@ class RecurringCreate(BaseModel):
         return v
 
 
-class RecurringUpdate(BaseModel):
+class RecurringUpdate(StrictModel):
     frequency: Optional[str] = None
     end_date: Optional[date] = None
     is_active: Optional[bool] = None
     terms: Optional[str] = None
-    tax_rate: Optional[float] = None
+    tax_rate: Optional[TaxRateFloat] = None
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None

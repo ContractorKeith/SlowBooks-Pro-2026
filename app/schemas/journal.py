@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class JournalLineCreate(BaseModel):
+class JournalLineCreate(StrictModel):
     account_id: int
     job_id: Optional[int] = None
     class_id: Optional[int] = None
@@ -32,7 +33,7 @@ class JournalLineResponse(BaseModel):
     description: str = ""
 
 
-class JournalEntryCreate(BaseModel):
+class JournalEntryCreate(StrictModel):
     date: dt_date
     description: str
     reference: Optional[str] = None

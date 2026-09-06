@@ -12,7 +12,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -24,11 +24,11 @@ from app.services.simplefin_service import SimpleFINError
 router = APIRouter(prefix="/api/simplefin", tags=["simplefin"])
 
 
-class ClaimRequest(BaseModel):
+class ClaimRequest(StrictModel):
     setup_token: str
 
 
-class MapRequest(BaseModel):
+class MapRequest(StrictModel):
     mapping: dict[str, int]
 
 

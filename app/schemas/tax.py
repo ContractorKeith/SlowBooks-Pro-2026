@@ -1,8 +1,9 @@
 from typing import Optional
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class TaxMappingCreate(BaseModel):
+class TaxMappingCreate(StrictModel):
     account_id: int
     tax_line: str
 

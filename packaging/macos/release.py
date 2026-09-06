@@ -317,12 +317,16 @@ def _verify_signed_app(app: Path, identity: str, report_dir: Path) -> None:
     _verify_pre_notary_policy(app, report_dir)
 
 
-def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
+def _notarize(target: Path, profile: str, report_dir: Path, label: str) -> None:
+    """Submit one artifact (a zipped .app or a DMG) to the notary service
+    and fail unless Apple accepted it with a clean log. Evidence files are
+    prefixed with ``label`` so the app and DMG submissions sit side by side
+    in the report directory. Stapling is the caller's job (`_staple`)."""
     result = _run(
         "xcrun",
         "notarytool",
         "submit",
-        str(dmg),
+        str(target),
         "--keychain-profile",
         profile,
         *NOTARY_EXTRA_ARGS,
@@ -331,9 +335,9 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
         "json",
         check=False,
     )
-    submit_path = report_dir / "notary-submit.json"
+    submit_path = report_dir / f"notary-{label}-submit.json"
     submit_path.write_text(result.stdout, encoding="utf-8")
-    (report_dir / "notary-submit.stderr.txt").write_text(
+    (report_dir / f"notary-{label}-submit.stderr.txt").write_text(
         result.stderr, encoding="utf-8"
     )
     try:
@@ -345,7 +349,7 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
             f"notarytool returned an unreadable result; see {submit_path}"
         ) from exc
 
-    log_path = report_dir / "notary-log.json"
+    log_path = report_dir / f"notary-{label}-log.json"
     log_result = _run(
         "xcrun",
         "notarytool",
@@ -357,7 +361,7 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
         *NOTARY_EXTRA_ARGS,
         check=False,
     )
-    (report_dir / "notary-log-command.txt").write_text(
+    (report_dir / f"notary-{label}-log-command.txt").write_text(
         f"stdout:\n{log_result.stdout}\nstderr:\n{log_result.stderr}\n"
         f"exit_code={log_result.returncode}\n",
         encoding="utf-8",
@@ -387,9 +391,58 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
     if result.returncode or not accepted:
         raise RuntimeError(f"notarization was not accepted; see {log_path}")
 
+
+def _staple(target: Path, report_dir: Path) -> None:
+    """Attach the notarization ticket to ``target`` and prove it is there.
+
+    Both the .app and the DMG get a ticket. The .app must be stapled
+    BEFORE the DMG is built from it: a user drags the bundle out of the
+    disk image, and that copy is what Gatekeeper evaluates on first
+    launch. With a ticket only on the DMG, an offline Mac (or one on a
+    network that cannot reach Apple) refuses the dragged app. `spctl`
+    passing on a connected build machine is not evidence either way —
+    it fetches the ticket from Apple — which is why this is verified
+    with `stapler validate`, which only reads the local ticket.
+    """
     staple_evidence = report_dir / "stapler.txt"
-    _record_run(staple_evidence, "xcrun", "stapler", "staple", "-v", str(dmg))
-    _record_run(staple_evidence, "xcrun", "stapler", "validate", "-v", str(dmg))
+    _record_run(staple_evidence, "xcrun", "stapler", "staple", "-v", str(target))
+    validated = _record_run(
+        staple_evidence, "xcrun", "stapler", "validate", "-v", str(target), check=False
+    )
+    if validated.returncode:
+        raise RuntimeError(
+            f"no notarization ticket on {target.name}; see {staple_evidence}"
+        )
+
+
+def _verify_dmg_contents_stapled(dmg: Path, evidence: Path, work_dir: Path) -> None:
+    """Mount the shipped DMG and run `stapler validate` on the .app inside
+    it — the artifact a user actually drags out. Fails the release if the
+    ticket is missing there, whatever the DMG's own ticket says."""
+    mount = work_dir / "final-dmg-mount"
+    mount.mkdir()
+    _record_run(
+        evidence,
+        "hdiutil",
+        "attach",
+        str(dmg),
+        "-mountpoint",
+        str(mount),
+        "-nobrowse",
+        "-readonly",
+        "-quiet",
+    )
+    try:
+        inner = mount / "SlowBooks Pro.app"
+        result = _record_run(
+            evidence, "xcrun", "stapler", "validate", "-v", str(inner), check=False
+        )
+        if result.returncode:
+            raise RuntimeError(
+                f"the app inside {dmg.name} is not stapled; see {evidence}"
+            )
+    finally:
+        _record_run(evidence, "hdiutil", "detach", str(mount), "-quiet", check=False)
 
 
 def build_release(
@@ -471,6 +524,15 @@ def build_release(
             encoding="utf-8",
         )
 
+        # Notarize the bare bundle and staple it first, so the copy that
+        # goes into the DMG (and from there into /Applications) carries
+        # its own ticket. See _staple for why the order matters.
+        notary_zip = work_dir / f"{basename}-notary-app.zip"
+        _run("ditto", "-c", "-k", "--keepParent", str(app), str(notary_zip))
+        _notarize(notary_zip, notary_profile, report_dir, "app")
+        _staple(app, report_dir)
+        _run("codesign", "--verify", "--deep", "--strict", "--verbose=4", str(app))
+
         stage = work_dir / "dmg-stage"
         stage.mkdir()
         staged_app = stage / app.name
@@ -529,7 +591,8 @@ def build_release(
             expected_team_id=None,
             hardened_runtime=False,
         )
-        _notarize(candidate_dmg, notary_profile, report_dir)
+        _notarize(candidate_dmg, notary_profile, report_dir, "dmg")
+        _staple(candidate_dmg, report_dir)
 
         final_dmg = report_dir / f"{basename}.dmg"
         candidate_dmg.rename(final_dmg)
@@ -554,6 +617,7 @@ def build_release(
             "context:primary-signature",
             str(final_dmg),
         )
+        _verify_dmg_contents_stapled(final_dmg, final_evidence, work_dir)
 
     with final_dmg.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()

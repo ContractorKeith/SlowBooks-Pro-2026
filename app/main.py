@@ -23,6 +23,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler
 
 from app.services import storage
 from app.services.rate_limit import limiter
@@ -191,6 +193,12 @@ async def lifespan(app: FastAPI):
     fail-hard production guard — keep them on the startup side of the yield
     so a misconfigured deploy never serves a single request."""
     _run_startup_security_checks()
+    try:
+        from app.services.company_service import warn_if_manifest_missing
+
+        warn_if_manifest_missing()
+    except Exception:
+        pass  # a diagnostic, never a reason not to boot
     # At-rest upgrade: encrypt any legacy plaintext credential rows (SMTP,
     # payment, QBO, SimpleFIN secrets) on first boot after upgrading.
     try:
@@ -217,6 +225,21 @@ app = FastAPI(
     title="Slowbooks Pro 2026",
     version=__version__,
     lifespan=lifespan,
+    description=(
+        "Local bookkeeping API. Conventions an agent needs before writing:\n\n"
+        "- **Unknown fields are rejected** (422 naming the field); nothing is "
+        "silently dropped.\n"
+        "- **Posted documents are voided, not deleted**: `POST /api/<resource>/"
+        "{id}/void` (invoices, bills, payments, bill payments, credit memos, "
+        "expenses, journal entries, in-kind gifts, job costs). `DELETE` on one "
+        "answers 405 and names the void route. A pledge that will not be paid "
+        "is written off (`POST /api/invoices/{id}/write-off`), not voided.\n"
+        "- **`tax_rate` on a document is a fraction** (0.089 = 8.9%); "
+        '`default_tax_rate` in settings is a percent string ("8.9"). '
+        "Divide by 100.\n"
+        "- Enumerated fields are enums in this spec; read the allowed values "
+        "here rather than guessing."
+    ),
 )
 
 
@@ -226,6 +249,36 @@ app = FastAPI(
 # env var (tests use 0 to avoid per-process counter bleed).
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def _method_not_allowed_handler(request: Request, exc: StarletteHTTPException):
+    """A bare 405 on DELETE /api/<doc>/<id> names nothing. Posted documents
+    are never deleted — they are voided, which keeps the audit trail and
+    reverses the ledger — and the void route exists one segment further
+    down. Say so in the body (2.9.0 gate: an agent rebuilt a whole fixture
+    to work around a 405 that could have pointed at POST .../void)."""
+    if exc.status_code == 405 and request.method == "DELETE":
+        candidate = request.url.path.rstrip("/") + "/void"
+        # The spec is the flat, cached view of every mounted router.
+        for template, ops in request.app.openapi().get("paths", {}).items():
+            if "post" not in ops or not template.endswith("/void"):
+                continue
+            pattern = "^" + _re.sub(r"\{[^}]+\}", r"[^/]+", template) + "$"
+            if _re.match(pattern, candidate):
+                return JSONResponse(
+                    status_code=405,
+                    headers=exc.headers,
+                    content={
+                        "detail": (
+                            "Posted documents are voided, not deleted: "
+                            f"use POST {candidate}"
+                        )
+                    },
+                )
+    return await http_exception_handler(request, exc)
+
+
+app.add_exception_handler(StarletteHTTPException, _method_not_allowed_handler)
 
 # ---- CORS (Phase 9.7: locked down) ----
 # Wildcard origins with credentials is a CSRF amplifier. Default to just
@@ -673,6 +726,7 @@ def _custom_openapi():
     schema = get_openapi(
         title=app.title,
         version=app.version,
+        description=app.description,
         routes=app.routes,
     )
     schema.setdefault("components", {})["securitySchemes"] = {

@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
+from app.schemas.common import StrictModel
 
 from app.models.accounts import AccountType
 
 
-class AccountCreate(BaseModel):
+class AccountCreate(StrictModel):
     name: str
     account_number: Optional[str] = None
     account_type: AccountType
@@ -21,7 +22,7 @@ class AccountCreate(BaseModel):
         return v.strip() or None if isinstance(v, str) else v
 
 
-class AccountUpdate(BaseModel):
+class AccountUpdate(StrictModel):
     name: Optional[str] = None
     account_number: Optional[str] = None
     account_type: Optional[AccountType] = None
