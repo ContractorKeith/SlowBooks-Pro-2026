@@ -13,7 +13,9 @@ import pytest
 from app.services.ai_service import (
     _extract_tool_calls,
     _parse_json_args,
+    build_request,
     call_with_tools,
+    parse_response,
     validate_worker_url,
     AIProviderError,
 )
@@ -503,3 +505,97 @@ def test_ai_config_never_returns_raw_api_key(client, db_session):
     # Scan the entire serialized response for our secret
     raw = json.dumps(body)
     assert "sk-very-secret-12345" not in raw
+
+
+# ---------------------------------------------------------------------------
+# custom (OpenAI-compatible) provider
+# ---------------------------------------------------------------------------
+
+
+def test_build_request_custom_appends_chat_completions():
+    """The custom provider normalizes a base URL to /chat/completions."""
+    req = build_request(
+        "custom",
+        "sk-fake",
+        "deepseek/deepseek-v4-flash",
+        "sys",
+        "user",
+        endpoint_url="https://api.commandcode.ai/provider/v1",
+    )
+    assert req["method"] == "POST"
+    assert req["url"] == "https://api.commandcode.ai/provider/v1/chat/completions"
+    assert req["headers"]["Authorization"] == "Bearer sk-fake"
+    assert req["json"]["model"] == "deepseek/deepseek-v4-flash"
+
+
+def test_build_request_custom_keeps_explicit_chat_completions():
+    req = build_request(
+        "custom",
+        "sk-fake",
+        "model-x",
+        "sys",
+        "user",
+        endpoint_url="https://api.example.com/v1/chat/completions",
+    )
+    assert req["url"] == "https://api.example.com/v1/chat/completions"
+
+
+def test_build_request_custom_requires_endpoint():
+    with pytest.raises(ValueError):
+        build_request(
+            "custom", "sk-fake", "model-x", "sys", "user", endpoint_url=None
+        )
+
+
+def test_parse_response_custom_openai_shape():
+    body = {"choices": [{"message": {"content": "Here is the analysis."}}]}
+    assert parse_response("custom", body) == "Here is the analysis."
+
+
+def test_call_with_tools_custom_roundtrip():
+    """The full tool loop works against a custom OpenAI-compatible endpoint."""
+    responses = [
+        _mock_response(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "t1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "list_customers",
+                                        "arguments": '{"limit": 2}',
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ),
+        _mock_response(
+            {"choices": [{"message": {"content": "You have 2 customers."}}]},
+        ),
+    ]
+    client = _fake_client(responses)
+    tool_executor = MagicMock(return_value={"count": 2, "items": ["A", "B"]})
+
+    result = call_with_tools(
+        provider_key="custom",
+        api_key="sk-fake",
+        model="deepseek/deepseek-v4-flash",
+        user_question="How many customers do I have?",
+        tools=_FAKE_TOOLS,
+        tool_executor=tool_executor,
+        endpoint_url="https://api.commandcode.ai/provider/v1",
+        client=client,
+    )
+
+    assert result["success"] is True
+    assert result["call_count"] == 2
+    assert "2 customers" in result["final_response"]
+    # The client should have been hit with the /chat/completions URL.
+    req_url = client.request.call_args_list[0].args[1]
+    assert req_url == "https://api.commandcode.ai/provider/v1/chat/completions"
