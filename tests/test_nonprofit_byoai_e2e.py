@@ -585,7 +585,7 @@ def test_nonprofit_year_through_the_api(client, seed_accounts, monkeypatch):
     # ---- switch back: words revert, numbers do not move ----------------------
     _ok(admin.put("/api/settings", json={"company_type": "business"}))
     assert (
-        'filename="profit-loss.pdf"'
+        'filename="profit-loss_'
         in reader.get(f"/api/reports/profit-loss/pdf?{qs}").headers[
             "content-disposition"
         ]

@@ -259,7 +259,7 @@ def test_report_pdf_filenames_and_dashboard_follow_company_type(client, seed_acc
     r = client.get(
         "/api/reports/profit-loss/pdf?start_date=2026-01-01&end_date=2026-12-31"
     )
-    assert 'filename="profit-loss.pdf"' in r.headers["content-disposition"]
+    assert 'filename="profit-loss_' in r.headers["content-disposition"]
     widgets = client.get("/api/dashboard/widgets").json()
     assert {w["id"]: w["title"] for w in widgets["widgets"]}[
         "receivables"
@@ -270,11 +270,10 @@ def test_report_pdf_filenames_and_dashboard_follow_company_type(client, seed_acc
         "/api/reports/profit-loss/pdf?start_date=2026-01-01&end_date=2026-12-31"
     )
     assert r.status_code == 200 and r.content[:5] == b"%PDF-"
-    assert 'filename="statement-of-activities.pdf"' in r.headers["content-disposition"]
+    assert 'filename="statement-of-activities_' in r.headers["content-disposition"]
     r = client.get("/api/reports/balance-sheet/pdf?as_of_date=2026-12-31")
     assert (
-        'filename="statement-of-financial-position.pdf"'
-        in r.headers["content-disposition"]
+        'filename="statement-of-financial-position_' in r.headers["content-disposition"]
     )
     widgets = client.get("/api/dashboard/widgets").json()
     titles = {w["id"]: w["title"] for w in widgets["widgets"]}

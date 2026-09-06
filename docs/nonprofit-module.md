@@ -146,6 +146,18 @@ The functional-expense CSV is in Part IX column order (A total, B program,
 C management, D fundraising) for the preparer; the row mapping to Part IX
 line numbers is not done for you.
 
+**Year over year.** The Statement of Activities and the Statement of
+Functional Expenses have a "Compare to prior year" box: the same dates one
+year earlier appear as two more columns (prior year, change) on screen, in
+the PDF and in the CSV (`?compare=prior_year` on the API).
+
+**Where a PDF goes.** In the desktop app, Save PDF writes the file to
+*Documents → SlowBooks Pro → Reports*, opens it in a viewer window, and shows
+a "Saved to …" notice with a *Show in folder* button. Filenames carry the
+period, so two runs never overwrite each other. Saved report *definitions*
+(the "Save Report…" button) are a different thing: they are listed under
+Saved Reports at the top of the Report Center, as a collapsible list.
+
 ## Driving nonprofit mode from the API
 
 Everything above is an API call, so a bring-your-own-AI agent with a scoped

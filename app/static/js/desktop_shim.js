@@ -163,7 +163,20 @@
             const base64 = arrayBufferToBase64(buffer);
             const title = filenameFromDisposition(disposition, fallbackName);
             if (window.pywebview && window.pywebview.api && window.pywebview.api.open_document_pdf) {
-                await window.pywebview.api.open_document_pdf(title, base64);
+                const result = await window.pywebview.api.open_document_pdf(title, base64);
+                if (result && result.success && result.path) {
+                    // The viewer window has no address bar; tell the user where
+                    // the file actually is and offer to open that folder.
+                    if (typeof toastAction === 'function') {
+                        toastAction('Saved to ' + result.path, 'Show in folder', function () {
+                            window.pywebview.api.reveal_path(result.path);
+                        }, 10000);
+                    } else if (typeof toast === 'function') {
+                        toast('Saved to ' + result.path);
+                    }
+                } else if (result && result.error && typeof toast === 'function') {
+                    toast('Could not save the PDF: ' + result.error, 'error');
+                }
             }
             return;
         }

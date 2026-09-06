@@ -577,7 +577,16 @@ def financial_position_csv(data: dict) -> str:
 
 def activities_csv(data: dict) -> str:
     t = data["totals"]
-    rows = [["Revenue & Support", "", "", ""]]
+    cmp = data.get("compare") == "prior_year"
+    pt = data.get("prior", {}).get("totals", {}) if cmp else {}
+
+    def ext(total, prior):
+        if not cmp:
+            return []
+        return [f"{prior or 0:.2f}", f"{(total or 0) - (prior or 0):.2f}"]
+
+    blank = [""] * 2 if cmp else []
+    rows = [["Revenue & Support", "", "", ""] + blank]
     for r in data["revenue"]:
         rows.append(
             [
@@ -586,6 +595,7 @@ def activities_csv(data: dict) -> str:
                 f"{r['with']:.2f}",
                 f"{r['total']:.2f}",
             ]
+            + ext(r["total"], r.get("prior_total"))
         )
     rows.append(
         [
@@ -594,6 +604,7 @@ def activities_csv(data: dict) -> str:
             f"{t['revenue_with']:.2f}",
             f"{t['revenue']:.2f}",
         ]
+        + ext(t["revenue"], pt.get("revenue"))
     )
     rl = data["releases"]
     rows.append(
@@ -603,8 +614,9 @@ def activities_csv(data: dict) -> str:
             f"{rl['with']:.2f}",
             "0.00",
         ]
+        + ext(0, 0)
     )
-    rows.append(["Expenses", "", "", ""])
+    rows.append(["Expenses", "", "", ""] + blank)
     for r in data["expenses"]:
         rows.append(
             [
@@ -613,9 +625,11 @@ def activities_csv(data: dict) -> str:
                 "0.00",
                 f"{r['total']:.2f}",
             ]
+            + ext(r["total"], r.get("prior_total"))
         )
     rows.append(
         ["Total Expenses", f"{t['expenses']:.2f}", "0.00", f"{t['expenses']:.2f}"]
+        + ext(t["expenses"], pt.get("expenses"))
     )
     rows.append(
         [
@@ -624,10 +638,12 @@ def activities_csv(data: dict) -> str:
             f"{t['change_with']:.2f}",
             f"{t['change_total']:.2f}",
         ]
+        + ext(t["change_total"], pt.get("change_total"))
     )
-    return _csv(
-        ["", "Without Donor Restrictions", "With Donor Restrictions", "Total"], rows
-    )
+    header = ["", "Without Donor Restrictions", "With Donor Restrictions", "Total"]
+    if cmp:
+        header += [f"Prior year ({data['prior']['start_date'][:4]})", "Change"]
+    return _csv(header, rows)
 
 
 def fund_balances_csv(data: dict) -> str:
@@ -665,20 +681,112 @@ def functional_expenses_csv(data: dict) -> str:
     # (C) Management and general, (D) Fundraising; unassigned last so a
     # preparer sees what still needs a function.
     keys = ("total", "program", "management", "fundraising", "unassigned")
+    cmp = data.get("compare") == "prior_year"
+
+    def ext(r):
+        if not cmp:
+            return []
+        return [f"{r.get('prior_total', 0):.2f}", f"{r.get('change', 0):.2f}"]
+
     rows = [
         [f"{r['account_number'] or ''} {r['account_name']}".strip()]
         + [f"{r[k]:.2f}" for k in keys]
+        + ext(r)
         for r in data["rows"]
     ]
-    rows.append(["Total"] + [f"{data['totals'][k]:.2f}" for k in keys])
-    return _csv(
+    pt = data.get("prior", {}).get("totals", {}) if cmp else {}
+    total_ext = (
         [
-            "Expense",
-            "Total (A)",
-            "Program services (B)",
-            "Management and general (C)",
-            "Fundraising (D)",
-            "Unassigned",
-        ],
-        rows,
+            f"{pt.get('total', 0):.2f}",
+            f"{data['totals']['total'] - pt.get('total', 0):.2f}",
+        ]
+        if cmp
+        else []
     )
+    rows.append(["Total"] + [f"{data['totals'][k]:.2f}" for k in keys] + total_ext)
+    header = [
+        "Expense",
+        "Total (A)",
+        "Program services (B)",
+        "Management and general (C)",
+        "Fundraising (D)",
+        "Unassigned",
+    ]
+    if cmp:
+        header += [f"Prior year ({data['prior']['start_date'][:4]})", "Change"]
+    return _csv(header, rows)
+
+
+# ── Prior-year comparison ────────────────────────────────────────────────
+
+
+def _shift_year(d: date) -> date:
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:  # Feb 29
+        return d.replace(year=d.year - 1, day=28)
+
+
+def _merge_prior(
+    rows: list[dict], prior_rows: list[dict], key: str, value: str
+) -> list[dict]:
+    """Attach `prior_<value>` and `change` to each row, adding rows that only
+    exist in the prior period, so the two columns share one account list."""
+    prior_by = {r[key]: r for r in prior_rows}
+    out = []
+    seen = set()
+    for r in rows:
+        pr = prior_by.get(r[key])
+        prior_val = pr[value] if pr else 0.0
+        out.append(
+            {
+                **r,
+                f"prior_{value}": prior_val,
+                "change": _f(Decimal(str(r[value])) - Decimal(str(prior_val))),
+            }
+        )
+        seen.add(r[key])
+    for r in prior_rows:
+        if r[key] in seen:
+            continue
+        blank = {k: (0.0 if isinstance(v, float) else v) for k, v in r.items()}
+        out.append(
+            {**blank, f"prior_{value}": r[value], "change": _f(-Decimal(str(r[value])))}
+        )
+    out.sort(key=lambda r: (r.get("account_number") or "", r.get("account_name") or ""))
+    return out
+
+
+def statement_of_activities_compared(db: Session, start: date, end: date) -> dict:
+    """The statement with a prior-year column: same dates one year earlier."""
+    cur = statement_of_activities(db, start, end)
+    p_start, p_end = _shift_year(start), _shift_year(end)
+    prior = statement_of_activities(db, p_start, p_end)
+    cur["revenue"] = _merge_prior(
+        cur["revenue"], prior["revenue"], "account_id", "total"
+    )
+    cur["expenses"] = _merge_prior(
+        cur["expenses"], prior["expenses"], "account_id", "total"
+    )
+    cur["prior"] = {
+        "start_date": p_start.isoformat(),
+        "end_date": p_end.isoformat(),
+        "totals": prior["totals"],
+        "releases": prior["releases"],
+    }
+    cur["compare"] = "prior_year"
+    return cur
+
+
+def functional_expenses_compared(db: Session, start: date, end: date) -> dict:
+    cur = functional_expenses(db, start, end)
+    p_start, p_end = _shift_year(start), _shift_year(end)
+    prior = functional_expenses(db, p_start, p_end)
+    cur["rows"] = _merge_prior(cur["rows"], prior["rows"], "account_id", "total")
+    cur["prior"] = {
+        "start_date": p_start.isoformat(),
+        "end_date": p_end.isoformat(),
+        "totals": prior["totals"],
+    }
+    cur["compare"] = "prior_year"
+    return cur

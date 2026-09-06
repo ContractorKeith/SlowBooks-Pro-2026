@@ -706,7 +706,11 @@ def profit_loss_pdf(
 ):
     data = profit_loss(start_date, end_date, db)
     t = terms_from_db(db)
-    return _pdf_response([_pl_section(data, t)], db, f"{t.slug('Profit & Loss')}.pdf")
+    return _pdf_response(
+        [_pl_section(data, t)],
+        db,
+        f"{t.slug('Profit & Loss')}_{data['start_date']}_{data['end_date']}.pdf",
+    )
 
 
 @router.get("/balance-sheet/pdf")
@@ -715,7 +719,11 @@ def balance_sheet_pdf(
 ):
     data = balance_sheet(as_of_date, db)
     t = terms_from_db(db)
-    return _pdf_response([_bs_section(data, t)], db, f"{t.slug('Balance Sheet')}.pdf")
+    return _pdf_response(
+        [_bs_section(data, t)],
+        db,
+        f"{t.slug('Balance Sheet')}_{data['as_of_date']}.pdf",
+    )
 
 
 @router.get("/financial-statements/pdf")
@@ -740,4 +748,6 @@ def financial_statements_pdf(
         ) + [_tb_section(tb)]
     else:
         sections = [_pl_section(pl, t), _bs_section(bs, t), _tb_section(tb)]
-    return _pdf_response(sections, db, "financial-statements.pdf")
+    return _pdf_response(
+        sections, db, f"financial-statements_{pl['start_date']}_{pl['end_date']}.pdf"
+    )

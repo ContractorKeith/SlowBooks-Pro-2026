@@ -89,7 +89,9 @@ def pledges_pdf(
 ):
     start_date, end_date = _period(start_date, end_date)
     data = pledge_report(db, start_date, end_date)
-    return _pdf_response([_pledges_section(data)], db, "pledge-report.pdf")
+    return _pdf_response(
+        [_pledges_section(data)], db, f"pledge-report_{start_date}_{end_date}.pdf"
+    )
 
 
 @router.get("/pledges/csv")

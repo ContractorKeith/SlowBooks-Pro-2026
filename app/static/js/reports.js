@@ -29,24 +29,35 @@ const ReportsPage = {
         try {
             const saved = await API.get('/saved-reports');
             if (saved && saved.length) {
-                const items = saved.map(s => `
-                    <div class="card" style="cursor:pointer; position:relative; border-left:3px solid var(--qb-blue,#0066cc);"
-                         onclick="ReportsPage.openSaved(${s.id})">
-                        <div class="card-header">${escapeHtml(s.name)}</div>
-                        <p style="font-size:11px; color:var(--text-muted);">
-                            ${escapeHtml(s.report_type.replace(/_/g, ' '))}
-                            ${s.parameters && s.parameters.start_date ? '· ' + escapeHtml(s.parameters.start_date) + ' → ' + escapeHtml(s.parameters.end_date || '') : ''}
-                        </p>
-                        <button aria-label="Delete saved report" class="btn btn-sm btn-secondary"
-                                style="position:absolute; top:8px; right:8px;"
-                                onclick="event.stopPropagation(); ReportsPage.deleteSaved(${s.id})"
-                                title="Delete saved report">×</button>
-                    </div>`).join('');
+                // A list, not a wall of cards: thirty saved reports must not
+                // push the Report Center off the screen. Collapsed by default
+                // once there are more than a handful; the choice sticks.
+                let collapsed = false;
+                try { collapsed = localStorage.getItem('sb_saved_reports_collapsed') === '1'; } catch (e) { /* ignore */ }
+                if (saved.length > 6 && localStorage.getItem('sb_saved_reports_collapsed') === null) collapsed = true;
+                const period = (p) => !p ? '' : (p.as_of_date ? `as of ${escapeHtml(p.as_of_date)}` : (p.start_date ? `${escapeHtml(p.start_date)} → ${escapeHtml(p.end_date || '')}` : (p.period ? escapeHtml(String(p.period).replace(/_/g, ' ')) : '')));
+                const rows = saved.slice().sort((a, b) => a.name.localeCompare(b.name)).map(s => `
+                    <tr class="saved-report-row">
+                        <td><a href="javascript:void(0)" onclick="ReportsPage.openSaved(${s.id})" style="font-weight:600;">${escapeHtml(s.name)}</a></td>
+                        <td>${escapeHtml(Terms.text(s.report_type.replace(/_/g, ' ')))}</td>
+                        <td style="color:var(--text-muted);">${period(s.parameters)}</td>
+                        <td class="actions">
+                            <button class="btn btn-sm btn-secondary" onclick="ReportsPage.openSaved(${s.id})">Open</button>
+                            <button class="btn btn-sm btn-secondary" aria-label="Delete saved report" onclick="ReportsPage.deleteSaved(${s.id})">Delete</button>
+                        </td>
+                    </tr>`).join('');
                 savedHtml = `
-                    <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:0 0 8px;">
-                        Saved Reports
-                    </h3>
-                    <div class="card-grid" style="margin-bottom:24px;">${items}</div>`;
+                    <div style="display:flex; align-items:center; gap:10px; margin:0 0 8px;">
+                        <button type="button" class="btn btn-sm btn-secondary" id="saved-reports-toggle" aria-expanded="${collapsed ? 'false' : 'true'}" aria-controls="saved-reports-list" onclick="ReportsPage.toggleSaved()">${collapsed ? '▸' : '▾'}</button>
+                        <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:0;">Saved Reports (${saved.length})</h3>
+                        ${saved.length > 8 ? `<input type="text" id="saved-reports-filter" placeholder="Filter…" style="width:160px;" oninput="ReportsPage.filterSaved(this.value)">` : ''}
+                    </div>
+                    <div id="saved-reports-list" ${collapsed ? 'hidden' : ''} style="margin-bottom:20px;">
+                        <div class="table-container"><table>
+                            <thead><tr><th scope="col">Name</th><th scope="col">Report</th><th scope="col">Period</th><th scope="col">Actions</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table></div>
+                    </div>`;
             }
         } catch (e) { /* render anyway */ }
 
@@ -129,6 +140,22 @@ const ReportsPage = {
 
     // ----- Saved Reports (Phase 11) -----
 
+    toggleSaved() {
+        const list = $('#saved-reports-list');
+        const btn = $('#saved-reports-toggle');
+        if (!list || !btn) return;
+        const nowHidden = !list.hidden;
+        list.hidden = nowHidden;
+        btn.textContent = nowHidden ? '▸' : '▾';
+        btn.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
+        try { localStorage.setItem('sb_saved_reports_collapsed', nowHidden ? '1' : '0'); } catch (e) { /* ignore */ }
+    },
+
+    filterSaved(q) {
+        const needle = (q || '').trim().toLowerCase();
+        $$('.saved-report-row').forEach(tr => { tr.hidden = needle !== '' && !tr.textContent.toLowerCase().includes(needle); });
+    },
+
     async openSaved(id) {
         try {
             const all = await API.get('/saved-reports');
@@ -152,7 +179,7 @@ const ReportsPage = {
                 report_type: reportType,
                 parameters: params || {},
             });
-            toast('Saved');
+            toast(`Saved as "${name.trim()}" — it is listed under Saved Reports at the top of the Report Center`);
             // Refresh the page so the new one shows in the Saved section
             App.navigate(location.hash);
         } catch (err) { toast(err.message || 'Save failed', 'error'); }
@@ -1029,32 +1056,44 @@ ReportsPage.pledges = async function (prefill) {
 };
 
 ReportsPage._exportButtons = function (path, qs) {
-    return `<div style="text-align:right; margin-bottom:6px;">
+    return `<div style="text-align:right; margin-bottom:6px; margin-left:auto;">
         <button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/${path}/pdf?${qs}','_blank')">Save PDF</button>
         <button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/${path}/csv?${qs}','_blank')">Save CSV</button>
     </div>`;
 };
 
+// Prior-year comparison for the two statements a treasurer reads side by
+// side. The choice is remembered for the session and rides on the export
+// links, so the PDF and CSV carry the same columns as the screen.
+ReportsPage._compare = { statement_of_activities: false, functional_expenses: false };
+ReportsPage.compareToggleHtml = function (key) {
+    return `<label style="font-weight:normal; font-size:12px; margin-right:auto;"><input type="checkbox" ${ReportsPage._compare[key] ? 'checked' : ''} onchange="ReportsPage._compare['${key}']=this.checked; $('#report-period-select').dispatchEvent(new Event('change'))"> Compare to prior year</label>`;
+};
+
 ReportsPage.statementOfActivities = async function (prefill) {
     await ReportsPage.openPeriodModal("Statement of Activities", "this_year_to_date", async (_period, range) => {
-        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const cmp = ReportsPage._compare.statement_of_activities;
+        const qs = `start_date=${range.start}&end_date=${range.end}${cmp ? '&compare=prior_year' : ''}`;
         const d = await API.get(`/reports/statement-of-activities?${qs}`);
         const t = d.totals;
-        const line = (label, w, r, tot, style = '') => `<tr style="${style}"><td>${label}</td><td class="amount">${formatCurrency(w)}</td><td class="amount">${formatCurrency(r)}</td><td class="amount">${formatCurrency(tot)}</td></tr>`;
-        const rows = (items) => items.length ? items.map(i => line(`<span style="padding-left:24px">${escapeHtml(i.account_name)}</span>`, i.without, i.with, i.total)).join('') : `<tr><td colspan="4" style="color:var(--gray-400);">None</td></tr>`;
-        return `${ReportsPage._exportButtons('statement-of-activities', qs)}
-            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}</p>
+        const pt = cmp && d.prior ? d.prior.totals : {};
+        const cols = cmp ? 6 : 4;
+        const line = (label, w, r, tot, prior, style = '') => `<tr style="${style}"><td>${label}</td><td class="amount">${formatCurrency(w)}</td><td class="amount">${formatCurrency(r)}</td><td class="amount">${formatCurrency(tot)}</td>${cmp ? `<td class="amount">${formatCurrency(prior || 0)}</td><td class="amount">${formatCurrency((tot || 0) - (prior || 0))}</td>` : ''}</tr>`;
+        const rows = (items) => items.length ? items.map(i => line(`<span style="padding-left:24px">${escapeHtml(i.account_name)}</span>`, i.without, i.with, i.total, i.prior_total)).join('') : `<tr><td colspan="${cols}" style="color:var(--gray-400);">None</td></tr>`;
+        const head = (label) => `<tr><td><strong>${label}</strong></td>${'<td></td>'.repeat(cols - 1)}</tr>`;
+        return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">${ReportsPage.compareToggleHtml('statement_of_activities')}${ReportsPage._exportButtons('statement-of-activities', qs)}</div>
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}${cmp && d.prior ? ` · prior year ${formatDate(d.prior.start_date)} &mdash; ${formatDate(d.prior.end_date)}` : ''}</p>
             <div class="table-container"><table>
-                <thead><tr><th scope="col"></th><th scope="col" class="amount">Without Donor Restrictions</th><th scope="col" class="amount">With Donor Restrictions</th><th scope="col" class="amount">Total</th></tr></thead>
+                <thead><tr><th scope="col"></th><th scope="col" class="amount">Without Donor Restrictions</th><th scope="col" class="amount">With Donor Restrictions</th><th scope="col" class="amount">Total</th>${cmp ? '<th scope="col" class="amount">Prior year</th><th scope="col" class="amount">Change</th>' : ''}</tr></thead>
                 <tbody>
-                    <tr><td><strong>Revenue &amp; Support</strong></td><td></td><td></td><td></td></tr>
+                    ${head('Revenue &amp; Support')}
                     ${rows(d.revenue)}
-                    ${line('Total Revenue &amp; Support', t.revenue_without, t.revenue_with, t.revenue, 'font-weight:600; background:var(--gray-50);')}
-                    ${line('Net assets released from restrictions', d.releases.without, d.releases.with, 0)}
-                    <tr><td><strong>Expenses</strong></td><td></td><td></td><td></td></tr>
+                    ${line('Total Revenue &amp; Support', t.revenue_without, t.revenue_with, t.revenue, pt.revenue, 'font-weight:600; background:var(--gray-50);')}
+                    ${line('Net assets released from restrictions', d.releases.without, d.releases.with, 0, 0)}
+                    ${head('Expenses')}
                     ${rows(d.expenses)}
-                    ${line('Total Expenses', t.expenses, 0, t.expenses, 'font-weight:600; background:var(--gray-50);')}
-                    ${line('Change in Net Assets', t.change_without, t.change_with, t.change_total, 'font-weight:700; font-size:15px; background:var(--primary-light);')}
+                    ${line('Total Expenses', t.expenses, 0, t.expenses, pt.expenses, 'font-weight:600; background:var(--gray-50);')}
+                    ${line('Change in Net Assets', t.change_without, t.change_with, t.change_total, pt.change_total, 'font-weight:700; font-size:15px; background:var(--primary-light);')}
                 </tbody>
             </table></div>`;
     }, "Dates", false, { reportType: 'statement_of_activities', prefill });
@@ -1105,20 +1144,22 @@ ReportsPage.fundBalances = async function (prefill) {
 
 ReportsPage.functionalExpenses = async function (prefill) {
     await ReportsPage.openPeriodModal("Statement of Functional Expenses", "this_year_to_date", async (_period, range) => {
-        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const cmp = ReportsPage._compare.functional_expenses;
+        const qs = `start_date=${range.start}&end_date=${range.end}${cmp ? '&compare=prior_year' : ''}`;
         const d = await API.get(`/reports/functional-expenses?${qs}`);
         const keys = ['total', 'program', 'management', 'fundraising', 'unassigned'];
-        const row = (label, r, style = '') => `<tr style="${style}"><td>${label}</td>${keys.map(k => `<td class="amount">${formatCurrency(r[k])}</td>`).join('')}</tr>`;
+        const pt = cmp && d.prior ? d.prior.totals : {};
+        const row = (label, r, style = '', prior = null) => { const pv = prior != null ? prior : (r.prior_total || 0); return `<tr style="${style}"><td>${label}</td>${keys.map(k => `<td class="amount">${formatCurrency(r[k])}</td>`).join('')}${cmp ? `<td class="amount">${formatCurrency(pv)}</td><td class="amount">${formatCurrency(r.total - pv)}</td>` : ''}</tr>`; };
         const rows = d.rows.map(r => row(escapeHtml(`${r.account_number || ''} ${r.account_name}`.trim()), r)).join('');
         const programs = d.programs.length ? `<h4 style="margin:12px 0 4px;font-size:12px;">Program services by program</h4>
             <div class="table-container"><table><thead><tr><th scope="col">Program</th><th scope="col" class="amount">Amount</th></tr></thead>
             <tbody>${d.programs.map(p => `<tr><td>${escapeHtml(p.class_name)}</td><td class="amount">${formatCurrency(p.amount)}</td></tr>`).join('')}</tbody></table></div>` : '';
-        return `${ReportsPage._exportButtons('functional-expenses', qs)}
-            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}${d.totals.unassigned ? ` · <span style="color:var(--danger)">${formatCurrency(d.totals.unassigned)} still unassigned — run an allocation rule</span>` : ''}</p>
+        return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">${ReportsPage.compareToggleHtml('functional_expenses')}${ReportsPage._exportButtons('functional-expenses', qs)}</div>
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}${cmp && d.prior ? ` · prior year ${formatDate(d.prior.start_date)} &mdash; ${formatDate(d.prior.end_date)}` : ''}${d.totals.unassigned ? ` · <span style="color:var(--danger)">${formatCurrency(d.totals.unassigned)} still unassigned — run an allocation rule</span>` : ''}</p>
             <div class="table-container"><table>
-                <thead><tr><th scope="col">Expense</th><th scope="col" class="amount">Total</th><th scope="col" class="amount">Program</th><th scope="col" class="amount">Management</th><th scope="col" class="amount">Fundraising</th><th scope="col" class="amount">Unassigned</th></tr></thead>
-                <tbody>${rows || `<tr><td colspan="6" style="color:var(--gray-400);">No expenses in this period</td></tr>`}</tbody>
-                <tfoot>${row('Total', d.totals, 'font-weight:700; background:var(--gray-50);')}</tfoot>
+                <thead><tr><th scope="col">Expense</th><th scope="col" class="amount">Total</th><th scope="col" class="amount">Program</th><th scope="col" class="amount">Management</th><th scope="col" class="amount">Fundraising</th><th scope="col" class="amount">Unassigned</th>${cmp ? '<th scope="col" class="amount">Prior year</th><th scope="col" class="amount">Change</th>' : ''}</tr></thead>
+                <tbody>${rows || `<tr><td colspan="${cmp ? 8 : 6}" style="color:var(--gray-400);">No expenses in this period</td></tr>`}</tbody>
+                <tfoot>${row('Total', d.totals, 'font-weight:700; background:var(--gray-50);', pt.total || 0)}</tfoot>
             </table></div>${programs}`;
     }, "Dates", false, { reportType: 'functional_expenses', prefill });
 };

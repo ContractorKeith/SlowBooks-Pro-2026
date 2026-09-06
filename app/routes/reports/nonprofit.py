@@ -3,6 +3,7 @@ Functional Expenses — each as JSON, PDF (the shared report renderer) and
 CSV (Form 990 Part IX column order for functional expenses)."""
 
 from datetime import date
+from decimal import Decimal
 
 from fastapi import Depends, Query
 from fastapi.responses import Response
@@ -78,7 +79,9 @@ def statement_of_financial_position_pdf(
 ):
     data = svc.statement_of_financial_position(db, as_of_date or date.today())
     return _pdf_response(
-        [_sofp_section(data)], db, "statement-of-financial-position.pdf"
+        [_sofp_section(data)],
+        db,
+        f"statement-of-financial-position_{data['as_of_date']}.pdf",
     )
 
 
@@ -96,95 +99,114 @@ def statement_of_financial_position_csv(
 # ── Statement of Activities ──────────────────────────────────────────────
 
 
+def _soa(db, start_date, end_date, compare):
+    if compare == "prior_year":
+        return svc.statement_of_activities_compared(db, start_date, end_date)
+    return svc.statement_of_activities(db, start_date, end_date)
+
+
+def _sfe(db, start_date, end_date, compare):
+    if compare == "prior_year":
+        return svc.functional_expenses_compared(db, start_date, end_date)
+    return svc.functional_expenses(db, start_date, end_date)
+
+
 @router.get("/statement-of-activities")
 def statement_of_activities(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
+    compare: str = Query(
+        default=None, description="prior_year adds last year's column"
+    ),
     db: Session = Depends(get_db),
 ):
     start_date, end_date = _period(start_date, end_date)
-    return svc.statement_of_activities(db, start_date, end_date)
+    return _soa(db, start_date, end_date, compare)
 
 
 def _soa_section(data: dict) -> dict:
     t = data["totals"]
-    rows = [{"cells": ["Revenue & Support", "", "", ""], "style": "subtotal"}]
+    cmp = data.get("compare") == "prior_year"
+    pt = data.get("prior", {}).get("totals", {}) if cmp else {}
+
+    def line(label, without, with_, total, prior=None, style=None):
+        cells = [label, _money(without), _money(with_), _money(total)]
+        if cmp:
+            cells += [
+                _money(prior or 0),
+                _money(Decimal(str(total or 0)) - Decimal(str(prior or 0))),
+            ]
+        row = {"cells": cells}
+        if style:
+            row["style"] = style
+        return row
+
+    def head(label):
+        return {"cells": [label] + [""] * (5 if cmp else 3), "style": "subtotal"}
+
+    rows = [head("Revenue & Support")]
     for r in data["revenue"]:
         rows.append(
-            {
-                "cells": [
-                    f"  {r['account_name']}",
-                    _money(r["without"]),
-                    _money(r["with"]),
-                    _money(r["total"]),
-                ]
-            }
+            line(
+                f"  {r['account_name']}",
+                r["without"],
+                r["with"],
+                r["total"],
+                r.get("prior_total"),
+            )
         )
     rows.append(
-        {
-            "cells": [
-                "Total Revenue & Support",
-                _money(t["revenue_without"]),
-                _money(t["revenue_with"]),
-                _money(t["revenue"]),
-            ],
-            "style": "subtotal",
-        }
+        line(
+            "Total Revenue & Support",
+            t["revenue_without"],
+            t["revenue_with"],
+            t["revenue"],
+            pt.get("revenue"),
+            "subtotal",
+        )
     )
     rl = data["releases"]
     rows.append(
-        {
-            "cells": [
-                "Net assets released from restrictions",
-                _money(rl["without"]),
-                _money(rl["with"]),
-                _money(0),
-            ]
-        }
+        line("Net assets released from restrictions", rl["without"], rl["with"], 0, 0)
     )
-    rows.append({"cells": ["Expenses", "", "", ""], "style": "subtotal"})
+    rows.append(head("Expenses"))
     for r in data["expenses"]:
         rows.append(
-            {
-                "cells": [
-                    f"  {r['account_name']}",
-                    _money(r["without"]),
-                    _money(0),
-                    _money(r["total"]),
-                ]
-            }
+            line(
+                f"  {r['account_name']}",
+                r["without"],
+                0,
+                r["total"],
+                r.get("prior_total"),
+            )
         )
     rows.append(
-        {
-            "cells": [
-                "Total Expenses",
-                _money(t["expenses"]),
-                _money(0),
-                _money(t["expenses"]),
-            ],
-            "style": "subtotal",
-        }
+        line(
+            "Total Expenses",
+            t["expenses"],
+            0,
+            t["expenses"],
+            pt.get("expenses"),
+            "subtotal",
+        )
     )
     rows.append(
-        {
-            "cells": [
-                "Change in Net Assets",
-                _money(t["change_without"]),
-                _money(t["change_with"]),
-                _money(t["change_total"]),
-            ],
-            "style": "grand-total",
-        }
+        line(
+            "Change in Net Assets",
+            t["change_without"],
+            t["change_with"],
+            t["change_total"],
+            pt.get("change_total"),
+            "grand-total",
+        )
     )
+    columns = ["", "Without Donor Restrictions", "With Donor Restrictions", "Total"]
+    if cmp:
+        columns += [f"Prior year ({data['prior']['start_date'][:4]})", "Change"]
     return {
         "title": "Statement of Activities",
         "period": f"{data['start_date']} — {data['end_date']}",
-        "columns": [
-            "",
-            "Without Donor Restrictions",
-            "With Donor Restrictions",
-            "Total",
-        ],
+        "columns": columns,
         "rows": rows,
     }
 
@@ -193,21 +215,27 @@ def _soa_section(data: dict) -> dict:
 def statement_of_activities_pdf(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
+    compare: str = Query(default=None),
     db: Session = Depends(get_db),
 ):
     start_date, end_date = _period(start_date, end_date)
-    data = svc.statement_of_activities(db, start_date, end_date)
-    return _pdf_response([_soa_section(data)], db, "statement-of-activities.pdf")
+    data = _soa(db, start_date, end_date, compare)
+    return _pdf_response(
+        [_soa_section(data)],
+        db,
+        f"statement-of-activities_{start_date}_{end_date}.pdf",
+    )
 
 
 @router.get("/statement-of-activities/csv")
 def statement_of_activities_csv(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
+    compare: str = Query(default=None),
     db: Session = Depends(get_db),
 ):
     start_date, end_date = _period(start_date, end_date)
-    data = svc.statement_of_activities(db, start_date, end_date)
+    data = _soa(db, start_date, end_date, compare)
     return _csv_response(
         svc.activities_csv(data),
         f"statement-of-activities_{start_date}_{end_date}.csv",
@@ -273,7 +301,9 @@ def fund_balances_pdf(
 ):
     start_date, end_date = _period(start_date, end_date)
     data = svc.fund_balances(db, start_date, end_date)
-    return _pdf_response([_funds_section(data)], db, "fund-balances.pdf")
+    return _pdf_response(
+        [_funds_section(data)], db, f"fund-balances_{start_date}_{end_date}.pdf"
+    )
 
 
 @router.get("/fund-balances/csv")
@@ -296,24 +326,48 @@ def fund_balances_csv(
 def functional_expenses(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
+    compare: str = Query(
+        default=None, description="prior_year adds last year's column"
+    ),
     db: Session = Depends(get_db),
 ):
     start_date, end_date = _period(start_date, end_date)
-    return svc.functional_expenses(db, start_date, end_date)
+    return _sfe(db, start_date, end_date, compare)
 
 
 def _sfe_section(data: dict) -> dict:
     keys = ("total", "program", "management", "fundraising", "unassigned")
+    cmp = data.get("compare") == "prior_year"
+
+    def extra(r):
+        if not cmp:
+            return []
+        return [_money(r.get("prior_total", 0)), _money(r.get("change", 0))]
+
     rows = [
         {
             "cells": [f"{r['account_number'] or ''} {r['account_name']}".strip()]
             + [_money(r[k]) for k in keys]
+            + extra(r)
         }
         for r in data["rows"]
     ]
+    pt = data.get("prior", {}).get("totals", {}) if cmp else {}
+    total_extra = (
+        [
+            _money(pt.get("total", 0)),
+            _money(
+                Decimal(str(data["totals"]["total"])) - Decimal(str(pt.get("total", 0)))
+            ),
+        ]
+        if cmp
+        else []
+    )
     rows.append(
         {
-            "cells": ["Total"] + [_money(data["totals"][k]) for k in keys],
+            "cells": ["Total"]
+            + [_money(data["totals"][k]) for k in keys]
+            + total_extra,
             "style": "grand-total",
         }
     )
@@ -328,17 +382,13 @@ def _sfe_section(data: dict) -> dict:
             rows.append(
                 {"cells": [f"  {p['class_name']}", "", _money(p["amount"]), "", "", ""]}
             )
+    columns = ["Expense", "Total", "Program", "Management", "Fundraising", "Unassigned"]
+    if cmp:
+        columns += [f"Prior year ({data['prior']['start_date'][:4]})", "Change"]
     return {
         "title": "Statement of Functional Expenses",
         "period": f"{data['start_date']} — {data['end_date']}",
-        "columns": [
-            "Expense",
-            "Total",
-            "Program",
-            "Management",
-            "Fundraising",
-            "Unassigned",
-        ],
+        "columns": columns,
         "rows": rows,
     }
 
@@ -347,21 +397,25 @@ def _sfe_section(data: dict) -> dict:
 def functional_expenses_pdf(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
+    compare: str = Query(default=None),
     db: Session = Depends(get_db),
 ):
     start_date, end_date = _period(start_date, end_date)
-    data = svc.functional_expenses(db, start_date, end_date)
-    return _pdf_response([_sfe_section(data)], db, "functional-expenses.pdf")
+    data = _sfe(db, start_date, end_date, compare)
+    return _pdf_response(
+        [_sfe_section(data)], db, f"functional-expenses_{start_date}_{end_date}.pdf"
+    )
 
 
 @router.get("/functional-expenses/csv")
 def functional_expenses_csv(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
+    compare: str = Query(default=None),
     db: Session = Depends(get_db),
 ):
     start_date, end_date = _period(start_date, end_date)
-    data = svc.functional_expenses(db, start_date, end_date)
+    data = _sfe(db, start_date, end_date, compare)
     return _csv_response(
         svc.functional_expenses_csv(data),
         f"functional-expenses_{start_date}_{end_date}.csv",

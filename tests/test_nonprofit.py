@@ -996,7 +996,8 @@ def test_nonprofit_statement_pdfs_and_csvs_render(client, db_session, seed_accou
     ):
         pdf = client.get(f"/api/reports/{path}/pdf?{q}")
         assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-", path
-        assert f"{path}.pdf" in pdf.headers["content-disposition"]
+        assert f"{path}_" in pdf.headers["content-disposition"]
+        assert pdf.headers["content-disposition"].endswith('.pdf"')
         csv_r = client.get(f"/api/reports/{path}/csv?{q}")
         assert csv_r.status_code == 200 and csv_r.headers["content-type"].startswith(
             "text/csv"
@@ -1084,3 +1085,110 @@ def test_bill_line_explicit_null_function_stays_unassigned(
     )
     by_desc = {ln.description: ln.function for ln in txn.lines if ln.account_id == rent}
     assert by_desc == {"rent": None, "admin share": "management"}
+
+
+# ---------------------------------------------------------------------------
+# Year over year: the prior-year column on the two statements
+# ---------------------------------------------------------------------------
+
+
+def test_prior_year_comparison_on_activities_and_functional_expenses(
+    client, db_session, seed_accounts
+):
+    client.put("/api/settings", json={"company_type": "nonprofit"})
+    client.post("/api/nonprofit/setup-accounts")
+    program = client.post(
+        "/api/classes", json={"name": "Programs", "default_function": "program"}
+    ).json()
+    income, expense = _accts(db_session)
+    for d, inc, exp in (
+        (date(2025, 4, 1), "1000", "400"),
+        (date(2026, 4, 1), "1500", "700"),
+    ):
+        create_journal_entry(
+            db_session,
+            d,
+            f"year {d.year}",
+            [
+                {
+                    "account_id": seed_accounts["1010"].id,
+                    "debit": Decimal(inc),
+                    "credit": Decimal("0"),
+                },
+                {
+                    "account_id": income.id,
+                    "debit": Decimal("0"),
+                    "credit": Decimal(inc),
+                },
+                {
+                    "account_id": expense.id,
+                    "debit": Decimal(exp),
+                    "credit": Decimal("0"),
+                },
+                {
+                    "account_id": seed_accounts["1010"].id,
+                    "debit": Decimal("0"),
+                    "credit": Decimal(exp),
+                },
+            ],
+            class_id=program["id"],
+        )
+    db_session.commit()
+    qs = "start_date=2026-01-01&end_date=2026-12-31"
+    plain = client.get(f"/api/reports/statement-of-activities?{qs}").json()
+    assert "prior" not in plain
+    soa = client.get(
+        f"/api/reports/statement-of-activities?{qs}&compare=prior_year"
+    ).json()
+    assert soa["compare"] == "prior_year"
+    assert (
+        soa["prior"]["start_date"] == "2025-01-01"
+        and soa["prior"]["end_date"] == "2025-12-31"
+    )
+    assert (
+        soa["totals"]["revenue"] == 1500.0
+        and soa["prior"]["totals"]["revenue"] == 1000.0
+    )
+    rev = soa["revenue"][0]
+    assert (
+        rev["total"] == 1500.0
+        and rev["prior_total"] == 1000.0
+        and rev["change"] == 500.0
+    )
+    exp_row = soa["expenses"][0]
+    assert exp_row["prior_total"] == 400.0 and exp_row["change"] == 300.0
+
+    sfe = client.get(f"/api/reports/functional-expenses?{qs}&compare=prior_year").json()
+    assert sfe["prior"]["totals"]["total"] == 400.0 and sfe["totals"]["total"] == 700.0
+    assert sfe["rows"][0]["prior_total"] == 400.0 and sfe["rows"][0]["change"] == 300.0
+
+    for path in ("statement-of-activities", "functional-expenses"):
+        pdf = client.get(f"/api/reports/{path}/pdf?{qs}&compare=prior_year")
+        assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-"
+        csv_text = client.get(f"/api/reports/{path}/csv?{qs}&compare=prior_year").text
+        header = csv_text.splitlines()[0]
+        assert "Prior year (2025)" in header and header.endswith("Change")
+        assert (
+            csv_text.splitlines()[0].count(",")
+            == client.get(f"/api/reports/{path}/csv?{qs}")
+            .text.splitlines()[0]
+            .count(",")
+            + 2
+        )
+
+
+def test_report_pdfs_are_named_by_their_period_and_land_in_documents():
+    """The desktop shell saves a report PDF under Documents/SlowBooks Pro/
+    Reports and tells the user where; a period-stamped filename means two
+    runs never overwrite each other."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    launcher = (root / "desktop_launcher.py").read_text()
+    assert '"SlowBooks Pro" / "Reports"' in launcher
+    assert "def reveal_path" in launcher
+    assert 'return {"success": True, "path": str(dest)}' in launcher
+    shim = (root / "app/static/js/desktop_shim.js").read_text()
+    assert "reveal_path" in shim and "Saved to" in shim
+    utils = (root / "app/static/js/utils.js").read_text()
+    assert "function toastAction" in utils

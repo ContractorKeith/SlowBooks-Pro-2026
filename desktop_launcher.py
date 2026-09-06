@@ -599,6 +599,12 @@ window.addEventListener('pywebviewready', refresh);
 """
 
 
+def _documents_dir() -> Path:
+    """The user's Documents folder (falls back to home)."""
+    docs = Path.home() / "Documents"
+    return docs if docs.is_dir() else Path.home()
+
+
 def _safe_temp_filename(title: str, suffix: str) -> str:
     """Derive a safe filename for a transient viewer file from a title
     string the caller does not fully control (a document's own title,
@@ -675,25 +681,67 @@ class PickerApi:
         return {"success": True}
 
     def open_document_pdf(self, title: str, base64_data: str) -> dict:
-        """Show an already-fetched PDF (base64-encoded by the caller) in a
-        new native window, via a local temp file. Chromium's built-in PDF
-        viewer renders file:// URLs with its own print/save/zoom controls,
-        and a local file needs no authentication at all -- sidestepping
-        the same cross-window-cookie problem open_document_html's
-        docstring describes.
+        """Save an already-fetched PDF (base64-encoded by the caller) under
+        Documents/SlowBooks Pro/Reports and show it in a new native window.
+        Chromium's built-in PDF viewer renders file:// URLs with its own
+        print/zoom controls, and a local file needs no authentication at
+        all -- sidestepping the same cross-window-cookie problem
+        open_document_html's docstring describes.
+
+        Field note (v2.9 lap): the file used to land in a temp folder, so
+        "Save PDF" produced a window and nothing the user could find
+        afterwards. Now it is a real file in a predictable place, never
+        overwritten (a " (2)" suffix when the name is taken), and the path
+        goes back to the page so it can say where.
         """
         import base64
-        import tempfile
 
         try:
             import webview
 
             data = base64.b64decode(base64_data)
-            temp_dir = Path(tempfile.gettempdir()) / "SlowBooksProDocs"
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            temp_path = temp_dir / _safe_temp_filename(title, ".pdf")
-            temp_path.write_bytes(data)
-            webview.create_window(title or "SlowBooks Pro 2026", temp_path.as_uri())
+            out_dir = _documents_dir() / "SlowBooks Pro" / "Reports"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            name = _safe_temp_filename(title, ".pdf")
+            dest = out_dir / name
+            stem, suffix = dest.stem, dest.suffix
+            n = 2
+            while dest.exists():
+                dest = out_dir / f"{stem} ({n}){suffix}"
+                n += 1
+            dest.write_bytes(data)
+            webview.create_window(title or "SlowBooks Pro 2026", dest.as_uri())
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "path": str(dest)}
+
+    def reveal_path(self, path: str) -> dict:
+        """Open the folder that holds a file this app saved (Explorer /
+        Finder / the desktop's file manager). Only paths under the app's
+        own Reports and the user's Downloads folders are accepted."""
+        try:
+            target = Path(str(path or "")).resolve()
+            allowed = (
+                (_documents_dir() / "SlowBooks Pro").resolve(),
+                (Path.home() / "Downloads").resolve(),
+            )
+            if not any(target.is_relative_to(base) for base in allowed):
+                return {"success": False, "error": "Not a file this app saved"}
+            folder = target if target.is_dir() else target.parent
+            if sys.platform == "win32":
+                if target.is_file():
+                    subprocess.Popen(["explorer", "/select,", str(target)])
+                else:
+                    os.startfile(str(folder))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                args = (
+                    ["open", "-R", str(target)]
+                    if target.is_file()
+                    else ["open", str(folder)]
+                )
+                subprocess.Popen(args)
+            else:
+                subprocess.Popen(["xdg-open", str(folder)])
         except Exception as exc:
             return {"success": False, "error": str(exc)}
         return {"success": True}

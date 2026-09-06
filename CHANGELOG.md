@@ -63,6 +63,15 @@ will never be paid is **written off** through a credit memo to Bad Debt
 Expense — credit memos gained the void they never had, which is also the
 undo.
 
+**Reports you can find and compare.** In the desktop app, Save PDF now
+writes the report to Documents → SlowBooks Pro → Reports (period-stamped, never
+overwritten), opens it, and says where it went with a Show-in-folder button —
+it used to land in a temp folder. Saved report definitions are a collapsible
+list at the top of the Report Center instead of a growing wall of cards. The
+Statement of Activities and the Statement of Functional Expenses gained
+"Compare to prior year": the same dates a year earlier as two more columns,
+on screen, in the PDF and in the CSV.
+
 **Riverbend Community Arts.** The stage's acceptance test is a seeded
 nonprofit year — a grant, an endowment, a gala, pledgers, a piano, rent
 split 70/20/10, a June release — driven entirely through the API with scoped

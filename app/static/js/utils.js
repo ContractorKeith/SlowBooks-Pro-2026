@@ -33,6 +33,29 @@ function toast(message, type = 'success') {
     setTimeout(() => el.remove(), 3000);
 }
 
+// A toast that carries one action (e.g. "Saved to … [Show in folder]").
+// Stays longer than a plain toast because the user has to read a path.
+function toastAction(message, actionLabel, onClick, ms = 8000) {
+    const container = $('#toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast toast-success';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.gap = '10px';
+    const text = document.createElement('span');
+    text.textContent = message;
+    text.style.wordBreak = 'break-all';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-secondary';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', () => { try { onClick(); } finally { el.remove(); } });
+    el.appendChild(text);
+    el.appendChild(btn);
+    container.appendChild(el);
+    setTimeout(() => el.remove(), ms);
+}
+
 // Modal accessibility: the dialog takes focus when it opens, Tab and
 // Shift+Tab cycle inside it, Escape closes it, and focus returns to
 // whatever opened it. (Audit finding 3: role/aria-modal live on #modal in
