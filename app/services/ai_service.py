@@ -17,6 +17,8 @@
 #   * openai      — OpenAI /v1/chat/completions
 #   * gemini      — Google generativelanguage.googleapis.com generateContent
 #                   (Flash models free)
+#   * custom       — any OpenAI-compatible /v1/chat/completions endpoint
+#                   (user-supplied base URL, HTTPS-only, SSRF-guarded)
 #
 # Every network call goes through httpx with a 60-second timeout. API keys
 # are passed in from the caller — this module has no database access and
@@ -220,6 +222,7 @@ class ProviderSpec:
     model_choices: tuple = ()
     needs_account_id: bool = False  # Cloudflare direct REST
     needs_worker_url: bool = False  # Self-hosted CF Worker gateway
+    needs_endpoint_url: bool = False  # generic OpenAI-compatible endpoint (custom)
 
 
 PROVIDERS: Dict[str, ProviderSpec] = {
@@ -324,6 +327,21 @@ PROVIDERS: Dict[str, ProviderSpec] = {
             "gemini-2.0-flash-lite",
         ),
     ),
+    "custom": ProviderSpec(
+        key="custom",
+        label="Custom (OpenAI-compatible)",
+        default_model="",  # user supplies the model ID
+        wire_format="openai",
+        docs_url="",
+        free_tier_hint=(
+            "Point Slowbooks at any OpenAI-compatible chat endpoint. "
+            "Paste the base URL (e.g. https://api.example.com/v1) — "
+            "/chat/completions is appended automatically. HTTPS only, "
+            "private/LAN addresses blocked (SSRF guard)."
+        ),
+        needs_endpoint_url=True,
+        model_choices=(),
+    ),
 }
 
 
@@ -339,6 +357,7 @@ def provider_list() -> list:
             "free_tier_hint": p.free_tier_hint,
             "needs_account_id": p.needs_account_id,
             "needs_worker_url": p.needs_worker_url,
+            "needs_endpoint_url": p.needs_endpoint_url,
         }
         for p in PROVIDERS.values()
     ]
@@ -540,7 +559,7 @@ def _check_outbound_url(provider_key: str, url: str) -> str:
     if not isinstance(url, str) or not url:
         raise AIProviderError(f"{provider_key}: empty outbound URL")
 
-    if provider_key == "cloudflare_worker":
+    if provider_key in ("cloudflare_worker", "custom"):
         # Return the value validate_worker_url() produces (it returns the
         # normalized URL on success, raises on failure). Using the return
         # value rather than the input also gives static analyzers a clear
@@ -565,6 +584,7 @@ def build_request(
     user: str,
     account_id: Optional[str] = None,
     worker_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build an httpx-ready request dict for the given provider.
 
@@ -629,6 +649,22 @@ def build_request(
         safe_url = validate_worker_url(worker_url)
         return _openai_style_request(safe_url, api_key, model, system, user)
 
+    if provider_key == "custom":
+        # Generic OpenAI-compatible endpoint. The base URL is user-supplied
+        # and validated aggressively (https only, no private/loopback IPs,
+        # no embedded credentials — see validate_worker_url). We append
+        # /chat/completions to the normalized base so the user can paste
+        # either the bare origin or a /v1-style base.
+        if not endpoint_url:
+            raise ValueError(
+                "Custom provider requires endpoint_url — paste the OpenAI-"
+                "compatible base URL in AI settings"
+            )
+        safe_url = validate_worker_url(endpoint_url)
+        if not safe_url.rstrip("/").endswith("/chat/completions"):
+            safe_url = safe_url.rstrip("/") + "/chat/completions"
+        return _openai_style_request(safe_url, api_key, model, system, user)
+
     if provider_key == "anthropic":
         return {
             "method": "POST",
@@ -685,7 +721,14 @@ def parse_response(provider_key: str, body: Dict[str, Any]) -> str:
     Returns an empty string on parse failure — the caller decides
     whether to treat that as an error.
     """
-    if provider_key in ("grok", "groq", "openai", "cloudflare"):
+    if provider_key in (
+        "grok",
+        "groq",
+        "openai",
+        "cloudflare",
+        "cloudflare_worker",
+        "custom",
+    ):
         try:
             return body["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError):
@@ -750,6 +793,7 @@ def call_provider(
     user: str,
     account_id: Optional[str] = None,
     worker_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
     timeout: float = DEFAULT_TIMEOUT,
     client: Optional[httpx.Client] = None,
 ) -> str:
@@ -758,7 +802,14 @@ def call_provider(
     `client` is injectable for tests that want to stub out the transport.
     """
     req = build_request(
-        provider_key, api_key, model, system, user, account_id, worker_url
+        provider_key,
+        api_key,
+        model,
+        system,
+        user,
+        account_id,
+        worker_url,
+        endpoint_url,
     )
     # Re-validate outbound URL against the per-provider allowlist before
     # any network IO. Defense-in-depth + CodeQL trust boundary at the sink.
@@ -806,6 +857,7 @@ def generate_insights(
     company_name: str = "",
     account_id: Optional[str] = None,
     worker_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
     client: Optional[httpx.Client] = None,
 ) -> Dict[str, Any]:
     """End-to-end: build prompt, call provider, return structured result."""
@@ -818,6 +870,7 @@ def generate_insights(
         user=prompt,
         account_id=account_id,
         worker_url=worker_url,
+        endpoint_url=endpoint_url,
         client=client,
     )
     return {
@@ -844,6 +897,7 @@ def call_with_tools(
     tool_executor,
     account_id: Optional[str] = None,
     worker_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
     max_calls: int = 8,
     client: Optional[httpx.Client] = None,
 ) -> Dict[str, Any]:
@@ -899,6 +953,7 @@ def call_with_tools(
                 user_question,
                 account_id,
                 worker_url,
+                endpoint_url,
             )
             req["json"]["messages"] = messages
             req["json"]["tools"] = [
@@ -923,6 +978,7 @@ def call_with_tools(
                 user_question,
                 account_id,
                 worker_url,
+                endpoint_url,
             )
             req["json"]["messages"] = messages
             req["json"]["tools"] = [
@@ -948,6 +1004,7 @@ def call_with_tools(
                 user_question,
                 account_id,
                 worker_url,
+                endpoint_url,
             )
             req["json"]["tools"] = [
                 {

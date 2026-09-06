@@ -330,6 +330,7 @@ def run_action(
     api_key: str,
     account_id: Optional[str] = None,
     worker_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute one action: fetch data, prompt the LLM, return narrative."""
     spec = ACTIONS.get(action_key)
@@ -346,6 +347,7 @@ def run_action(
         user_prompt,
         account_id=account_id or None,
         worker_url=worker_url or None,
+        endpoint_url=endpoint_url or None,
     )
 
     return {
