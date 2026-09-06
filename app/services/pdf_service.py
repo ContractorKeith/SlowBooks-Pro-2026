@@ -261,6 +261,26 @@ def generate_collection_letter_pdf(
     return render_pdf(html_str)
 
 
+def generate_acknowledgment_letter_pdf(
+    customer, gift: dict, irs: dict, company_settings: dict, body_html: str, today=None
+) -> bytes:
+    """A donor acknowledgment letter: letterhead, the rendered (sandboxed,
+    autoescaped) body from the editable template, and the gift box with
+    the IRS figures."""
+    from datetime import date as _date
+
+    html_str = _render(
+        "acknowledgment_letter.html",
+        company_settings,
+        customer=customer,
+        gift=gift,
+        irs=irs,
+        body_html=body_html,
+        today=today or _date.today(),
+    )
+    return render_pdf(html_str)
+
+
 def generate_check_pdf(check_data: dict, company_settings: dict) -> bytes:
     template = _jinja_env.get_template("check_pdf.html")
     check_data["amount_words"] = _amount_to_words(check_data.get("amount", 0))

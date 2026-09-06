@@ -402,3 +402,20 @@ const AllocationsPage = {
     },
 };
 window.AllocationsPage = AllocationsPage;
+
+
+/**
+ * Donor documents: the acknowledgment letter lives on the receipt and
+ * payment views; this is the shared "email it" action.
+ */
+const Donors = {
+    async emailAcknowledgment(kind, id) {
+        const to = prompt('Send the acknowledgment letter to (leave as-is to use the donor\'s email):', '');
+        if (to === null) return;
+        try {
+            const r = await API.post(`/donors/gifts/${kind}/${id}/acknowledgment/email`, { recipient: to.trim() || null });
+            toast(`Acknowledgment sent to ${r.recipient}`);
+        } catch (err) { toast(err.message, 'error'); }
+    },
+};
+window.Donors = Donors;

@@ -230,3 +230,171 @@ def test_generated_invoices_link_to_template_and_carry_job(
     for inv in generated:
         assert inv["is_pledge"] is True
         assert inv["job_id"] == job["id"]
+
+
+# ---------------------------------------------------------------------------
+# Acknowledgment letters
+# ---------------------------------------------------------------------------
+
+
+def test_acknowledgment_letter_uses_the_editable_template(
+    client, seed_accounts, seed_customer
+):
+    _nonprofit(client)
+    client.put(
+        f"/api/customers/{seed_customer.id}",
+        json={"salutation": "Dear Friend", "email": "friend@example.org"},
+    )
+    inv = _receipt(
+        client,
+        seed_customer.id,
+        fair_value_amount="45",
+        fair_value_description="gala dinner",
+    ).json()["invoice"]
+
+    # built-in text before the template row exists
+    r = client.get(f"/api/donors/gifts/invoice/{inv['id']}/acknowledgment/pdf")
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+    assert (
+        f"Acknowledgment_{inv['invoice_number']}.pdf"
+        in r.headers["content-disposition"]
+    )
+
+    # seed, edit the template, and the letter body follows it
+    assert client.post("/api/email-templates/seed-defaults").status_code in (200, 201)
+    tpl = next(
+        t
+        for t in client.get("/api/email-templates").json()
+        if t["name"] == "donation_acknowledgment"
+    )
+    r = client.put(
+        f"/api/email-templates/{tpl['id']}",
+        json={
+            "subject_template": "Bless you, {{ donor_name }}",
+            "body_template": "<p>{{ donor.salutation }}, your gift of {{ gift.amount | currency }} matters. {{ irs.text }}</p>",
+        },
+    )
+    assert r.status_code == 200, r.text
+    from app.models.contacts import Customer
+    from app.services.donor_documents import load_gift, render_acknowledgment
+    from app.database import SessionLocal  # noqa: F401
+
+    # render through the same code path the routes use
+    import app.routes.donors as donors_routes
+
+    captured = {}
+
+    def fake_send(db, to_email, subject, html_body, **kw):
+        captured.update(to=to_email, subject=subject, body=html_body, kw=kw)
+        return True
+
+    donors_routes.send_email = fake_send
+    try:
+        r = client.post(
+            f"/api/donors/gifts/invoice/{inv['id']}/acknowledgment/email", json={}
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {"sent": True, "recipient": "friend@example.org"}
+    finally:
+        from app.services.email_service import send_email as real_send
+
+        donors_routes.send_email = real_send
+    assert captured["subject"] == "Bless you, Test Customer"
+    assert "Dear Friend, your gift of $150.00 matters." in captured["body"]
+    assert "limited to $105.00" in captured["body"]
+    assert (
+        captured["kw"]["attachment_name"]
+        == f"Acknowledgment_{inv['invoice_number']}.pdf"
+    )
+    assert captured["kw"]["entity_type"] == "acknowledgment_invoice"
+    assert (
+        isinstance(Customer, type)
+        and callable(load_gift)
+        and callable(render_acknowledgment)
+    )
+
+
+def test_acknowledgment_email_without_smtp_is_a_502_with_a_log_row(
+    client, db_session, seed_accounts, seed_customer
+):
+    _nonprofit(client)
+    client.put(f"/api/customers/{seed_customer.id}", json={"email": "d@example.org"})
+    inv = _receipt(client, seed_customer.id).json()["invoice"]
+    r = client.post(
+        f"/api/donors/gifts/invoice/{inv['id']}/acknowledgment/email", json={}
+    )
+    assert r.status_code == 502
+    from app.models.email_log import EmailLog
+
+    assert (
+        db_session.query(EmailLog)
+        .filter(EmailLog.entity_type == "acknowledgment_invoice")
+        .count()
+        == 1
+    )
+    # no address anywhere -> 400
+    client.put(f"/api/customers/{seed_customer.id}", json={"email": ""})
+    r = client.post(
+        f"/api/donors/gifts/invoice/{inv['id']}/acknowledgment/email", json={}
+    )
+    assert r.status_code == 400
+
+
+def test_payment_acknowledgment_eligibility(client, seed_accounts, seed_customer):
+    _nonprofit(client)
+    # a receipt's own payment is not a separate gift
+    sr = _receipt(client, seed_customer.id).json()
+    pay_id = sr["payment"]["id"]
+    r = client.get(f"/api/donors/gifts/payment/{pay_id}/acknowledgment/preview").json()
+    assert r["eligible"] is False and "acknowledge the receipt" in r["reason"]
+    assert (
+        client.get(f"/api/donors/gifts/payment/{pay_id}/acknowledgment/pdf").status_code
+        == 400
+    )
+
+    # an unapplied payment is a gift
+    gift = client.post(
+        "/api/payments",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-06-01",
+            "amount": "500",
+            "method": "Check",
+            "check_number": "1042",
+        },
+    )
+    assert gift.status_code in (200, 201), gift.text
+    r = client.get(
+        f"/api/donors/gifts/payment/{gift.json()['id']}/acknowledgment/preview"
+    ).json()
+    assert r == {"eligible": True, "amount": 500.0, "reason": None}
+    pdf = client.get(
+        f"/api/donors/gifts/payment/{gift.json()['id']}/acknowledgment/pdf"
+    )
+    assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-"
+    assert "Acknowledgment_1042.pdf" in pdf.headers["content-disposition"]
+
+    # a pledge is acknowledged when paid, not when issued
+    pledge = client.post(
+        "/api/invoices",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-01-01",
+            "tax_rate": "0",
+            "is_pledge": True,
+            "lines": [{"description": "pledge", "quantity": 1, "rate": "100"}],
+        },
+    ).json()
+    assert (
+        client.get(
+            f"/api/donors/gifts/invoice/{pledge['id']}/acknowledgment/pdf"
+        ).status_code
+        == 400
+    )
+    assert (
+        client.get("/api/donors/gifts/banana/1/acknowledgment/pdf").status_code == 404
+    )
+    assert (
+        client.get("/api/donors/gifts/invoice/99999/acknowledgment/pdf").status_code
+        == 404
+    )

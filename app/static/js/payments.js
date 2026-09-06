@@ -41,6 +41,12 @@ const PaymentsPage = {
 
     async view(id) {
         const p = await API.get(`/payments/${id}`);
+        // Nonprofit: a pledge payment or an unapplied gift gets a letter; a
+        // receipt's own payment does not (the receipt is acknowledged).
+        let ack = null;
+        if (Terms.isNonprofit() && !p.is_voided) {
+            try { ack = await API.get(`/donors/gifts/payment/${id}/acknowledgment/preview`); } catch (e) { ack = null; }
+        }
         let allocHtml = '';
         if (p.allocations.length) {
             allocHtml = `<h4 style="margin:12px 0 8px;">Applied to Invoices</h4>
@@ -65,6 +71,8 @@ const PaymentsPage = {
             ${allocHtml}
             ${p.is_voided ? '<div style="color:var(--danger);font-weight:700;margin:12px 0;">This payment has been voided.</div>' : ''}
             <div class="form-actions">
+                ${ack && ack.eligible ? `<button class="btn btn-secondary" onclick="window.open('/api/donors/gifts/payment/${p.id}/acknowledgment/pdf','_blank')">Acknowledgment (PDF)</button>
+                <button class="btn btn-secondary" onclick="Donors.emailAcknowledgment('payment', ${p.id})">Email Acknowledgment</button>` : ''}
                 ${!p.is_voided ? `<button class="btn btn-danger" onclick="PaymentsPage.void(${p.id})">Void Payment</button>` : ''}
                 ${p.method === 'Check' && p.check_number && !p.is_voided ? `<button class="btn btn-secondary" onclick="window.open('/api/checks/print?payment_id=${p.id}','_blank')">Print Check</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>

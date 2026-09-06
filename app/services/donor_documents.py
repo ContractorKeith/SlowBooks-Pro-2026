@@ -95,3 +95,164 @@ def invoice_pdf_context(inv, company: dict) -> dict:
             getattr(inv, "fair_value_description", None),
         )
     return {"doc_kind": kind, "irs": irs}
+
+
+# ── gifts: one shape for a receipt, a payment, or property ───────────────
+
+ACK_TEMPLATE_NAME = "donation_acknowledgment"
+ACK_SUBJECT = "Thank you for your gift to {{ company.company_name }}"
+ACK_BODY = """<p>{{ donor.salutation or ('Dear ' ~ donor_name) }},</p>
+<p>Thank you for your {% if gift.in_kind_lines %}generous gift{% else %}contribution of {{ gift.amount | currency }}{% endif %} on {{ gift.date | fdate }}{% if gift.number %} ({{ gift.number }}){% endif %}. Your support makes our work possible.</p>
+<p>{{ irs.text }}</p>
+<p>With gratitude,</p>
+<p>{{ company.company_name }}</p>"""
+
+
+def gift_from_invoice(inv) -> dict:
+    """A sales receipt is a gift; a pledge is not until it is paid."""
+    if not inv.is_sales_receipt:
+        raise ValueError("Acknowledge the payment, not the pledge")
+    return {
+        "kind": "invoice",
+        "id": inv.id,
+        "number": inv.invoice_number,
+        "date": inv.date,
+        "amount": _q(Decimal(str(inv.total or 0))),
+        "description": ", ".join(ln.description for ln in inv.lines if ln.description),
+        "fair_value_amount": inv.fair_value_amount,
+        "fair_value_description": inv.fair_value_description,
+        "in_kind_lines": [],
+        "customer_id": inv.customer_id,
+    }
+
+
+def payment_gift_amount(db, payment) -> Decimal:
+    """The part of a payment that is a gift: everything except what it
+    paid on a sales receipt (that receipt is acknowledged on its own)."""
+    from app.models.invoices import Invoice
+    from app.models.payments import PaymentAllocation
+
+    on_receipts = (
+        db.query(PaymentAllocation)
+        .join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+        .filter(
+            PaymentAllocation.payment_id == payment.id,
+            Invoice.is_sales_receipt.is_(True),
+        )
+        .all()
+    )
+    total = _q(Decimal(str(payment.amount or 0)))
+    receipts = sum((Decimal(str(a.amount)) for a in on_receipts), Decimal("0"))
+    return _q(max(total - receipts, Decimal("0")))
+
+
+def gift_from_payment(db, payment) -> dict:
+    if getattr(payment, "is_voided", False):
+        raise ValueError("This payment is void")
+    amount = payment_gift_amount(db, payment)
+    if amount <= 0:
+        raise ValueError(
+            "This payment belongs to a donation receipt — acknowledge the receipt"
+        )
+    return {
+        "kind": "payment",
+        "id": payment.id,
+        "number": payment.reference or payment.check_number or f"payment {payment.id}",
+        "date": payment.date,
+        "amount": amount,
+        "description": payment.notes or "",
+        "fair_value_amount": None,
+        "fair_value_description": None,
+        "in_kind_lines": [],
+        "customer_id": payment.customer_id,
+    }
+
+
+def gift_from_in_kind(gift) -> dict:
+    if gift.status == "void":
+        raise ValueError("This in-kind gift is void")
+    return {
+        "kind": "in-kind",
+        "id": gift.id,
+        "number": gift.number,
+        "date": gift.date,
+        "amount": None,
+        "description": gift.memo or "",
+        "fair_value_amount": None,
+        "fair_value_description": None,
+        "in_kind_lines": [
+            {"description": ln.description, "quantity": ln.quantity}
+            for ln in gift.lines
+        ],
+        "customer_id": gift.customer_id,
+    }
+
+
+def load_gift(db, kind: str, gift_id: int) -> dict:
+    """Resolve a (kind, id) pair to the normalized gift dict."""
+    if kind == "invoice":
+        from app.models.invoices import Invoice
+
+        inv = db.get(Invoice, gift_id)
+        if inv is None:
+            raise LookupError("Receipt not found")
+        return gift_from_invoice(inv)
+    if kind == "payment":
+        from app.models.payments import Payment
+
+        pmt = db.get(Payment, gift_id)
+        if pmt is None:
+            raise LookupError("Payment not found")
+        return gift_from_payment(db, pmt)
+    if kind == "in-kind":
+        from app.models.in_kind import InKindGift
+
+        ik = db.get(InKindGift, gift_id)
+        if ik is None:
+            raise LookupError("In-kind gift not found")
+        return gift_from_in_kind(ik)
+    raise LookupError("Unknown gift kind")
+
+
+def gift_irs(company: dict, gift: dict) -> dict:
+    if gift["in_kind_lines"]:
+        descs = [
+            (f"{ln['quantity']:g} × " if ln.get("quantity") not in (None, 1) else "")
+            + ln["description"]
+            for ln in gift["in_kind_lines"]
+        ]
+        return irs_statement(company, None, in_kind_descriptions=descs)
+    return irs_statement(
+        company,
+        gift["amount"],
+        gift["fair_value_amount"],
+        gift["fair_value_description"],
+    )
+
+
+def render_acknowledgment(db, company: dict, customer, gift: dict) -> tuple[str, str]:
+    """(subject, body_html) from the editable email template
+    'donation_acknowledgment' (Settings -> Email Templates), falling back
+    to the built-in text when the row has not been seeded. Rendered in the
+    sandboxed environment, autoescaped."""
+    from jinja2.sandbox import SandboxedEnvironment
+
+    from app.services.email_service import render_template_from_db
+    from app.services.pdf_service import _format_currency, _format_date
+
+    context = {
+        "donor": customer,
+        "donor_name": customer.name,
+        "customer_name": customer.name,
+        "company": company,
+        "gift": gift,
+        "irs": gift_irs(company, gift),
+    }
+    subject, body = render_template_from_db(db, ACK_TEMPLATE_NAME, context)
+    if subject is None:
+        env = SandboxedEnvironment(autoescape=True)
+        env.filters["currency"] = _format_currency
+        env.filters["fdate"] = _format_date
+        subject = env.from_string(ACK_SUBJECT).render(**context)
+        body = env.from_string(ACK_BODY).render(**context)
+    return subject, body

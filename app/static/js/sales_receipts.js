@@ -66,6 +66,8 @@ const SalesReceiptsPage = {
             <div class="form-actions">
                 <button class="btn btn-secondary" onclick="window.open('/api/invoices/${sr.id}/pdf','_blank')">Save PDF</button>
                 <button class="btn btn-secondary" onclick="window.open('/api/invoices/${sr.id}/print-preview','_blank')">Print</button>
+                ${Terms.isNonprofit() && sr.status !== 'void' ? `<button class="btn btn-secondary" onclick="window.open('/api/donors/gifts/invoice/${sr.id}/acknowledgment/pdf','_blank')">Acknowledgment (PDF)</button>
+                <button class="btn btn-secondary" onclick="Donors.emailAcknowledgment('invoice', ${sr.id})">Email Acknowledgment</button>` : ''}
                 ${sr.status !== 'void' ? `<button class="btn btn-danger" onclick="SalesReceiptsPage.void(${sr.id})">Void Receipt</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>`);

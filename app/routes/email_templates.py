@@ -14,6 +14,8 @@ from app.schemas.email_templates import (
     EmailTemplateResponse,
 )
 
+from app.services.donor_documents import ACK_BODY, ACK_SUBJECT, ACK_TEMPLATE_NAME
+
 router = APIRouter(prefix="/api/email-templates", tags=["email-templates"])
 
 DEFAULT_TEMPLATES = [
@@ -53,6 +55,15 @@ DEFAULT_TEMPLATES = [
 <p>If you have already sent payment, please disregard this notice.</p>
 <p>{{ company.company_name }}</p>""",
         "template_type": "collection",
+    },
+    # Nonprofit: the donor acknowledgment letter (PDF + email). Variables:
+    # donor, donor_name, gift (amount, date, number, fair_value_amount,
+    # in_kind_lines), irs.text (the IRS Pub. 1771 sentence), company.
+    {
+        "name": ACK_TEMPLATE_NAME,
+        "subject_template": ACK_SUBJECT,
+        "body_template": ACK_BODY,
+        "template_type": "acknowledgment",
     },
 ]
 
