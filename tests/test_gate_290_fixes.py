@@ -2,6 +2,7 @@
 reports/2.9.0). Each test names the finding it pins."""
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -591,3 +592,79 @@ def test_setup_with_another_files_name_is_409_and_writes_nothing(
     )
     assert r.status_code == 409, r.text
     assert unauthed_client.get("/api/auth/status").json()["setup_needed"] is True
+
+
+# ---- Linux gate: the documented Docker install must migrate from empty ----
+
+
+def _migrate_fresh_sqlite(tmp_path):
+    from alembic import command
+    from alembic.config import Config
+
+    db = tmp_path / "fresh.db"
+    url = "sqlite:///" + db.as_posix()
+    root = Path(__file__).resolve().parent.parent
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "migrations"))
+    cfg.attributes["database_url"] = url
+    command.upgrade(cfg, "head")
+    return db
+
+
+def test_migrations_alone_create_every_table_a_foreign_key_references(tmp_path):
+    """Postgres enforces a foreign key at CREATE TABLE time; SQLite does not.
+    So a migration referencing a table that only create_all() makes passes
+    every desktop install and kills `docker compose up` (2.9.0 Linux gate:
+    user_preferences -> users, broken since v2.8.0). Walk the schema
+    alembic alone produced and demand every REFERENCES target exists."""
+    import re
+    import sqlite3
+
+    db = _migrate_fresh_sqlite(tmp_path)
+    con = sqlite3.connect(db)
+    tables = {
+        r[0] for r in con.execute("select name from sqlite_master where type='table'")
+    }
+    assert "users" in tables and "user_preferences" in tables
+    dangling = []
+    for name, sql in con.execute(
+        "select name, sql from sqlite_master where type='table'"
+    ):
+        for ref in re.findall(r"REFERENCES\s+\"?(\w+)\"?", sql or ""):
+            if ref not in tables:
+                dangling.append(f"{name} -> {ref}")
+    assert dangling == [], dangling
+
+
+def test_users_migration_is_idempotent_on_a_file_that_already_has_the_table(tmp_path):
+    """A desktop file that got users from create_all() and is already past
+    b2c3 never runs a0b1; but if it ever does (a downgrade/upgrade cycle),
+    it must not fail on an existing table."""
+    import sqlite3
+
+    from alembic import command
+    from alembic.config import Config
+
+    db = tmp_path / "pre.db"
+    con = sqlite3.connect(db)
+    con.execute("create table users (id integer primary key, username varchar(100))")
+    con.commit()
+    con.close()
+    root = Path(__file__).resolve().parent.parent
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "migrations"))
+    cfg.attributes["database_url"] = "sqlite:///" + db.as_posix()
+    command.upgrade(cfg, "head")  # must not raise on the pre-existing users table
+
+
+def test_postgres_company_list_reports_is_current(monkeypatch, db_session):
+    from app.services import company_service
+
+    monkeypatch.setattr(
+        company_service,
+        "DATABASE_URL",
+        "postgresql://u:p@host:5432/bookkeeper?sslmode=disable",
+    )
+    rows = company_service.list_companies(db_session)
+    current = [r for r in rows if r["is_current"]]
+    assert len(current) == 1 and current[0]["database_name"] == "bookkeeper"

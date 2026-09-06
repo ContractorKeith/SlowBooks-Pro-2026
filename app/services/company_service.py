@@ -398,17 +398,53 @@ def list_companies(db: Session) -> list[dict]:
 
     from app.models.companies import Company
 
-    companies = db.query(Company).filter(Company.is_active).order_by(Company.name).all()
-    return [
-        {
-            "id": c.id,
-            "name": c.name,
-            "database_name": c.database_name,
-            "description": c.description,
-            "last_accessed": c.last_accessed.isoformat() if c.last_accessed else None,
-        }
-        for c in companies
-    ]
+    # Postgres: the server serves exactly one database — the one DATABASE_URL
+    # names — and the companies table describes the OTHERS it can create.
+    # A client still needs is_current to know which books it reached (the
+    # fixture's write guard refuses without it, and a Docker install has no
+    # Company row for its own database), so the served database is always
+    # listed, flagged, and named from settings.company_name.
+    current_db = _current_database_name()
+    rows = []
+    found_current = False
+    for c in db.query(Company).filter(Company.is_active).order_by(Company.name).all():
+        is_current = bool(current_db) and c.database_name == current_db
+        found_current = found_current or is_current
+        rows.append(
+            {
+                "id": c.id,
+                "name": c.name,
+                "database_name": c.database_name,
+                "description": c.description,
+                "last_accessed": (
+                    c.last_accessed.isoformat() if c.last_accessed else None
+                ),
+                "is_current": is_current,
+            }
+        )
+    if current_db and not found_current:
+        from app.services.settings_service import get_setting_raw
+
+        rows.insert(
+            0,
+            {
+                "id": None,
+                "name": get_setting_raw(db, "company_name") or current_db,
+                "database_name": current_db,
+                "description": "the database this server is connected to",
+                "last_accessed": None,
+                "is_current": True,
+            },
+        )
+    return rows
+
+
+def _current_database_name() -> str | None:
+    """The database name in a Postgres DATABASE_URL (query string dropped)."""
+    if _is_sqlite() or "/" not in DATABASE_URL:
+        return None
+    tail = DATABASE_URL.rsplit("/", 1)[1]
+    return tail.split("?", 1)[0] or None
 
 
 def create_company(

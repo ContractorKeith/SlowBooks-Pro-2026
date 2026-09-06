@@ -115,6 +115,14 @@ Round 4 closed the loop on the name reconciliation itself: two company files
 can never end up with one name — renaming a company (in Settings or in
 first-run setup) to a name another file already carries is refused with the
 file named, the same rule creating a company has always applied.
+The Linux gate then found that `docker compose up` had been broken since
+v2.8.0: no migration ever created the `users` table (the app made it at
+startup), and the v2.8.0 preferences migration referenced it, which SQLite
+tolerates and PostgreSQL refuses. A migration now creates `users` ahead of
+that reference, a test walks the migrated schema for any foreign key whose
+target no migration creates, and under PostgreSQL the company list flags
+the database the server is connected to as current so an agent can tell
+which books it reached.
 
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 
