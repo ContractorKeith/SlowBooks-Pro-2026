@@ -7,7 +7,7 @@ const RecurringPage = {
         const recs = await API.get('/recurring');
         let html = `
             <div class="page-header">
-                <h2>Recurring Invoices</h2>
+                <h2>${T('Recurring Invoices')}</h2>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="RecurringPage.showForm()">+ New Recurring</button>
                     <button class="btn btn-secondary" onclick="RecurringPage.generateNow()">Generate Due Now</button>
@@ -18,7 +18,7 @@ const RecurringPage = {
             html += '<div class="empty-state"><p>No recurring invoices set up</p></div>';
         } else {
             html += `<div class="table-container"><table>
-                <thead><tr><th scope="col">Customer</th><th scope="col">Frequency</th><th scope="col">Next Due</th><th scope="col">Active</th><th scope="col">Created</th><th scope="col">Actions</th></tr></thead><tbody>`;
+                <thead><tr><th scope="col">${T('Customer')}</th><th scope="col">Frequency</th><th scope="col">Next Due</th><th scope="col">Active</th><th scope="col">Created</th><th scope="col">Actions</th></tr></thead><tbody>`;
             for (const r of recs) {
                 html += `<tr>
                     <td><strong>${escapeHtml(r.customer_name || '')}</strong></td>
@@ -72,7 +72,7 @@ const RecurringPage = {
         openModal(id ? 'Edit Recurring Invoice' : 'New Recurring Invoice', `
             <form onsubmit="RecurringPage.save(event, ${id})">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required onchange="RecurringPage.customerSelected(this.value)"><option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>Frequency *</label>
                         <select name="frequency">

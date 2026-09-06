@@ -496,7 +496,7 @@ const ReportsPage = {
             return `
                 <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(data.start_date)} &mdash; ${formatDate(data.end_date)}</p>
                 <div class="table-container"><table>
-                    <thead><tr><th scope="col">Date</th><th scope="col">Invoice</th><th scope="col">Customer</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Rate</th><th scope="col" class="amount">Tax</th></tr></thead>
+                    <thead><tr><th scope="col">Date</th><th scope="col">${T('Invoice')}</th><th scope="col">${T('Customer')}</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Rate</th><th scope="col" class="amount">Tax</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="6" style="text-align:center; color:var(--gray-400);">No taxable sales</td></tr>'}</tbody>
                 </table></div>
                 <div style="margin-top:12px; padding:8px; background:var(--gray-50); border:1px solid var(--gray-200);">
@@ -563,7 +563,7 @@ const ReportsPage = {
             return `
                 <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(data.start_date)} &mdash; ${formatDate(data.end_date)}</p>
                 <div class="table-container"><table>
-                    <thead><tr><th scope="col">Customer</th><th scope="col" class="amount">Invoices</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Paid</th><th scope="col" class="amount">Balance</th></tr></thead>
+                    <thead><tr><th scope="col">${T('Customer')}</th><th scope="col" class="amount">${T('Invoices')}</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Paid</th><th scope="col" class="amount">Balance</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="5" style="text-align:center; color:var(--gray-400);">No sales data</td></tr>'}</tbody>
                 </table></div>`;
         }, "Dates", false, { reportType: 'income_by_customer', prefill });
@@ -572,10 +572,10 @@ const ReportsPage = {
     async customerStatementPicker() {
         const customers = await API.get("/customers?active_only=true");
         const custOpts = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
-        openModal("Customer Statement", `
+        openModal(T("Customer Statement"), `
             <form onsubmit="ReportsPage.openStatement(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required><option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>As of Date</label>
                         <input name="as_of_date" type="date" value="${todayISO()}"></div>
@@ -632,7 +632,7 @@ const ReportsPage = {
                 </div>
                 <div class="table-container"><table>
                     <thead><tr>
-                        <th scope="col">Customer</th><th scope="col" class="amount">Current</th><th scope="col" class="amount">1-30</th>
+                        <th scope="col">${T('Customer')}</th><th scope="col" class="amount">Current</th><th scope="col" class="amount">1-30</th>
                         <th scope="col" class="amount">31-60</th><th scope="col" class="amount">61-90+</th><th scope="col" class="amount">Total</th>
                     </tr></thead>
                     <tbody>${rows || '<tr><td colspan="6" style="text-align:center; color:var(--gray-400);">No outstanding receivables</td></tr>'}</tbody>
@@ -933,7 +933,7 @@ ReportsPage.jobBudgetVsActual = async function () {
                 Actuals for ${escapeHtml(range.start)} — ${escapeHtml(range.end)}; budgets and committed cost are job-to-date. Click a job to drill down.
             </div>
             <div class="table-container"><table>
-                <thead><tr><th scope="col">Customer</th><th scope="col">Job</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th>
+                <thead><tr><th scope="col">${T('Customer')}</th><th scope="col">${T('Job')}</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th>
                 <th scope="col" class="amount">Actual</th><th scope="col" class="amount">Projected</th><th scope="col" class="amount">Variance</th><th scope="col" class="amount">% Used</th><th scope="col" class="amount">Revenue</th></tr></thead>
                 <tbody>${rows.length ? rows : '<tr><td colspan="9">No jobs</td></tr>'}</tbody>
                 <tfoot><tr style="font-weight:700; background:var(--gray-50);">

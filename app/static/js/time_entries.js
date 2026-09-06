@@ -44,7 +44,7 @@ const TimeEntriesPage = {
                 <thead><tr>
                     <th scope="col">Date</th>
                     <th scope="col">Employee</th>
-                    <th scope="col">Job</th>
+                    <th scope="col">${T('Job')}</th>
                     <th scope="col" class="amount">Regular Hrs</th>
                     <th scope="col" class="amount">OT Hrs</th>
                     <th scope="col">Description</th>

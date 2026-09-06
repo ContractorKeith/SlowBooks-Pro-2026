@@ -70,7 +70,7 @@ const SettingsPage = {
                 </div>
 
                 <div class="settings-section">
-                    <h3>Invoice Defaults</h3>
+                    <h3>${T('Invoice')} Defaults</h3>
                     <div class="form-grid">
                         <div class="form-group"><label>Default Terms</label>
                             <select name="default_terms">
@@ -79,17 +79,17 @@ const SettingsPage = {
                             </select></div>
                         <div class="form-group"><label>Default Tax Rate (%)</label>
                             <input name="default_tax_rate" type="number" step="0.01" value="${s.default_tax_rate || '0.0'}"></div>
-                        <div class="form-group"><label>Invoice Prefix</label>
+                        <div class="form-group"><label>${T('Invoice Prefix')}</label>
                             <input name="invoice_prefix" value="${escapeHtml(s.invoice_prefix || '')}" placeholder="e.g. INV-"></div>
-                        <div class="form-group"><label>Next Invoice #</label>
+                        <div class="form-group"><label>${T('Next Invoice #')}</label>
                             <input name="invoice_next_number" value="${escapeHtml(s.invoice_next_number || '1001')}"></div>
                         <div class="form-group"><label>Estimate Prefix</label>
                             <input name="estimate_prefix" value="${escapeHtml(s.estimate_prefix || '')}" placeholder="e.g. E-"></div>
                         <div class="form-group"><label>Next Estimate #</label>
                             <input name="estimate_next_number" value="${escapeHtml(s.estimate_next_number || '1001')}"></div>
-                        <div class="form-group full-width"><label>Default Invoice Notes</label>
+                        <div class="form-group full-width"><label>${T('Default Invoice Notes')}</label>
                             <textarea name="invoice_notes">${escapeHtml(s.invoice_notes || '')}</textarea></div>
-                        <div class="form-group full-width"><label>Invoice Footer</label>
+                        <div class="form-group full-width"><label>${T('Invoice Footer')}</label>
                             <input name="invoice_footer" value="${escapeHtml(s.invoice_footer || '')}"></div>
                         <div class="form-group"><label>Report PDF Paper Size</label>
                             <select name="pdf_paper_size">
@@ -301,14 +301,14 @@ const SettingsPage = {
                 </div>
 
                 <div class="settings-section">
-                    <h3>Classes</h3>
+                    <h3>${T('Classes')}</h3>
                     <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
                         Track income and expenses by department, location, or line of
-                        business. Classes appear on entry forms and the P&amp;L by Class report.
+                        business. ${T('Classes')} appear on entry forms and the ${T('P&L by Class')} report.
                     </div>
                     <div style="display:flex; gap:8px; margin-bottom:12px;">
-                        <input type="text" id="new-class-name" placeholder="New class name" style="width:220px;">
-                        <button type="button" class="btn btn-primary" onclick="SettingsPage.addClass()">Add Class</button>
+                        <input type="text" id="new-class-name" placeholder="New ${T('class')} name" style="width:220px;">
+                        <button type="button" class="btn btn-primary" onclick="SettingsPage.addClass()">Add ${T('Class')}</button>
                     </div>
                     <div id="classes-list"></div>
                 </div>
@@ -1030,11 +1030,11 @@ SettingsPage.loadClasses = async function () {
 SettingsPage.addClass = async function () {
     const input = document.getElementById('new-class-name');
     const name = (input?.value || '').trim();
-    if (!name) { toast('Enter a class name', 'error'); return; }
+    if (!name) { toast(Terms.text('Enter a class name'), 'error'); return; }
     try {
         await API.post('/classes', { name });
         input.value = '';
-        toast('Class added');
+        toast(Terms.text('Class added'));
         SettingsPage.loadClasses();
     } catch (err) { toast(err.message, 'error'); }
 };
@@ -1092,11 +1092,11 @@ SettingsPage.saveFund = async function (e, id) {
 };
 
 SettingsPage.renameClass = async function (id) {
-    const name = prompt('New class name:');
+    const name = prompt(Terms.text('New class name:'));
     if (!name || !name.trim()) return;
     try {
         await API.put(`/classes/${id}`, { name: name.trim() });
-        toast('Class renamed');
+        toast(Terms.text('Class renamed'));
         SettingsPage.loadClasses();
     } catch (err) { toast(err.message, 'error'); }
 };
@@ -1104,7 +1104,7 @@ SettingsPage.renameClass = async function (id) {
 SettingsPage.toggleArchiveClass = async function (id, archive) {
     try {
         await API.put(`/classes/${id}`, { is_archived: archive });
-        toast(archive ? 'Class archived' : 'Class unarchived');
+        toast(Terms.text(archive ? 'Class archived' : 'Class unarchived'));
         SettingsPage.loadClasses();
     } catch (err) { toast(err.message, 'error'); }
 };

@@ -389,7 +389,7 @@ async function jobFormGroupHtml(selectedId, customerSelectId) {
         `<option value="${j.id}" data-customer="${j.customer_id}" ${selectedId === j.id ? 'selected' : ''}>${escapeHtml(j.full_name || j.name)}</option>`
     ).join('');
     const bind = customerSelectId ? `data-customer-select="${customerSelectId}" onfocus="JobPicker.sync(this)"` : '';
-    return `<div class="form-group"><label>Job</label>
+    return `<div class="form-group"><label>${T('Job')}</label>
         <select name="job_id" ${bind}><option value="">— No job —</option>${opts}</select></div>`;
 }
 

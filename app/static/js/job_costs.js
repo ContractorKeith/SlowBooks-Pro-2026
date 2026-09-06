@@ -29,10 +29,10 @@ const JobCostsPage = {
         </tr>`).join('');
         return `
             <div class="page-header">
-                <h2>Job Cost Entries</h2>
+                <h2>${T('Job Cost Entries')}</h2>
                 <div>
                     <button class="btn btn-secondary" onclick="JobCostsPage.showAllocate()">Allocate a Cost</button>
-                    <button class="btn btn-primary" onclick="JobCostsPage.showForm()">+ Job Cost Entry</button>
+                    <button class="btn btn-primary" onclick="JobCostsPage.showForm()">+ ${T('Job')} Cost Entry</button>
                 </div>
             </div>
             <div class="toolbar" style="font-size:11px; color:var(--gray-500);">
@@ -40,7 +40,7 @@ const JobCostsPage = {
             </div>
             ${entries.length === 0 ? `<div class="empty-state"><p>No job cost entries yet.</p></div>` : `
             <div class="table-container"><table>
-                <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col">Job</th><th scope="col">Source</th><th scope="col">Memo</th><th scope="col" class="amount">Total</th><th scope="col">Status</th></tr></thead>
+                <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col">${T('Job')}</th><th scope="col">Source</th><th scope="col">Memo</th><th scope="col" class="amount">Total</th><th scope="col">Status</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table></div>`}`;
     },
@@ -60,13 +60,13 @@ const JobCostsPage = {
     // ---- New entry --------------------------------------------------------------
     async showForm(id = null, jobId = null) {
         await JobCostsPage._loadRefs();
-        if (!JobCostsPage._jobs.length) { toast('Create a job first', 'error'); return; }
+        if (!JobCostsPage._jobs.length) { toast(Terms.text('Create a job first'), 'error'); return; }
         const jobOpts = JobCostsPage._opt(JobCostsPage._jobs, 'id', j => j.full_name, jobId, 'Select a job…');
         JobCostsPage._lineCount = 0;
-        openModal('Job Cost Entry', `
+        openModal(Terms.text('Job Cost Entry'), `
             <form onsubmit="JobCostsPage.save(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Job *</label>
+                    <div class="form-group"><label>${T('Job')} *</label>
                         <select name="job_id" required>${jobOpts}</select></div>
                     <div class="form-group"><label>Date *</label>
                         <input name="date" type="date" required value="${todayISO()}"></div>
@@ -251,7 +251,7 @@ const JobCostsPage = {
             <td class="amount">${formatCurrency(l.amount)}</td>
             <td style="font-size:11px">${escapeHtml(l.debit_account_name || '')} / ${escapeHtml(l.credit_account_name || '')}</td>
         </tr>`).join('');
-        openModal(`Job Cost ${jc.number}`, `
+        openModal(`${T('Job')} Cost ${jc.number}`, `
             <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
                 <div style="font-size:13px">
                     <div><strong>${escapeHtml(jc.date)}</strong> · ${escapeHtml(jc.job_name || 'allocation across jobs')} · ${escapeHtml({ manual: 'Entry', time_entry: 'From time entry', allocation: 'Allocation' }[jc.source] || jc.source)}</div>
@@ -263,7 +263,7 @@ const JobCostsPage = {
                 </div>
             </div>
             <div class="table-container"><table class="data-table" style="font-size:12px">
-                <thead><tr><th scope="col">Job</th><th scope="col">Cost code</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" class="amount">Qty</th><th scope="col" class="amount">Rate</th><th scope="col" class="amount">Amount</th><th scope="col">Cost / offset</th></tr></thead>
+                <thead><tr><th scope="col">${T('Job')}</th><th scope="col">Cost code</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" class="amount">Qty</th><th scope="col" class="amount">Rate</th><th scope="col" class="amount">Amount</th><th scope="col">Cost / offset</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table></div>`);
     },

@@ -352,7 +352,7 @@ const App = {
             </div>
             <form id="qe-form" onsubmit="App.saveQuickEntry(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" id="qe-customer" required><option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>Date *</label>
                         <input name="date" id="qe-date" type="date" required value="${todayISO()}"></div>

@@ -19,7 +19,7 @@ const PaymentsPage = {
         } else {
             html += `<div class="table-container"><table>
                 <thead><tr>
-                    <th scope="col">Date</th><th scope="col">Customer</th><th scope="col">Method</th><th scope="col">Reference</th>
+                    <th scope="col">Date</th><th scope="col">${T('Customer')}</th><th scope="col">Method</th><th scope="col">Reference</th>
                     <th scope="col" class="amount">Amount</th><th scope="col">Actions</th>
                 </tr></thead><tbody>`;
             for (const p of payments) {
@@ -51,7 +51,7 @@ const PaymentsPage = {
         if (p.allocations.length) {
             allocHtml = `<h4 style="margin:12px 0 8px;">Applied to Invoices</h4>
                 <div class="table-container"><table><thead><tr>
-                <th scope="col">Invoice</th><th scope="col" class="amount">Amount</th></tr></thead><tbody>`;
+                <th scope="col">${T('Invoice')}</th><th scope="col" class="amount">Amount</th></tr></thead><tbody>`;
             for (const a of p.allocations) {
                 allocHtml += `<tr><td>#${a.invoice_id}</td><td class="amount">${formatCurrency(a.amount)}</td></tr>`;
             }
@@ -104,7 +104,7 @@ const PaymentsPage = {
         openModal('Record Payment', `
             <form id="payment-form" onsubmit="PaymentsPage.save(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required onchange="PaymentsPage.loadInvoices(this.value)">
                             <option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>Date *</label>
@@ -152,7 +152,7 @@ const PaymentsPage = {
 
         let html = `<h4 style="margin-bottom:8px;">Apply to Invoices</h4>
             <div class="table-container"><table><thead><tr>
-            <th scope="col">Invoice</th><th scope="col">Date</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th>
+            <th scope="col">${T('Invoice')}</th><th scope="col">Date</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th>
             </tr></thead><tbody>`;
         for (const inv of PaymentsPage._invoices) {
             html += `<tr>

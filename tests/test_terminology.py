@@ -208,6 +208,11 @@ LEAVE_ALONE = {
     "terms.js",
 }
 CHOKEPOINT_PATTERNS = [
+    # page headers, table headers, form labels, modal titles
+    r"<h2>[^<$]*\b(Customers?|Invoices?|Sales Receipts?|Class(es)?|Jobs?)\b[^<]*</h2>",
+    r'<th scope="col"(?: class="amount")?>(Customers?|Invoices?|Sales Receipts?|Class(es)?|Jobs?)</th>',
+    r"<label>(Customer|Invoice|Sales Receipt|Class|Job)( \*)?</label>",
+    r"openModal\(\s*[\"'`](Customer|Invoice|Sales Receipt|Job|Class)\b",
     # renderListPage({ title: 'Invoices' ... })
     r"\btitle:\s*['\"][^'\"]*\b(Customers?|Invoices?|Sales Receipts?|Class(es)?|Jobs?)\b",
     # Report Center cards and modal titles

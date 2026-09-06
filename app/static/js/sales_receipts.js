@@ -9,7 +9,7 @@ const SalesReceiptsPage = {
         const receipts = await API.get('/sales-receipts');
         return renderListPage({
             title: T('Sales Receipts'),
-            headerHtml: `<button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()">+ New Sales Receipt</button>`,
+            headerHtml: `<button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()">+ New ${T('Sales Receipt')}</button>`,
             filter: {
                 id: 'sr-status-filter',
                 rowSelector: '.sr-row',
@@ -42,7 +42,7 @@ const SalesReceiptsPage = {
 
         const payment = await SalesReceiptsPage._findPayment(sr);
 
-        openModal(`Sales Receipt #${sr.invoice_number}`, `
+        openModal(`${T('Sales Receipt')} #${sr.invoice_number}`, `
             <div style="margin-bottom:12px;">
                 <strong>Customer:</strong> ${escapeHtml(sr.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(sr.date)}<br>
@@ -127,14 +127,14 @@ const SalesReceiptsPage = {
         const custOpts = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
         const bankOpts = bankAccts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
-        openModal('Enter Sales Receipt', `
+        openModal(Terms.text('Enter Sales Receipt'), `
             <form id="sales-receipt-form" onsubmit="SalesReceiptsPage.save(event)">
                 ${ScanHelper.scanRowHtml()}
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
-                        <select name="customer_id" id="sr-customer-select" required onchange="SalesReceiptsPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ New Customer</option>${custOpts}</select>
+                    <div class="form-group"><label>${T('Customer')} *</label>
+                        <select name="customer_id" id="sr-customer-select" required onchange="SalesReceiptsPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ ${T('New Customer')}</option>${custOpts}</select>
                         <div id="sr-new-customer-form" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--gray-300); border-radius:4px; background:var(--primary-light);">
-                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add Customer</div>
+                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add ${T('Customer')}</div>
                             <input id="sr-new-cust-name" placeholder="Name *" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="sr-new-cust-email" placeholder="Email" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="sr-new-cust-phone" placeholder="Phone" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
@@ -419,7 +419,7 @@ const SalesReceiptsPage = {
         try {
             const result = await API.post('/sales-receipts', data);
             await ScanHelper.attachAfterSave('invoice', result.invoice.id);
-            toast(`Sales Receipt #${result.invoice.invoice_number} recorded`);
+            toast(`${T('Sales Receipt')} #${result.invoice.invoice_number} recorded`);
             closeModal();
             App.navigate(location.hash);
         } catch (err) { toast(err.message, 'error'); }

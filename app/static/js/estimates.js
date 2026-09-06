@@ -11,7 +11,7 @@ const EstimatesPage = {
             headerHtml: `<button class="btn btn-primary" onclick="EstimatesPage.showForm()">+ New Estimate</button>`,
             empty: `<p>No estimates yet.</p>
                 <button class="btn btn-primary" onclick="EstimatesPage.showForm()" style="margin-top:10px;">+ Create your first estimate</button>`,
-            columns: ['#', 'Customer', 'Date', 'Expires', 'Status',
+            columns: ['#', T('Customer'), 'Date', 'Expires', 'Status',
                 { label: 'Total', cls: 'amount' }, 'Actions'],
             items: estimates,
             row: est => `<tr>
@@ -139,10 +139,10 @@ const EstimatesPage = {
         openModal(id ? 'Edit Estimate' : 'New Estimate', `
             <form id="est-form" onsubmit="EstimatesPage.save(event, ${id})">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
-                        <select name="customer_id" id="est-customer-select" required onchange="EstimatesPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ New Customer</option>${custOpts}</select>
+                    <div class="form-group"><label>${T('Customer')} *</label>
+                        <select name="customer_id" id="est-customer-select" required onchange="EstimatesPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ ${T('New Customer')}</option>${custOpts}</select>
                         <div id="est-new-customer-form" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--gray-300); border-radius:4px; background:var(--primary-light);">
-                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add Customer</div>
+                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add ${T('Customer')}</div>
                             <input id="est-new-cust-name" placeholder="Name *" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="est-new-cust-email" placeholder="Email" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="est-new-cust-phone" placeholder="Phone" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">

@@ -10,7 +10,7 @@ const InvoicesPage = {
         const invoices = await API.get('/invoices?is_sales_receipt=false');
         return renderListPage({
             title: T('Invoices'),
-            headerHtml: `<button class="btn btn-primary" onclick="InvoicesPage.showForm()">+ New Invoice</button>`,
+            headerHtml: `<button class="btn btn-primary" onclick="InvoicesPage.showForm()">+ ${T('New Invoice')}</button>`,
             filter: {
                 id: 'inv-status-filter',
                 rowSelector: '.inv-row',
@@ -77,7 +77,7 @@ const InvoicesPage = {
              <td class="amount">${formatCurrency(l.rate)}</td><td class="amount">${formatCurrency(l.amount)}</td></tr>`
         ).join('');
 
-        openModal(`Invoice #${inv.invoice_number}`, `
+        openModal(`${T('Invoice')} #${inv.invoice_number}`, `
             <div style="margin-bottom:12px;">
                 <strong>Customer:</strong> ${escapeHtml(inv.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(inv.date)}<br>
@@ -175,7 +175,7 @@ const InvoicesPage = {
     async emailInvoice(id) {
         const inv = await API.get(`/invoices/${id}`);
         const email = inv.customer_email || '';
-        openModal('Email Invoice', `
+        openModal(Terms.text('Email Invoice'), `
             <form onsubmit="InvoicesPage.sendEmail(event, ${id})">
                 <div class="form-grid">
                     <div class="form-group full-width"><label>Recipient Email *</label>
@@ -239,13 +239,13 @@ const InvoicesPage = {
 
         const custOpts = customers.map(c => `<option value="${c.id}" ${inv.customer_id==c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
 
-        openModal(id ? 'Edit Invoice' : 'New Invoice', `
+        openModal(Terms.text(id ? 'Edit Invoice' : 'New Invoice'), `
             <form id="invoice-form" onsubmit="InvoicesPage.save(event, ${id})">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
-                        <select name="customer_id" id="inv-customer-select" required onchange="InvoicesPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ New Customer</option>${custOpts}</select>
+                    <div class="form-group"><label>${T('Customer')} *</label>
+                        <select name="customer_id" id="inv-customer-select" required onchange="InvoicesPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ ${T('New Customer')}</option>${custOpts}</select>
                         <div id="inv-new-customer-form" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--gray-300); border-radius:4px; background:var(--primary-light);">
-                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add Customer</div>
+                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add ${T('Customer')}</div>
                             <input id="inv-new-cust-name" placeholder="Name *" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="inv-new-cust-email" placeholder="Email" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="inv-new-cust-phone" placeholder="Phone" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
@@ -462,8 +462,8 @@ const InvoicesPage = {
         };
 
         try {
-            if (id) { await API.put(`/invoices/${id}`, data); toast('Invoice updated'); }
-            else { await API.post('/invoices', data); toast('Invoice created'); }
+            if (id) { await API.put(`/invoices/${id}`, data); toast(Terms.text('Invoice updated')); }
+            else { await API.post('/invoices', data); toast(Terms.text('Invoice created')); }
             closeModal();
             App.navigate(location.hash);
         } catch (err) { toast(err.message, 'error'); }

@@ -179,7 +179,7 @@ const DashboardPage = {
         },
         overdue_invoices(d) {
             if (!d.count) return '<div style="color:var(--gray-500);font-size:12px">Nothing overdue.</div>';
-            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">#</th><th scope="col">Customer</th><th scope="col" class="amount">Due</th><th scope="col" class="amount">Days</th></tr></thead>
+            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">#</th><th scope="col">${T('Customer')}</th><th scope="col" class="amount">Due</th><th scope="col" class="amount">Days</th></tr></thead>
                 <tbody>${d.items.map(i => `<tr class="clickable" onclick="InvoicesPage.view(${i.id})"><td>${escapeHtml(i.invoice_number)}</td><td>${escapeHtml(i.customer)}</td><td class="amount">${formatCurrency(i.balance_due)}</td><td class="amount" style="color:var(--qb-red)">${i.days_overdue}</td></tr>`).join('')}</tbody></table>
                 ${d.count > d.items.length ? `<div style="font-size:11px;margin-top:4px"><a href="#/invoices">${d.count} overdue in all →</a></div>` : ''}`;
         },
@@ -207,12 +207,12 @@ const DashboardPage = {
         },
         recent_invoices(d) {
             if (!d.items.length) return '<div style="color:var(--gray-500);font-size:12px">No invoices yet.</div>';
-            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">#</th><th scope="col">Customer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col" class="amount">Total</th></tr></thead>
+            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">#</th><th scope="col">${T('Customer')}</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col" class="amount">Total</th></tr></thead>
                 <tbody>${d.items.map(i => `<tr class="clickable" onclick="InvoicesPage.view(${i.id})"><td>${escapeHtml(i.invoice_number)}</td><td>${escapeHtml(i.customer)}</td><td>${escapeHtml(i.date)}</td><td>${escapeHtml(i.status)}</td><td class="amount">${formatCurrency(i.total)}</td></tr>`).join('')}</tbody></table>`;
         },
         recent_payments(d) {
             if (!d.items.length) return '<div style="color:var(--gray-500);font-size:12px">No payments yet.</div>';
-            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">Date</th><th scope="col">Customer</th><th scope="col">Method</th><th scope="col" class="amount">Amount</th></tr></thead>
+            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">Date</th><th scope="col">${T('Customer')}</th><th scope="col">Method</th><th scope="col" class="amount">Amount</th></tr></thead>
                 <tbody>${d.items.map(p => `<tr><td>${escapeHtml(p.date)}</td><td>${escapeHtml(p.customer)}</td><td>${escapeHtml(p.method || '')}</td><td class="amount">${formatCurrency(p.amount)}</td></tr>`).join('')}</tbody></table>`;
         },
         pnl_month(d) {
@@ -245,7 +245,7 @@ const DashboardPage = {
         job_budget_vs_actual(d) {
             if (!d.count) return '<div style="color:var(--gray-500);font-size:12px">No jobs with a budget or activity yet. <a href="#/jobs">Jobs →</a></div>';
             const pct = v => v === null || v === undefined ? '—' : `${v.toFixed(0)}%`;
-            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">Job</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th><th scope="col" class="amount">Actual</th><th scope="col" class="amount">Projected</th><th scope="col" class="amount">Variance</th><th scope="col" class="amount">% Used</th></tr></thead>
+            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">${T('Job')}</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th><th scope="col" class="amount">Actual</th><th scope="col" class="amount">Projected</th><th scope="col" class="amount">Variance</th><th scope="col" class="amount">% Used</th></tr></thead>
                 <tbody>${d.items.map(j => `<tr class="clickable" onclick="App.navigate('#/jobs/${j.job_id}')"><td>${escapeHtml(j.customer_name)}: ${escapeHtml(j.job_name)}</td><td class="amount">${formatCurrency(j.revised)}</td><td class="amount">${formatCurrency(j.committed)}</td><td class="amount">${formatCurrency(j.actual)}</td><td class="amount">${formatCurrency(j.projected)}</td><td class="amount" style="font-weight:700;color:${j.revised && j.variance < 0 ? '#a4242b' : '#1f7a36'}">${formatCurrency(j.variance)}</td><td class="amount">${pct(j.pct_used)}</td></tr>`).join('')}</tbody>
                 <tfoot><tr style="font-weight:700;background:var(--gray-50)"><td>All active jobs</td><td class="amount">${formatCurrency(d.totals.revised)}</td><td class="amount">${formatCurrency(d.totals.committed)}</td><td class="amount">${formatCurrency(d.totals.actual)}</td><td class="amount">${formatCurrency(d.totals.projected)}</td><td class="amount">${formatCurrency(d.totals.variance)}</td><td></td></tr></tfoot></table>`;
         },
