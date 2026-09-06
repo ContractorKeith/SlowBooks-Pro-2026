@@ -732,8 +732,12 @@ def financial_statements_pdf(
         date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"]), db
     )
     t = terms_from_db(db)
-    return _pdf_response(
-        [_pl_section(pl, t), _bs_section(bs, t), _tb_section(tb)],
-        db,
-        "financial-statements.pdf",
-    )
+    if t.is_nonprofit:
+        from app.routes.reports.nonprofit import nonprofit_statement_sections
+
+        sections = nonprofit_statement_sections(
+            db, date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"])
+        ) + [_tb_section(tb)]
+    else:
+        sections = [_pl_section(pl, t), _bs_section(bs, t), _tb_section(tb)]
+    return _pdf_response(sections, db, "financial-statements.pdf")

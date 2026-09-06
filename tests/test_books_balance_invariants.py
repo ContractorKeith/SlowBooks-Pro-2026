@@ -430,3 +430,31 @@ def test_pnl_net_income_matches_balance_sheet_synthetic_equity(
         assert abs(synthetic_amount - pnl_net) < Decimal(
             "0.01"
         ), f"P&L net={pnl_net} but BS Net Income equity={synthetic_amount}"
+
+
+def test_nonprofit_net_assets_equal_balance_sheet_equity(
+    client, db_session, seed_accounts, seed_customer
+):
+    """The Statement of Financial Position splits equity into net assets
+    with / without donor restrictions at report time (there is no
+    year-end close); the two lines must add up to the balance sheet's
+    total equity — for a business file too, where everything is
+    'without'."""
+    from app.models.contacts import Vendor
+
+    vendor = Vendor(name="Vendor X", is_active=True)
+    db_session.add(vendor)
+    db_session.commit()
+    _build_scenario(client, seed_customer.id, vendor.id)
+
+    bs = client.get("/api/reports/balance-sheet").json()
+    sofp = client.get("/api/reports/statement-of-financial-position").json()
+    assert abs(
+        Decimal(str(sofp["total_net_assets"])) - Decimal(str(bs["total_equity"]))
+    ) < Decimal("0.01")
+    assert Decimal(str(sofp["net_assets_with"])) == 0
+    assert abs(
+        Decimal(str(sofp["total_assets"]))
+        - Decimal(str(sofp["total_liabilities"]))
+        - Decimal(str(sofp["total_net_assets"]))
+    ) < Decimal("0.01")

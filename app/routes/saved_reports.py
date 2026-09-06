@@ -37,6 +37,11 @@ _ALLOWED_TYPES = {
     "account_transactions",
     "cash_flow",
     "analytics_dashboard",
+    # nonprofit statements
+    "statement_of_financial_position",
+    "statement_of_activities",
+    "fund_balances",
+    "functional_expenses",
 }
 
 

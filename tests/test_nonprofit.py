@@ -735,3 +735,301 @@ def test_functional_allocation_reclasses_and_is_idempotent_for_period(
     assert client.post(f"/api/nonprofit/allocations/{fa['id']}/void").status_code == 400
     listed = client.get("/api/nonprofit/allocations").json()
     assert [x["status"] for x in listed] == ["void"]
+
+
+# ---------------------------------------------------------------------------
+# The four statements reconcile to the plain P&L and balance sheet
+# ---------------------------------------------------------------------------
+
+
+def _je(db, d, desc, lines, **kw):
+    create_journal_entry(db, d, desc, lines, **kw)
+
+
+def _riverbend(client, db_session, seed_accounts):
+    """A condensed Riverbend Community Arts: four funds, a grant, an
+    endowment, unrestricted gifts, a gala, program and admin spending,
+    shared rent allocated 70/20/10, and a release for what the grant
+    spent. Amounts chosen so every equality is checkable by hand."""
+    client.put("/api/settings", json={"company_type": "nonprofit"})
+    client.post("/api/nonprofit/setup-accounts")
+
+    def mk(name, restriction, fn):
+        return client.post(
+            "/api/classes",
+            json={"name": name, "restriction": restriction, "default_function": fn},
+        ).json()
+
+    general = mk("General Fund", "unrestricted", "management")
+    youth = mk("Youth Program", "temporarily_restricted", "program")
+    endow = mk("Scholarship Endowment", "permanently_restricted", "program")
+    gala = mk("Spring Gala", "unrestricted", "fundraising")
+    checking = seed_accounts["1010"].id
+    income = seed_accounts["4000"].id
+    rent = seed_accounts["6100"].id if "6100" in seed_accounts else None
+    if rent is None:
+        rent = client.post(
+            "/api/accounts",
+            json={
+                "name": "Rent Expense",
+                "account_number": "6100",
+                "account_type": "expense",
+            },
+        ).json()["id"]
+    supplies = seed_accounts["6000"].id if "6000" in seed_accounts else rent
+    d = date(2026, 3, 15)
+
+    def dr(a, amt, **k):
+        return {"account_id": a, "debit": Decimal(amt), "credit": Decimal("0"), **k}
+
+    def cr(a, amt, **k):
+        return {"account_id": a, "debit": Decimal("0"), "credit": Decimal(amt), **k}
+
+    # revenue
+    _je(
+        db_session,
+        d,
+        "grant award",
+        [dr(checking, "24000"), cr(income, "24000")],
+        class_id=youth["id"],
+    )
+    _je(
+        db_session,
+        d,
+        "endowment gift",
+        [dr(checking, "50000"), cr(income, "50000")],
+        class_id=endow["id"],
+    )
+    _je(
+        db_session,
+        d,
+        "annual fund",
+        [dr(checking, "1500"), cr(income, "1500")],
+        class_id=general["id"],
+    )
+    _je(
+        db_session,
+        d,
+        "gala tickets",
+        [dr(checking, "1200"), cr(income, "1200")],
+        class_id=gala["id"],
+    )
+    # spending
+    _je(
+        db_session,
+        date(2026, 4, 10),
+        "youth supplies",
+        [dr(supplies, "3300"), cr(checking, "3300")],
+        class_id=youth["id"],
+    )
+    _je(
+        db_session,
+        date(2026, 4, 12),
+        "gala catering",
+        [dr(supplies, "200"), cr(checking, "200")],
+        class_id=gala["id"],
+    )
+    _je(
+        db_session,
+        date(2026, 4, 14),
+        "admin",
+        [dr(supplies, "400"), cr(checking, "400")],
+        class_id=general["id"],
+    )
+    _je(
+        db_session,
+        date(2026, 4, 1),
+        "April rent",
+        [dr(rent, "1000", class_id=general["id"], function=None), cr(checking, "1000")],
+    )
+    db_session.commit()
+    rule = _rule(client, source_account_id=rent)
+    r = client.post(
+        "/api/nonprofit/allocations",
+        json={
+            "date": "2026-04-30",
+            "rule_id": rule["id"],
+            "period_start": "2026-04-01",
+            "period_end": "2026-04-30",
+        },
+    )
+    assert r.status_code == 201, r.text
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={
+            "date": "2026-04-30",
+            "class_id": youth["id"],
+            "period_start": "2026-01-01",
+            "period_end": "2026-04-30",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert Decimal(r.json()["amount"]) == Decimal("3300")
+    return {"general": general, "youth": youth, "endow": endow, "gala": gala}
+
+
+def test_statement_of_activities_change_equals_pnl_net_income(
+    client, db_session, seed_accounts
+):
+    _riverbend(client, db_session, seed_accounts)
+    qs = "start_date=2026-01-01&end_date=2026-06-30"
+    soa = client.get(f"/api/reports/statement-of-activities?{qs}").json()
+    pl = client.get(f"/api/reports/profit-loss?{qs}").json()
+    t = soa["totals"]
+    assert abs(t["change_total"] - pl["net_income"]) < 0.005
+    assert t["revenue"] == pl["total_income"]
+    assert t["expenses"] == pl["total_expenses"] + pl["total_cogs"]
+    assert soa["releases"] == {"without": 3300.0, "with": -3300.0, "total": 0.0}
+    assert t["revenue_with"] == 74000.0 and t["revenue_without"] == 2700.0
+    assert t["change_with"] == 74000.0 - 3300.0
+    assert t["change_without"] == 2700.0 + 3300.0 - 4900.0
+    # every expense sits in the "without" column
+    assert all(r["with"] == 0.0 for r in soa["expenses"])
+
+
+def test_functional_expenses_total_equals_pnl_expenses(
+    client, db_session, seed_accounts
+):
+    _riverbend(client, db_session, seed_accounts)
+    qs = "start_date=2026-01-01&end_date=2026-06-30"
+    sfe = client.get(f"/api/reports/functional-expenses?{qs}").json()
+    pl = client.get(f"/api/reports/profit-loss?{qs}").json()
+    t = sfe["totals"]
+    assert abs(t["total"] - (pl["total_expenses"] + pl["total_cogs"])) < 0.005
+    assert t["program"] == 3300.0 + 700.0
+    assert t["management"] == 400.0 + 200.0
+    assert t["fundraising"] == 200.0 + 100.0
+    assert t["unassigned"] == 0.0
+    assert abs(t["program"] + t["management"] + t["fundraising"] - t["total"]) < 0.005
+    programs = {p["class_name"]: p["amount"] for p in sfe["programs"]}
+    assert programs["Youth Program"] == 3300.0
+    assert sum(programs.values()) == t["program"]
+    for r in sfe["rows"]:
+        assert (
+            abs(
+                r["program"]
+                + r["management"]
+                + r["fundraising"]
+                + r["unassigned"]
+                - r["total"]
+            )
+            < 0.005
+        )
+
+
+def test_financial_position_balances_and_matches_balance_sheet(
+    client, db_session, seed_accounts
+):
+    _riverbend(client, db_session, seed_accounts)
+    sofp = client.get(
+        "/api/reports/statement-of-financial-position?as_of_date=2026-06-30"
+    ).json()
+    bs = client.get("/api/reports/balance-sheet?as_of_date=2026-06-30").json()
+    assert (
+        abs(
+            sofp["total_assets"]
+            - (
+                sofp["total_liabilities"]
+                + sofp["net_assets_without"]
+                + sofp["net_assets_with"]
+            )
+        )
+        < 0.005
+    )
+    assert abs(sofp["total_net_assets"] - bs["total_equity"]) < 0.005
+    assert sofp["total_assets"] == bs["total_assets"]
+    assert sofp["net_assets_with"] == 74000.0 - 3300.0
+    assert sofp["net_assets_without"] == 2700.0 + 3300.0 - 4900.0
+    names = [r["account_name"] for r in sofp["net_assets"]]
+    assert names[-2:] == [
+        "Net Assets Without Donor Restrictions",
+        "Net Assets With Donor Restrictions",
+    ]
+    assert "Net Income (current period)" not in names
+
+
+def test_fund_balances_reconcile_to_financial_position(
+    client, db_session, seed_accounts
+):
+    funds = _riverbend(client, db_session, seed_accounts)
+    fb = client.get(
+        "/api/reports/fund-balances?start_date=2026-01-01&end_date=2026-06-30"
+    ).json()
+    by = {f["class_name"]: f for f in fb["funds"]}
+    assert set(by) == {"Youth Program", "Scholarship Endowment"}  # restricted only
+    y = by["Youth Program"]
+    assert (
+        y["beginning"],
+        y["contributions"],
+        y["expenses"],
+        y["releases"],
+        y["ending"],
+        y["unreleased"],
+    ) == (0.0, 24000.0, 3300.0, 3300.0, 20700.0, 0.0)
+    e = by["Scholarship Endowment"]
+    assert e["ending"] == 50000.0 and e["restriction"] == "permanently_restricted"
+    sofp = client.get(
+        "/api/reports/statement-of-financial-position?as_of_date=2026-06-30"
+    ).json()
+    assert abs(fb["totals"]["ending"] - sofp["net_assets_with"]) < 0.005
+    assert fb["unassigned"] is None
+
+    # the next period starts where this one ended
+    fb2 = client.get(
+        "/api/reports/fund-balances?start_date=2026-07-01&end_date=2026-12-31"
+    ).json()
+    assert {f["class_name"]: f["beginning"] for f in fb2["funds"]} == {
+        "Youth Program": 20700.0,
+        "Scholarship Endowment": 50000.0,
+    }
+    assert funds["youth"]["id"] == y["class_id"]
+
+
+def test_nonprofit_statement_pdfs_and_csvs_render(client, db_session, seed_accounts):
+    _riverbend(client, db_session, seed_accounts)
+    qs = "start_date=2026-01-01&end_date=2026-06-30"
+    for path, q in (
+        ("statement-of-activities", qs),
+        ("statement-of-financial-position", "as_of_date=2026-06-30"),
+        ("fund-balances", qs),
+        ("functional-expenses", qs),
+    ):
+        pdf = client.get(f"/api/reports/{path}/pdf?{q}")
+        assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-", path
+        assert f"{path}.pdf" in pdf.headers["content-disposition"]
+        csv_r = client.get(f"/api/reports/{path}/csv?{q}")
+        assert csv_r.status_code == 200 and csv_r.headers["content-type"].startswith(
+            "text/csv"
+        ), path
+        text = csv_r.text
+        assert text.splitlines()[0]  # a header row
+        for line in text.splitlines():
+            for cell in line.split(","):
+                assert (
+                    not cell or cell[0] not in "=+@" or cell.startswith("'")
+                ), f"{path}: unsafe cell {cell!r}"
+    sfe_csv = client.get(f"/api/reports/functional-expenses/csv?{qs}").text
+    assert sfe_csv.startswith(
+        "Expense,Total (A),Program services (B),Management and general (C),Fundraising (D),Unassigned"
+    )
+    # the statements pack switches to nonprofit sections
+    pack = client.get(f"/api/reports/financial-statements/pdf?{qs}")
+    assert pack.status_code == 200 and pack.content[:5] == b"%PDF-"
+
+
+def test_saved_reports_accept_nonprofit_types(client, seed_accounts):
+    for rt in (
+        "statement_of_financial_position",
+        "statement_of_activities",
+        "fund_balances",
+        "functional_expenses",
+    ):
+        r = client.post(
+            "/api/saved-reports",
+            json={
+                "name": rt,
+                "report_type": rt,
+                "parameters": {"period": "this_year_to_date"},
+            },
+        )
+        assert r.status_code in (200, 201), r.text

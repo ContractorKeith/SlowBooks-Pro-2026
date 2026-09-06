@@ -15,6 +15,10 @@ const ReportsPage = {
         general_ledger:     (params) => ReportsPage.generalLedger(params),
         income_by_customer: (params) => ReportsPage.incomeByCustomer(params),
         cash_flow:          (params) => ReportsPage.cashFlow(params),
+        statement_of_financial_position: (params) => ReportsPage.statementOfFinancialPosition(params),
+        statement_of_activities:         (params) => ReportsPage.statementOfActivities(params),
+        fund_balances:                   (params) => ReportsPage.fundBalances(params),
+        functional_expenses:             (params) => ReportsPage.functionalExpenses(params),
     },
 
     async render() {
@@ -49,10 +53,11 @@ const ReportsPage = {
             <div class="page-header"><h2>Reports</h2></div>
             ${savedHtml}
             <div class="card-grid">
+                ${Terms.isNonprofit() ? ReportsPage._nonprofitCards() : `
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.profitLoss()">
                     <div class="card-header">${T('Profit & Loss')}</div>
                     <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Income vs expenses for a period')}</p>
-                </div>
+                </div>`}
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.profitLossByClass()">
                     <div class="card-header">${T('P&L by Class')}</div>
                     <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Income vs expenses split by class')}</p>
@@ -73,10 +78,11 @@ const ReportsPage = {
                     <div class="card-header">Fixed Asset Reconciliation</div>
                     <p style="font-size:13px; color:var(--gray-500);">Register totals vs GL by asset type</p>
                 </div>
+                ${Terms.isNonprofit() ? '' : `
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.balanceSheet()">
                     <div class="card-header">${T('Balance Sheet')}</div>
                     <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Assets, liabilities, and equity')}</p>
-                </div>
+                </div>`}
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.arAging()">
                     <div class="card-header">${T('A/R Aging')}</div>
                     <p style="font-size:13px; color:var(--gray-500);">Outstanding receivables by age</p>
@@ -939,3 +945,124 @@ ReportsPage.jobBudgetVsActual = async function () {
     });
 };
 
+
+
+// ---------------------------------------------------------------------------
+// Nonprofit statements — shown in place of the P&L and Balance Sheet cards
+// when Settings -> Company Type is nonprofit. Each reconciles to the plain
+// P&L / balance sheet (the server computes both from the same lines).
+// ---------------------------------------------------------------------------
+ReportsPage._nonprofitCards = function () {
+    return `
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.statementOfActivities()">
+            <div class="card-header">Statement of Activities</div>
+            <p style="font-size:13px; color:var(--gray-500);">Revenue, releases and expenses, with and without donor restrictions</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.statementOfFinancialPosition()">
+            <div class="card-header">Statement of Financial Position</div>
+            <p style="font-size:13px; color:var(--gray-500);">Assets, liabilities, and net assets by restriction</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.fundBalances()">
+            <div class="card-header">Fund Balances</div>
+            <p style="font-size:13px; color:var(--gray-500);">Each restricted fund: beginning, contributions, spent, released, ending</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.functionalExpenses()">
+            <div class="card-header">Statement of Functional Expenses</div>
+            <p style="font-size:13px; color:var(--gray-500);">Program / management / fundraising by expense account (Form 990 Part IX)</p>
+        </div>`;
+};
+
+ReportsPage._exportButtons = function (path, qs) {
+    return `<div style="text-align:right; margin-bottom:6px;">
+        <button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/${path}/pdf?${qs}','_blank')">Save PDF</button>
+        <button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/${path}/csv?${qs}','_blank')">Save CSV</button>
+    </div>`;
+};
+
+ReportsPage.statementOfActivities = async function (prefill) {
+    await ReportsPage.openPeriodModal("Statement of Activities", "this_year_to_date", async (_period, range) => {
+        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const d = await API.get(`/reports/statement-of-activities?${qs}`);
+        const t = d.totals;
+        const line = (label, w, r, tot, style = '') => `<tr style="${style}"><td>${label}</td><td class="amount">${formatCurrency(w)}</td><td class="amount">${formatCurrency(r)}</td><td class="amount">${formatCurrency(tot)}</td></tr>`;
+        const rows = (items) => items.length ? items.map(i => line(`<span style="padding-left:24px">${escapeHtml(i.account_name)}</span>`, i.without, i.with, i.total)).join('') : `<tr><td colspan="4" style="color:var(--gray-400);">None</td></tr>`;
+        return `${ReportsPage._exportButtons('statement-of-activities', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col"></th><th scope="col" class="amount">Without Donor Restrictions</th><th scope="col" class="amount">With Donor Restrictions</th><th scope="col" class="amount">Total</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Revenue &amp; Support</strong></td><td></td><td></td><td></td></tr>
+                    ${rows(d.revenue)}
+                    ${line('Total Revenue &amp; Support', t.revenue_without, t.revenue_with, t.revenue, 'font-weight:600; background:var(--gray-50);')}
+                    ${line('Net assets released from restrictions', d.releases.without, d.releases.with, 0)}
+                    <tr><td><strong>Expenses</strong></td><td></td><td></td><td></td></tr>
+                    ${rows(d.expenses)}
+                    ${line('Total Expenses', t.expenses, 0, t.expenses, 'font-weight:600; background:var(--gray-50);')}
+                    ${line('Change in Net Assets', t.change_without, t.change_with, t.change_total, 'font-weight:700; font-size:15px; background:var(--primary-light);')}
+                </tbody>
+            </table></div>`;
+    }, "Dates", false, { reportType: 'statement_of_activities', prefill });
+};
+
+ReportsPage.statementOfFinancialPosition = async function (prefill) {
+    await ReportsPage.openPeriodModal("Statement of Financial Position", "this_year_to_date", async (_period, params) => {
+        const qs = `as_of_date=${params.as_of_date}`;
+        const d = await API.get(`/reports/statement-of-financial-position?${qs}`);
+        const drillCall = (i) => escapeHtml(`ReportsPage.openDrillDown(${i.account_id},${JSON.stringify(i.account_name)},null,${JSON.stringify(params.as_of_date)})`);
+        const section = (items) => items.map(i => `<tr><td style="padding-left:24px;">
+                ${i.account_id ? `<a href="javascript:void(0)" style="color:var(--qb-blue,#0066cc); text-decoration:none;" onclick="${drillCall(i)}">${escapeHtml(i.account_name)}</a>` : escapeHtml(i.account_name)}
+                </td><td class="amount">${formatCurrency(i.amount)}</td></tr>`).join('') || `<tr><td colspan="2" style="color:var(--gray-400);">None</td></tr>`;
+        const sub = (label, v) => `<tr style="font-weight:600; background:var(--gray-50);"><td>${label}</td><td class="amount">${formatCurrency(v)}</td></tr>`;
+        return `${ReportsPage._exportButtons('statement-of-financial-position', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">As of ${formatDate(d.as_of_date)}</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col">Account</th><th scope="col" class="amount">Amount</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Assets</strong></td><td></td></tr>${section(d.assets)}${sub('Total Assets', d.total_assets)}
+                    <tr><td><strong>Liabilities</strong></td><td></td></tr>${section(d.liabilities)}${sub('Total Liabilities', d.total_liabilities)}
+                    <tr><td><strong>Net Assets</strong></td><td></td></tr>${section(d.net_assets)}
+                    ${sub('Net Assets Without Donor Restrictions', d.net_assets_without)}
+                    ${sub('Net Assets With Donor Restrictions', d.net_assets_with)}
+                    ${sub('Total Net Assets', d.total_net_assets)}
+                    <tr style="font-weight:700; font-size:15px; background:var(--primary-light);"><td>Liabilities + Net Assets</td><td class="amount">${formatCurrency(d.total_liabilities_and_net_assets)}</td></tr>
+                </tbody>
+            </table></div>`;
+    }, "As of", true, { reportType: 'statement_of_financial_position', prefill });
+};
+
+ReportsPage.fundBalances = async function (prefill) {
+    await ReportsPage.openPeriodModal("Fund Balances", "this_year_to_date", async (_period, range) => {
+        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const d = await API.get(`/reports/fund-balances?${qs}`);
+        const keys = ['beginning', 'contributions', 'expenses', 'releases', 'ending', 'unreleased'];
+        const row = (f, style = '') => `<tr style="${style}"><td>${escapeHtml(f.class_name)}${f.donor_name ? `<div style="font-size:10px;color:var(--gray-500)">${escapeHtml(f.donor_name)}</div>` : ''}</td>${keys.map(k => `<td class="amount">${formatCurrency(f[k])}</td>`).join('')}</tr>`;
+        const rows = d.funds.map(f => row(f)).join('') + (d.unassigned ? row(d.unassigned, 'font-style:italic') : '');
+        return `${ReportsPage._exportButtons('fund-balances', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)} · restricted ${T('classes')} only</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col">${T('Class')}</th><th scope="col" class="amount">Beginning</th><th scope="col" class="amount">Contributions</th><th scope="col" class="amount">Spent</th><th scope="col" class="amount">Released</th><th scope="col" class="amount">Ending</th><th scope="col" class="amount" title="Spent but not yet released">Unreleased</th></tr></thead>
+                <tbody>${rows || `<tr><td colspan="7" style="color:var(--gray-400);">No restricted ${T('classes')} yet</td></tr>`}</tbody>
+                <tfoot>${row({ class_name: 'Total', ...d.totals }, 'font-weight:700; background:var(--gray-50);')}</tfoot>
+            </table></div>`;
+    }, "Dates", false, { reportType: 'fund_balances', prefill });
+};
+
+ReportsPage.functionalExpenses = async function (prefill) {
+    await ReportsPage.openPeriodModal("Statement of Functional Expenses", "this_year_to_date", async (_period, range) => {
+        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const d = await API.get(`/reports/functional-expenses?${qs}`);
+        const keys = ['total', 'program', 'management', 'fundraising', 'unassigned'];
+        const row = (label, r, style = '') => `<tr style="${style}"><td>${label}</td>${keys.map(k => `<td class="amount">${formatCurrency(r[k])}</td>`).join('')}</tr>`;
+        const rows = d.rows.map(r => row(escapeHtml(`${r.account_number || ''} ${r.account_name}`.trim()), r)).join('');
+        const programs = d.programs.length ? `<h4 style="margin:12px 0 4px;font-size:12px;">Program services by program</h4>
+            <div class="table-container"><table><thead><tr><th scope="col">Program</th><th scope="col" class="amount">Amount</th></tr></thead>
+            <tbody>${d.programs.map(p => `<tr><td>${escapeHtml(p.class_name)}</td><td class="amount">${formatCurrency(p.amount)}</td></tr>`).join('')}</tbody></table></div>` : '';
+        return `${ReportsPage._exportButtons('functional-expenses', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}${d.totals.unassigned ? ` · <span style="color:var(--danger)">${formatCurrency(d.totals.unassigned)} still unassigned — run an allocation rule</span>` : ''}</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col">Expense</th><th scope="col" class="amount">Total</th><th scope="col" class="amount">Program</th><th scope="col" class="amount">Management</th><th scope="col" class="amount">Fundraising</th><th scope="col" class="amount">Unassigned</th></tr></thead>
+                <tbody>${rows || `<tr><td colspan="6" style="color:var(--gray-400);">No expenses in this period</td></tr>`}</tbody>
+                <tfoot>${row('Total', d.totals, 'font-weight:700; background:var(--gray-50);')}</tfoot>
+            </table></div>${programs}`;
+    }, "Dates", false, { reportType: 'functional_expenses', prefill });
+};
