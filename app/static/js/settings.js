@@ -866,10 +866,12 @@ const SettingsPage = {
                       style="${needsEndpoint ? '' : 'display:none'}">
                 <legend>Custom OpenAI-Compatible Endpoint</legend>
                 <p class="ai-worker-help">
-                    Point Slowbooks at any OpenAI-compatible chat API (e.g.
-                    Command Code, a local gateway, or another provider's
-                    <code>/v1</code> base URL). <code>/chat/completions</code>
-                    is appended automatically if you don't include it.
+                    Point Slowbooks at any OpenAI-compatible chat API on the
+                    public internet — another vendor's <code>/v1</code> base URL,
+                    or a gateway you host. <code>/chat/completions</code> is
+                    appended automatically if you don't include it. A model on
+                    this machine or your LAN cannot be reached this way: the
+                    address check below refuses it on purpose.
                 </p>
                 <label class="form-field">
                     <span>Base URL <em class="ai-worker-required">(https only)</em></span>

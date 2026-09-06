@@ -80,6 +80,13 @@ statement reconciles to the cent and that a readonly agent cannot write.
 Design notes: [docs/design/nonprofit.md](docs/design/nonprofit.md); user
 guide: [docs/nonprofit-module.md](docs/nonprofit-module.md).
 
+**A custom AI provider** (contributed by @jarvis4openclaw): an eighth AI
+Insights provider that points at any OpenAI-compatible chat endpoint on the
+public internet, HTTPS-only and behind the same address guard as the Worker
+gateway, with the model ID yours to type. Along the way it fixed the
+self-hosted Cloudflare Worker gateway, whose replies had been parsed to an
+empty string.
+
 **From the release gate (SlowBooks-Pro-Testing, 2.9.0).** The macOS app is
 now notarized and stapled *before* the disk image is built, so the copy a
 user drags to Applications carries its own ticket and launches offline;

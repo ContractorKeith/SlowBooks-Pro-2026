@@ -128,9 +128,9 @@ been edited since generation, against the local `document_audits` chain.
 Not a watermark — a verification trail.
 
 **Bring-your-own-AI, including your own gateway.** AI Insights runs
-against any of seven providers (xAI Grok, Groq, Cloudflare Workers AI,
-Anthropic Claude, OpenAI, Google Gemini, or a Cloudflare Worker you host
-yourself) — keys encrypted at rest with versioned, rotatable ciphertext.
+against any of eight providers (xAI Grok, Groq, Cloudflare Workers AI,
+Anthropic Claude, OpenAI, Google Gemini, a Cloudflare Worker you host
+yourself, or any OpenAI-compatible endpoint you name) — keys encrypted at rest with versioned, rotatable ciphertext.
 And the whole app is agent-operable through its local API: see the
 [AI setup guide](https://www.slowbookspro.com/ai/).
 

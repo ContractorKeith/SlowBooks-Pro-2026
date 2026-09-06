@@ -12,7 +12,8 @@
       "Agents: unknown request fields are rejected (422), tax_rate is documented as a fraction and bounded, DELETE on a posted document names the void route, PTO enums in the spec",
       "Desktop: Save PDF explains a refused Documents folder and says where the file went; macOS app stapled before the DMG; a fresh company can run depreciation",
       "macOS: Save PDF, print preview, Save backup and Show in folder work again (the desktop bridge was blocked by the app's security policy since 2.1.0); Save CSV lands next to Save PDF with a Show-in-folder notice",
-      "First-run setup on a file that already has books names the company and prefills it; the company name in Settings and the picker can no longer disagree"
+      "First-run setup on a file that already has books names the company and prefills it; the company name in Settings and the picker can no longer disagree",
+      "AI Insights: a Custom (OpenAI-compatible) provider for any endpoint you name; the self-hosted Cloudflare Worker gateway's replies come through again"
     ]
   },
   "2.8.0": {

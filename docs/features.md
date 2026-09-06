@@ -149,6 +149,7 @@ An optional LLM layer sits on top of the analytics snapshot and produces a compa
 | **Anthropic Claude** | `/v1/messages` | `claude-sonnet-4-6` | Paid only |
 | **OpenAI** | `/v1/chat/completions` | `gpt-5.4-mini` | Paid only |
 | **Google Gemini** | `generateContent` | `gemini-2.5-flash` | Free Flash tier via AI Studio |
+| **Custom (OpenAI-compatible)** | `/v1/chat/completions` | *you supply it* | Any vendor or gateway that speaks the OpenAI wire format, on the public internet — HTTPS only, private/LAN addresses refused (v2.9, contributed by @jarvis4openclaw) |
 
 Each provider's model string is configurable from **Settings → AI Insights** — a curated dropdown per provider with a **Custom…** escape hatch for new model IDs the vendors ship between releases. So renames ("gemini-2.5-flash" → "gemini-3.0-nano") are a Custom-field entry, not a code change. Cloudflare gets an extra field for your account ID since its endpoint is account-scoped. The dedicated **Cloudflare Worker Gateway** provider adds a second field for your Worker URL — see the self-hosted gateway section below.
 
