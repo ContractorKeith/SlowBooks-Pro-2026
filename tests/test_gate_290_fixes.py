@@ -724,3 +724,38 @@ def test_compose_file_declares_the_single_host_flag():
         "${SLOWBOOKS_PRIVATE_NETWORK:-1}"
     )
     assert env["FORCE_HTTPS"].startswith("${FORCE_HTTPS:-false}")
+
+
+def test_create_all_is_serialized_under_postgres(monkeypatch):
+    """Two uvicorn workers must not race create_all on a fresh Postgres."""
+    from contextlib import contextmanager
+
+    import app.main as m
+
+    calls = []
+
+    class FakeConn:
+        def execute(self, stmt):
+            calls.append(("execute", str(stmt)))
+
+    class FakeEngine:
+        class dialect:
+            name = "postgresql"
+
+        @contextmanager
+        def begin(self):
+            calls.append(("begin",))
+            yield FakeConn()
+            calls.append(("commit",))
+
+    monkeypatch.setattr(m, "engine", FakeEngine())
+    monkeypatch.setattr(
+        m.Base.metadata,
+        "create_all",
+        lambda bind=None: calls.append(("create_all", type(bind).__name__)),
+    )
+    m._create_missing_tables()
+    assert calls[0] == ("begin",)
+    assert "pg_advisory_xact_lock" in calls[1][1]
+    assert calls[2] == ("create_all", "FakeConn")
+    assert calls[-1] == ("commit",)

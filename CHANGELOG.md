@@ -131,6 +131,10 @@ started since those guards landed in v2.1. The compose file now declares
 checks with a logged warning and nothing else; the encryption-key guards are
 never relaxed, and the install guide says what to change before exposing
 the stack beyond the host.
+And a third, once the stack ran: with two uvicorn workers, both raced to
+create the tables the migrations do not cover, one lost on a Postgres enum
+type, and the container crashed and restarted on every first boot. Table
+creation now takes a Postgres advisory lock so the second worker waits.
 
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 

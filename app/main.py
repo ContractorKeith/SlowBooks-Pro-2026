@@ -182,7 +182,7 @@ def _run_startup_security_checks():
                 "leaves this host. Do not expose this instance beyond the "
                 "host without a TLS proxy (docs/tls-proxy-setup.md)."
             )
-            Base.metadata.create_all(bind=engine)
+            _create_missing_tables()
             return
 
         if not DATABASE_URL.startswith("sqlite"):
@@ -204,6 +204,29 @@ def _run_startup_security_checks():
             )
 
     # Only after the cheap checks pass do we open a DB connection.
+    _create_missing_tables()
+
+
+def _create_missing_tables() -> None:
+    """create_all for whatever the migrations do not cover — serialized.
+
+    Under Docker the entrypoint starts uvicorn with two workers, and each
+    worker runs this lifespan. Two concurrent create_all() calls on a
+    fresh Postgres race on CREATE TYPE for the enums (`duplicate key
+    value violates unique constraint "pg_type_typname_nsp_index"`): one
+    worker dies, uvicorn stops the parent, the container restarts, and
+    any client mid-request sees the connection dropped (2.9.0 Linux
+    gate). A transaction-scoped advisory lock makes the second worker
+    wait for the first; checkfirst then finds everything present.
+    SQLite has one process and no enum types, so it takes the plain path.
+    """
+    if engine.dialect.name == "postgresql":
+        from sqlalchemy import text
+
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(7264013)"))
+            Base.metadata.create_all(bind=conn)
+        return
     Base.metadata.create_all(bind=engine)
 
 
