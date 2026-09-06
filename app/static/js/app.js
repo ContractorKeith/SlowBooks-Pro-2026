@@ -474,10 +474,16 @@ const App = {
         } catch (err) { toast(err.message, 'error'); }
     },
 
-    // Load company name from settings for status bar
-    async loadCompanyName() {
+    settings: {},   // one cached copy of /api/settings for the shell (company name, company type)
+
+    // Load company settings: the status-bar name, and the vocabulary
+    // (Terms) that every page renders with. Never rejects — pre-login this
+    // 401s and auth.js reloads the page after login, same as before.
+    async loadCompanySettings() {
         try {
             const s = await API.get('/settings');
+            App.settings = s || {};
+            Terms.init(s);
             const companyEl = $('#status-company');
             if (companyEl && s.company_name && s.company_name !== 'My Company') {
                 companyEl.textContent = `Company: ${s.company_name}`;
@@ -486,7 +492,25 @@ const App = {
                 const brand = $('#topbar-company');
                 if (brand) brand.textContent = s.company_name;
             }
-        } catch (e) { /* ignore on load */ }
+        } catch (e) { Terms.init(null); /* business words until signed in */ }
+    },
+
+    // Rewrites the static shell into the company's words. index.html is
+    // served raw, so the sidebar and toolbar arrive as business-worded
+    // HTML; this runs once at boot, before the first page renders.
+    applyTerminology() {
+        for (const r of Object.values(App.routes)) r.label = T(r.label);
+        $$('#sidebar .nav-section').forEach(el => { el.textContent = T(el.textContent.trim()); });
+        $$('#sidebar .nav-link').forEach(a => {
+            const t = [...a.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+            if (t) t.textContent = ' ' + T(t.textContent.trim());
+        });
+        $$('#topbar .tb-btn[data-action]').forEach(b => { b.textContent = T(b.textContent.trim()); });
+        const search = $('#global-search');
+        if (search) search.placeholder = Terms.text(search.placeholder);
+        const np = Terms.isNonprofit();
+        $$('[data-nonprofit]').forEach(el => { el.hidden = !np; });
+        $$('[data-business-only]').forEach(el => { el.hidden = np; });
     },
 
     init() {
@@ -538,14 +562,16 @@ const App = {
         App.updateClock();
         setInterval(App.updateClock, 60000);
 
-        // Load company name into status bar
-        App.loadCompanyName();
-
         // Real version in the footer + update badge on desktop installs
         App.initSystemInfo();
 
-        // Navigate after splash closes
-        App.navigate(location.hash || '#/');
+        // Settings first: the vocabulary and the nonprofit nav items must
+        // be in place before the first page paints (no flash of "Customers"
+        // on a donor's screen). loadCompanySettings never rejects.
+        App.loadCompanySettings().then(() => {
+            App.applyTerminology();
+            App.navigate(location.hash || '#/');
+        });
     },
 
     /**

@@ -51,6 +51,14 @@ def _redact_secrets(settings: dict) -> dict:
     }
 
 
+# Settings whose value is one of a fixed set. The SPA renders a <select>;
+# this is the server-side twin so an API token cannot store "banana".
+ENUM_SETTINGS = {
+    "company_type": frozenset({"business", "nonprofit"}),
+    "ocr_engine": frozenset({"auto", "tesseract"}),
+}
+
+
 class SettingsUpdate(BaseModel):
     # Accept any subset of DEFAULT_SETTINGS keys. Unknown keys are silently
     # ignored by the handler (same as before). We keep this permissive because
@@ -137,6 +145,12 @@ def update_settings(
     for key, value in data.model_dump().items():
         if key not in DEFAULT_SETTINGS:
             continue
+        allowed = ENUM_SETTINGS.get(key)
+        if allowed is not None and value not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{key} must be one of: {', '.join(sorted(allowed))}",
+            )
         if key in SECRET_KEYS and value == SECRET_PLACEHOLDER:
             continue
         set_setting(db, key, str(value) if value is not None else "")

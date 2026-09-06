@@ -48,6 +48,13 @@ const SettingsPage = {
                             <input name="company_website" value="${escapeHtml(s.company_website || '')}"></div>
                         <div class="form-group"><label>Tax ID / EIN</label>
                             <input name="company_tax_id" value="${escapeHtml(s.company_tax_id || '')}"></div>
+                        <div class="form-group full-width"><label for="company-type">Company Type</label>
+                            <select id="company-type" name="company_type" onchange="SettingsPage.changeCompanyType(this)">
+                                <option value="business" ${s.company_type !== 'nonprofit' ? 'selected' : ''}>Business</option>
+                                <option value="nonprofit" ${s.company_type === 'nonprofit' ? 'selected' : ''}>Nonprofit</option>
+                            </select>
+                            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Nonprofit shows donors, pledges, donations and funds in place of customers, invoices, sales receipts and classes, and adds the net-asset accounts and statements. Your data does not change; switch back any time.</div>
+                        </div>
                     </div>
                 </div>
 
@@ -596,6 +603,30 @@ const SettingsPage = {
             await API.post('/settings/test-email');
             toast('Test email sent');
         } catch (err) { toast(err.message, 'error'); }
+    },
+
+    // Company type saves on its own and reloads: the vocabulary and the
+    // nonprofit nav items are applied at boot (App.applyTerminology), so
+    // the whole shell has to come up again in the new words.
+    async changeCompanyType(sel) {
+        const value = sel.value;
+        const previous = value === 'nonprofit' ? 'business' : 'nonprofit';
+        const msg = value === 'nonprofit'
+            ? 'Switch this company to nonprofit mode? Screens will say donor, pledge, donation and fund; the net-asset accounts are added. Nothing in your data changes.'
+            : 'Switch this company back to business mode? Screens return to customer, invoice, sales receipt and class. Nothing in your data changes.';
+        if (!confirm(msg)) { sel.value = previous; return; }
+        try {
+            await API.put('/settings', { company_type: value });
+            if (value === 'nonprofit') {
+                try { await API.post('/nonprofit/setup-accounts', {}); }
+                catch (e) { /* accounts can be created later from the Nonprofit section */ }
+            }
+            toast('Company type saved — reloading');
+            setTimeout(() => location.reload(), 600);
+        } catch (err) {
+            sel.value = previous;
+            toast(err.message, 'error');
+        }
     },
 
     async saveOcrEngine(value) {

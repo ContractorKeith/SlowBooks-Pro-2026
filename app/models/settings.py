@@ -28,6 +28,11 @@ DEFAULT_SETTINGS = {
     # = prefer tesseract when installed (sharper region reads). The
     # SLOWBOOKS_OCR_ENGINE env var (support tool) outranks this.
     "ocr_engine": "auto",
+    # Company type drives the vocabulary (Customer/Donor, Invoice/Pledge,
+    # Class/Fund ...), the nonprofit nav items and reports, the default
+    # dashboard layout and the on-demand net-asset accounts. Data never
+    # changes name; only what is rendered. business | nonprofit
+    "company_type": "business",
     "company_name": "My Company",
     "company_address1": "",
     "company_address2": "",

@@ -10,7 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.orm import Session
 
 from app.models.transactions import Transaction, TransactionLine
-from app.models.accounts import Account
+from app.models.accounts import Account, AccountType
 
 CENT = Decimal("0.01")
 
@@ -233,3 +233,62 @@ def get_cc_account_id(db: Session) -> int:
     """Get Credit Card Payable account ID (2100)."""
     acct = db.query(Account).filter(Account.account_number == "2100").first()
     return acct.id if acct else None
+
+
+def ensure_account(
+    db: Session, number: str, name: str, account_type: AccountType
+) -> Account:
+    """Find-or-create a system account by name, keeping the suggested
+    number only if the chart hasn't used it (account_number is unique and
+    an imported chart may already own 3300 or 6960). Flushes; the caller
+    commits. Pattern shared with the job-costing offset accounts."""
+    acct = db.query(Account).filter(Account.name == name).first()
+    if acct:
+        return acct
+    taken = db.query(Account.id).filter(Account.account_number == number).first()
+    acct = Account(
+        name=name,
+        account_type=account_type,
+        account_number=None if taken else number,
+        is_system=True,
+        balance=Decimal("0"),
+    )
+    db.add(acct)
+    db.flush()
+    return acct
+
+
+# Nonprofit accounts, created on demand (Settings -> Company Type, or the
+# first document that needs them). Numbers follow the seed chart's blocks;
+# 4300 is already Labor Income, so in-kind income sits at 4400.
+NONPROFIT_ACCOUNTS = (
+    ("3300", "Net Assets Without Donor Restrictions", AccountType.EQUITY),
+    ("3400", "Net Assets With Donor Restrictions", AccountType.EQUITY),
+    ("4400", "In-Kind Contributions", AccountType.INCOME),
+    ("6960", "Bad Debt Expense", AccountType.EXPENSE),
+)
+
+
+def ensure_nonprofit_accounts(db: Session) -> dict[str, Account]:
+    """Create every nonprofit account that is missing; returns them keyed by
+    their suggested number. Idempotent."""
+    return {
+        number: ensure_account(db, number, name, atype)
+        for number, name, atype in NONPROFIT_ACCOUNTS
+    }
+
+
+def get_net_assets_without_restriction_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["3300"].id
+
+
+def get_net_assets_with_restriction_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["3400"].id
+
+
+def get_in_kind_income_account_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["4400"].id
+
+
+def get_bad_debt_account_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["6960"].id

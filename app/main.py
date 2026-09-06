@@ -65,6 +65,7 @@ from app.routes import jobs as jobs_routes
 from app.routes import preferences as preferences_routes
 from app.routes import cost_codes as cost_codes_routes
 from app.routes import job_costing as job_costing_routes
+from app.routes import nonprofit as nonprofit_routes
 from app.routes import fx as fx_routes
 from app.routes import fixed_assets as fixed_assets_routes
 from app.routes import migration as migration_routes
@@ -510,6 +511,7 @@ app.include_router(cost_codes_routes.router)
 app.include_router(job_costing_routes.cost_types_router)
 app.include_router(job_costing_routes.equipment_router)
 app.include_router(job_costing_routes.job_costs_router)
+app.include_router(nonprofit_routes.router)
 app.include_router(fx_routes.router)
 app.include_router(fixed_assets_routes.router)
 app.include_router(migration_routes.router)
