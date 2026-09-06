@@ -75,3 +75,32 @@ def test_validate_worker_url_accepts_valid_workers_dev():
     )
     assert ok.startswith("https://")
     assert "workers.dev" in ok
+
+
+# -------- custom provider: same URL validation as cloudflare_worker --------
+# The `custom` provider reuses validate_worker_url() for its endpoint_url, so
+# every SSRF/scheme vector above applies equally. These tests pin that the
+# custom provider's endpoint (e.g. an OpenAI-compatible cloud API) is subject
+# to the identical allowlist — a public HTTPS endpoint passes, private/LAN
+# and non-HTTPS fail.
+
+
+def test_custom_endpoint_accepts_public_https():
+    ok = validate_worker_url("https://api.commandcode.ai/provider/v1")
+    assert ok == "https://api.commandcode.ai/provider/v1"
+    ok2 = validate_worker_url("https://api.example.com/v1")
+    assert ok2 == "https://api.example.com/v1"
+
+
+def test_custom_endpoint_rejects_lan_and_private():
+    for bad in (
+        "http://api.example.com/v1",  # plain http (MITM)
+        "https://192.168.1.50/v1",  # private
+        "https://10.0.0.8/v1",  # private
+        "https://127.0.0.1:11434/v1",  # loopback (local ollama etc.)
+        "https://localhost/v1",  # localhost
+        "https://user:pass@api.example.com/v1",  # embedded creds
+        "https://api.example.com/" + "x" * 4096,  # oversize
+    ):
+        with pytest.raises(ValueError):
+            validate_worker_url(bad)

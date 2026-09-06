@@ -804,6 +804,7 @@ const SettingsPage = {
             providers.find(p => p.key === currentProvider) || providers[0] || {};
         const needsAccount = !!currentSpec.needs_account_id;
         const needsWorker = !!currentSpec.needs_worker_url;
+        const needsEndpoint = !!currentSpec.needs_endpoint_url;
         const hasKey = !!cfg.has_api_key;
         const currentModel = cfg.model || '';
 
@@ -861,6 +862,29 @@ const SettingsPage = {
                     and TLS certificates are always verified.
                 </p>
             </fieldset>
+            <fieldset id="ai-settings-endpoint-wrap" class="ai-worker-section"
+                      style="${needsEndpoint ? '' : 'display:none'}">
+                <legend>Custom OpenAI-Compatible Endpoint</legend>
+                <p class="ai-worker-help">
+                    Point Slowbooks at any OpenAI-compatible chat API (e.g.
+                    Command Code, a local gateway, or another provider's
+                    <code>/v1</code> base URL). <code>/chat/completions</code>
+                    is appended automatically if you don't include it.
+                </p>
+                <label class="form-field">
+                    <span>Base URL <em class="ai-worker-required">(https only)</em></span>
+                    <input type="url" id="ai-settings-endpoint-url"
+                           value="${escapeHtml(cfg.endpoint_url || '')}"
+                           placeholder="https://api.example.com/v1"
+                           autocomplete="off" spellcheck="false">
+                </label>
+                <p class="ai-worker-security">
+                    <strong>Security:</strong> only <code>https://</code> URLs
+                    are accepted; private/loopback IPs, embedded credentials,
+                    and non-HTTPS schemes are rejected. Redirects are disabled
+                    and TLS certificates are always verified.
+                </p>
+            </fieldset>
             <label class="form-field">
                 <span>API Key / Shared Secret ${hasKey ? '<em class="ai-key-saved">(saved &#10003;)</em>' : ''}</span>
                 <input type="password" id="ai-settings-key"
@@ -905,6 +929,7 @@ const SettingsPage = {
         const modelCustom = document.getElementById('ai-settings-model-custom');
         const cfWrap = document.getElementById('ai-settings-cf-wrap');
         const workerWrap = document.getElementById('ai-settings-worker-wrap');
+        const endpointWrap = document.getElementById('ai-settings-endpoint-wrap');
         const saveBtn = document.getElementById('ai-settings-save');
         const testBtn = document.getElementById('ai-settings-test');
         const testRes = document.getElementById('ai-settings-test-result');
@@ -934,6 +959,7 @@ const SettingsPage = {
             syncCustomVisibility();
             cfWrap.style.display = spec.needs_account_id ? '' : 'none';
             workerWrap.style.display = spec.needs_worker_url ? '' : 'none';
+            if (endpointWrap) endpointWrap.style.display = spec.needs_endpoint_url ? '' : 'none';
         });
 
         const resolveModel = () => {
@@ -946,6 +972,7 @@ const SettingsPage = {
             model: resolveModel(),
             cloudflare_account_id: document.getElementById('ai-settings-cf-account').value.trim(),
             worker_url: document.getElementById('ai-settings-worker-url').value.trim(),
+            endpoint_url: document.getElementById('ai-settings-endpoint-url') ? document.getElementById('ai-settings-endpoint-url').value.trim() : '',
             api_key: document.getElementById('ai-settings-key').value,
         });
 

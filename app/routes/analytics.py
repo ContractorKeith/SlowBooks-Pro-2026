@@ -58,6 +58,7 @@ class AIConfigUpdate(StrictModel):
     api_key: Optional[str] = None
     cloudflare_account_id: Optional[str] = None
     worker_url: Optional[str] = None
+    endpoint_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +340,7 @@ _AI_MODEL_KEY = "ai_model"
 _AI_API_KEY = "ai_api_key"  # STORED ENCRYPTED
 _AI_CF_ACCOUNT_KEY = "ai_cloudflare_account_id"
 _AI_WORKER_URL_KEY = "ai_worker_url"  # HTTPS-only, validated
+_AI_ENDPOINT_URL_KEY = "ai_endpoint_url"  # custom provider: HTTPS-only, validated
 
 
 def _ai_error_detail(exc: AIProviderError) -> str:
@@ -391,6 +393,14 @@ def _require_provider_extras(provider: str, cfg: dict) -> None:
                 "paste the printed Worker URL into AI settings"
             ),
         )
+    if provider == "custom" and not cfg.get("endpoint_url"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Custom provider requires endpoint_url — paste the OpenAI-"
+                "compatible base URL in AI settings"
+            ),
+        )
 
 
 def _read_ai_config(db: Session) -> dict:
@@ -408,6 +418,7 @@ def _read_ai_config(db: Session) -> dict:
         "api_key": api_key,
         "cloudflare_account_id": settings.get(_AI_CF_ACCOUNT_KEY, "") or "",
         "worker_url": settings.get(_AI_WORKER_URL_KEY, "") or "",
+        "endpoint_url": settings.get(_AI_ENDPOINT_URL_KEY, "") or "",
     }
 
 
@@ -425,6 +436,7 @@ def get_ai_config(db: Session = Depends(get_db)):
         "model": settings.get(_AI_MODEL_KEY, "") or "",
         "cloudflare_account_id": settings.get(_AI_CF_ACCOUNT_KEY, "") or "",
         "worker_url": settings.get(_AI_WORKER_URL_KEY, "") or "",
+        "endpoint_url": settings.get(_AI_ENDPOINT_URL_KEY, "") or "",
         "has_api_key": bool(raw_key),
         "api_key_encrypted": is_encrypted(raw_key),
         "providers": ai_provider_list(),
@@ -453,6 +465,7 @@ def put_ai_config(
     model = (payload.model or "").strip()
     account_id = (payload.cloudflare_account_id or "").strip()
     worker_url_raw = (payload.worker_url or "").strip()
+    endpoint_url_raw = (payload.endpoint_url or "").strip()
 
     # SSRF guard #1: CF account_id must be exactly 32 hex chars.
     if account_id and not CLOUDFLARE_ACCOUNT_ID_RE.match(account_id):
@@ -472,6 +485,17 @@ def put_ai_config(
     else:
         worker_url = ""
 
+    # SSRF + MITM guard #3 (custom provider): same validation as worker_url.
+    # A generic OpenAI-compatible endpoint is just as dangerous to point at
+    # an internal address, so it gets the identical treatment.
+    if endpoint_url_raw:
+        try:
+            endpoint_url = validate_worker_url(endpoint_url_raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    else:
+        endpoint_url = ""
+
     new_api_key = payload.api_key
     # Distinguish "absent" from "empty string" — treat both as "don't change".
     should_update_key = isinstance(new_api_key, str) and new_api_key.strip() != ""
@@ -480,6 +504,7 @@ def put_ai_config(
     set_setting(db, _AI_MODEL_KEY, model)
     set_setting(db, _AI_CF_ACCOUNT_KEY, account_id)
     set_setting(db, _AI_WORKER_URL_KEY, worker_url)
+    set_setting(db, _AI_ENDPOINT_URL_KEY, endpoint_url)
     if should_update_key:
         encrypted = encrypt_value(new_api_key.strip())
         set_setting(db, _AI_API_KEY, encrypted)
@@ -526,6 +551,7 @@ def test_ai_config(request: Request, db: Session = Depends(get_db)):
             user='Reply with the word "ok" and nothing else.',
             account_id=cfg.get("cloudflare_account_id") or None,
             worker_url=cfg.get("worker_url") or None,
+            endpoint_url=cfg.get("endpoint_url") or None,
         )
     except AIProviderError as e:
         # AIProviderError messages already have the key redacted; use the
@@ -598,6 +624,7 @@ def ai_insights(
             company_name=company_name,
             account_id=cfg.get("cloudflare_account_id") or None,
             worker_url=cfg.get("worker_url") or None,
+            endpoint_url=cfg.get("endpoint_url") or None,
         )
     except AIProviderError as e:
         raise HTTPException(status_code=502, detail=_ai_error_detail(e))
@@ -678,6 +705,7 @@ def run_ai_action(
             api_key=api_key,
             account_id=cfg.get("cloudflare_account_id") or None,
             worker_url=cfg.get("worker_url") or None,
+            endpoint_url=cfg.get("endpoint_url") or None,
         )
     except AIProviderError as exc:
         raise HTTPException(status_code=502, detail=_ai_error_detail(exc))
@@ -737,6 +765,7 @@ def ai_query(
             tool_executor=tool_exec,
             account_id=cfg.get("cloudflare_account_id") or None,
             worker_url=cfg.get("worker_url") or None,
+            endpoint_url=cfg.get("endpoint_url") or None,
             max_calls=8,
         )
     except AIProviderError as e:
