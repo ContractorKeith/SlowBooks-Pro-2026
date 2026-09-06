@@ -133,6 +133,7 @@ const CustomersPage = {
                         <button class="btn btn-sm btn-secondary" onclick="closeModal();PaymentsPage.showForm(null,${id})">Receive Payment</button>
                         <button class="btn btn-sm btn-secondary" onclick="closeModal();JobsPage.showForm(null,${id})">New Job</button>
                         <button class="btn btn-sm btn-secondary" onclick="CustomersPage.showForm(${id})">Edit</button>
+                        ${Terms.isNonprofit() ? `<button class="btn btn-sm btn-secondary" onclick="window.open('/api/donors/${id}/giving-statement/pdf?year=' + (new Date().getFullYear() - 1), '_blank')">Giving Statement (last year)</button>` : ''}
                     </div>
                 </div>
             </div>

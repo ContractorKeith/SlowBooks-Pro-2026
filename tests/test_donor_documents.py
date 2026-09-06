@@ -398,3 +398,131 @@ def test_payment_acknowledgment_eligibility(client, seed_accounts, seed_customer
         client.get("/api/donors/gifts/invoice/99999/acknowledgment/pdf").status_code
         == 404
     )
+
+
+# ---------------------------------------------------------------------------
+# Year-end giving statements
+# ---------------------------------------------------------------------------
+
+
+def _giving_year(client, seed_accounts, seed_customer):
+    _nonprofit(client)
+    other = client.post(
+        "/api/customers",
+        json={
+            "name": "Opted Out",
+            "email": "out@example.org",
+            "send_year_end_statement": False,
+        },
+    ).json()
+    client.put(f"/api/customers/{seed_customer.id}", json={"email": "d@example.org"})
+    checking = seed_accounts["1010"].id
+    # gala receipt with a dinner, a pledge paid, an unapplied gift, a voided receipt, property
+    _receipt(
+        client,
+        seed_customer.id,
+        fair_value_amount="45",
+        fair_value_description="dinner",
+    )
+    pledge = client.post(
+        "/api/invoices",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-02-01",
+            "tax_rate": "0",
+            "is_pledge": True,
+            "lines": [{"description": "pledge", "quantity": 1, "rate": "100"}],
+        },
+    ).json()
+    client.post(
+        "/api/payments",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-02-10",
+            "amount": "100",
+            "allocations": [{"invoice_id": pledge["id"], "amount": "100"}],
+        },
+    )
+    client.post(
+        "/api/payments",
+        json={"customer_id": seed_customer.id, "date": "2026-03-01", "amount": "500"},
+    )
+    voided = _receipt(client, seed_customer.id, date="2026-03-15").json()
+    # a receipt is voided the way the SPA does it: its payment first, then the invoice
+    assert (
+        client.post(f"/api/payments/{voided['payment']['id']}/void").status_code == 200
+    )
+    assert (
+        client.post(f"/api/invoices/{voided['invoice']['id']}/void").status_code == 200
+    )
+    client.post(
+        "/api/in-kind-gifts",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-04-20",
+            "lines": [
+                {
+                    "description": "Upright piano",
+                    "quantity": 1,
+                    "fair_value": "6500",
+                    "debit_account_id": checking,
+                }
+            ],
+        },
+    )
+    _receipt(client, other["id"], date="2026-06-01")
+    return other
+
+
+def test_giving_statement_totals_and_batch(
+    client, db_session, seed_accounts, seed_customer
+):
+    other = _giving_year(client, seed_accounts, seed_customer)
+    from app.services.donor_documents import collect_gifts
+
+    gifts = collect_gifts(db_session, seed_customer.id, 2026)
+    amounts = sorted(float(g["amount"]) for g in gifts["cash"])
+    # the voided receipt is out; the pledge payment and the unapplied gift are in;
+    # the gala receipt's own payment is not counted twice
+    assert amounts == [100.0, 150.0, 500.0]
+    assert gifts["totals"] == {
+        "amount": Decimal("750.00"),
+        "fair_value": Decimal("45.00"),
+        "deductible": Decimal("705.00"),
+    }
+    assert [g["in_kind_lines"][0]["description"] for g in gifts["in_kind"]] == [
+        "Upright piano"
+    ]
+    assert collect_gifts(db_session, seed_customer.id, 2025)["cash"] == []
+
+    one = client.get(f"/api/donors/{seed_customer.id}/giving-statement/pdf?year=2026")
+    assert one.status_code == 200 and one.content[:5] == b"%PDF-"
+    assert (
+        "GivingStatement_2026_Test Customer.pdf" in one.headers["content-disposition"]
+    )
+    both = client.get("/api/donors/giving-statements/pdf?year=2026")
+    assert both.status_code == 200 and both.content[:5] == b"%PDF-"
+    assert "GivingStatements_2026.pdf" in both.headers["content-disposition"]
+    assert (
+        client.get("/api/donors/99999/giving-statement/pdf?year=2026").status_code
+        == 404
+    )
+
+    import app.routes.donors as donors_routes
+
+    sent_to = []
+    donors_routes.send_email = (
+        lambda db, to_email, **kw: sent_to.append(to_email) or True
+    )
+    try:
+        r = client.post(
+            "/api/donors/giving-statements/batch-email", json={"year": 2026}
+        )
+    finally:
+        from app.services.email_service import send_email as real_send
+
+        donors_routes.send_email = real_send
+    assert r.status_code == 200, r.text
+    assert r.json() == {"sent": 1, "failed": 0, "skipped": 1, "errors": []}
+    assert sent_to == ["d@example.org"]
+    assert other["send_year_end_statement"] is False

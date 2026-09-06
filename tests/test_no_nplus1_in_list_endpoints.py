@@ -263,3 +263,30 @@ def test_list_nonprofit_documents_query_count_constant(
             r = client.get(path)
         assert r.status_code == 200, r.text
         assert len(stmts) <= cap, f"{path}: {len(stmts)} SELECTs\n" + "\n".join(stmts)
+
+
+def test_list_in_kind_gifts_query_count_constant(
+    client, db_session, db_engine, seed_accounts, seed_customer
+):
+    checking = seed_accounts["1010"].id
+    for i in range(N_ROWS):
+        r = client.post(
+            "/api/in-kind-gifts",
+            json={
+                "customer_id": seed_customer.id,
+                "date": "2026-04-20",
+                "lines": [
+                    {
+                        "description": f"Item {i}",
+                        "quantity": 1,
+                        "fair_value": "10",
+                        "debit_account_id": checking,
+                    }
+                ],
+            },
+        )
+        assert r.status_code == 201, r.text
+    with _count_selects(db_engine) as stmts:
+        r = client.get("/api/in-kind-gifts")
+    assert r.status_code == 200
+    assert len(stmts) <= MAX_QUERIES, "\n".join(stmts)

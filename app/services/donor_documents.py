@@ -256,3 +256,98 @@ def render_acknowledgment(db, company: dict, customer, gift: dict) -> tuple[str,
         subject = env.from_string(ACK_SUBJECT).render(**context)
         body = env.from_string(ACK_BODY).render(**context)
     return subject, body
+
+
+# ── year-end giving statement ────────────────────────────────────────────
+
+
+def collect_gifts(db, customer_id: int, year: int) -> dict:
+    """Everything a donor gave in a calendar year: cash (donation receipts
+    plus payments that are gifts — a receipt's own payment is never
+    counted twice) with the deductible portion per gift, and non-cash
+    gifts listed without a value."""
+    from datetime import date as _date
+
+    from app.models.in_kind import InKindGift
+    from app.models.invoices import Invoice, InvoiceStatus
+    from app.models.payments import Payment
+
+    start, end = _date(year, 1, 1), _date(year, 12, 31)
+    cash: list[dict] = []
+    receipts = (
+        db.query(Invoice)
+        .filter(
+            Invoice.customer_id == customer_id,
+            Invoice.is_sales_receipt.is_(True),
+            Invoice.status != InvoiceStatus.VOID,
+            Invoice.date >= start,
+            Invoice.date <= end,
+        )
+        .order_by(Invoice.date, Invoice.id)
+        .all()
+    )
+    for inv in receipts:
+        cash.append(gift_from_invoice(inv))
+    payments = (
+        db.query(Payment)
+        .filter(
+            Payment.customer_id == customer_id,
+            Payment.is_voided.is_(False),
+            Payment.date >= start,
+            Payment.date <= end,
+        )
+        .order_by(Payment.date, Payment.id)
+        .all()
+    )
+    for pmt in payments:
+        amount = payment_gift_amount(db, pmt)
+        if amount > 0:
+            g = gift_from_payment(db, pmt)
+            cash.append(g)
+    cash.sort(key=lambda g: (g["date"], g["kind"], g["id"]))
+    for g in cash:
+        fv = _q(Decimal(str(g["fair_value_amount"] or 0)))
+        g["deductible"] = _q(max(g["amount"] - fv, Decimal("0")))
+    in_kind = [
+        gift_from_in_kind(ik)
+        for ik in db.query(InKindGift)
+        .filter(
+            InKindGift.customer_id == customer_id,
+            InKindGift.status == "posted",
+            InKindGift.date >= start,
+            InKindGift.date <= end,
+        )
+        .order_by(InKindGift.date, InKindGift.id)
+        .all()
+    ]
+    total = sum((g["amount"] for g in cash), Decimal("0"))
+    fair_value = sum(
+        (_q(Decimal(str(g["fair_value_amount"] or 0))) for g in cash), Decimal("0")
+    )
+    return {
+        "cash": cash,
+        "in_kind": in_kind,
+        "totals": {
+            "amount": _q(total),
+            "fair_value": _q(fair_value),
+            "deductible": _q(total - fair_value),
+        },
+    }
+
+
+def giving_statement_irs_text(company: dict, totals: dict) -> str:
+    name = (company or {}).get("company_name") or "the organization"
+    ein = (company or {}).get("company_tax_id") or ""
+    base = (
+        f"This statement summarizes contributions received by {name}"
+        + (f" (EIN {ein})" if ein else "")
+        + " during the year. "
+    )
+    if totals["fair_value"] > 0:
+        return base + (
+            "Except where a value of goods or services is shown above, no goods "
+            "or services were provided in exchange for these contributions; where "
+            "one is shown, the deductible portion is limited to the amount in the "
+            "Deductible column. " + RETAIN
+        )
+    return base + NO_GOODS + " " + RETAIN

@@ -974,7 +974,38 @@ ReportsPage._nonprofitCards = function () {
         <div class="card" style="cursor:pointer" onclick="ReportsPage.pledges()">
             <div class="card-header">Pledge Report</div>
             <p style="font-size:13px; color:var(--gray-500);">Promised, received, written off and outstanding by donor and campaign</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.givingStatements()">
+            <div class="card-header">Year-End Giving Statements</div>
+            <p style="font-size:13px; color:var(--gray-500);">One statement per donor for the tax year — print the stack or email them all</p>
         </div>`;
+};
+
+ReportsPage.givingStatements = function () {
+    const y = new Date().getFullYear();
+    const opts = [y, y - 1, y - 2].map(v => `<option value="${v}" ${v === y - 1 ? 'selected' : ''}>${v}</option>`).join('');
+    openModal('Year-End Giving Statements', `
+        <div class="form-grid">
+            <div class="form-group"><label>Tax year</label><select id="gs-year">${opts}</select></div>
+        </div>
+        <p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Every ${T('customer')} with a gift in the year gets a statement: cash contributions with the deductible portion, non-cash gifts described without a value. ${T('Customers')} who opted out in their record are skipped when emailing.</p>
+        <div id="gs-result" style="font-size:12px;margin:8px 0;"></div>
+        <div class="form-actions">
+            <button class="btn btn-secondary" onclick="window.open('/api/donors/giving-statements/pdf?year=' + $('#gs-year').value, '_blank')">Download all (PDF)</button>
+            <button class="btn btn-primary" onclick="ReportsPage.emailGivingStatements()">Email all</button>
+            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>`);
+};
+
+ReportsPage.emailGivingStatements = async function () {
+    const year = parseInt($('#gs-year').value);
+    if (!confirm(`Email ${year} giving statements to every ${T('customer')} with a gift that year?`)) return;
+    const box = $('#gs-result');
+    box.textContent = 'Sending…';
+    try {
+        const r = await API.post('/donors/giving-statements/batch-email', { year });
+        box.innerHTML = `Sent ${r.sent}, failed ${r.failed}, skipped ${r.skipped}.` + (r.errors.length ? `<ul>${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : '');
+    } catch (err) { box.textContent = err.message; }
 };
 
 ReportsPage.pledges = async function (prefill) {

@@ -3,7 +3,9 @@ statements). A gift is a donation receipt (kind=invoice), a payment that
 is not a receipt's own payment (kind=payment: a pledge payment or an
 unapplied gift), or property (kind=in-kind)."""
 
+import logging
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -12,12 +14,22 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.contacts import Customer
-from app.services.donor_documents import gift_irs, load_gift, render_acknowledgment
+from app.services.donor_documents import (
+    collect_gifts,
+    gift_irs,
+    giving_statement_irs_text,
+    load_gift,
+    render_acknowledgment,
+)
 from app.services.email_service import send_email
-from app.services.pdf_service import generate_acknowledgment_letter_pdf
+from app.services.pdf_service import (
+    generate_acknowledgment_letter_pdf,
+    generate_giving_statement_pdf,
+)
 from app.services.settings_service import get_all_settings
 
 router = APIRouter(prefix="/api/donors", tags=["donors"])
+logger = logging.getLogger(__name__)
 
 GIFT_KINDS = ("invoice", "payment", "in-kind")
 
@@ -109,3 +121,118 @@ def acknowledgment_email(
             status_code=502, detail="Email could not be sent (check SMTP settings)"
         )
     return {"sent": True, "recipient": recipient}
+
+
+# ── Year-end giving statements ───────────────────────────────────────────
+
+
+class GivingStatementBatch(BaseModel):
+    year: int
+    customer_ids: Optional[list[int]] = None
+
+
+def _statement(db: Session, company: dict, customer: Customer, year: int) -> dict:
+    gifts = collect_gifts(db, customer.id, year)
+    return {
+        "customer": customer,
+        "cash": gifts["cash"],
+        "in_kind": gifts["in_kind"],
+        "totals": gifts["totals"],
+        "irs_text": giving_statement_irs_text(company, gifts["totals"]),
+    }
+
+
+def _donors_with_gifts(db: Session, year: int, customer_ids=None) -> list[Customer]:
+    q = db.query(Customer).filter(Customer.is_active.is_(True))
+    if customer_ids:
+        q = q.filter(Customer.id.in_(customer_ids))
+    out = []
+    for c in q.order_by(Customer.name).all():
+        g = collect_gifts(db, c.id, year)
+        if g["cash"] or g["in_kind"]:
+            out.append(c)
+    return out
+
+
+@router.get("/giving-statements/pdf")
+def giving_statements_pdf(
+    year: int, customer_ids: Optional[str] = None, db: Session = Depends(get_db)
+):
+    """Every donor with a gift that year, one PDF, a page break per donor."""
+    ids = [int(x) for x in (customer_ids or "").split(",") if x.strip().isdigit()]
+    company = get_all_settings(db)
+    donors = _donors_with_gifts(db, year, ids or None)
+    statements = [_statement(db, company, c, year) for c in donors]
+    pdf = generate_giving_statement_pdf(statements, company, year)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename=GivingStatements_{year}.pdf"
+        },
+    )
+
+
+@router.get("/{customer_id}/giving-statement/pdf")
+def giving_statement_pdf(customer_id: int, year: int, db: Session = Depends(get_db)):
+    customer = db.get(Customer, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    company = get_all_settings(db)
+    pdf = generate_giving_statement_pdf(
+        [_statement(db, company, customer, year)], company, year
+    )
+    safe = customer.name.replace("/", "-")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename=GivingStatement_{year}_{safe}.pdf"
+        },
+    )
+
+
+@router.post("/giving-statements/batch-email")
+def giving_statements_batch_email(
+    data: GivingStatementBatch, db: Session = Depends(get_db)
+):
+    """Email each donor their statement (skipping those who opted out)."""
+    company = get_all_settings(db)
+    sent = failed = skipped = 0
+    errors: list[str] = []
+    for customer in _donors_with_gifts(db, data.year, data.customer_ids):
+        if not customer.send_year_end_statement:
+            skipped += 1
+            continue
+        if not customer.email:
+            failed += 1
+            errors.append(f"{customer.name}: no email address")
+            continue
+        try:
+            pdf = generate_giving_statement_pdf(
+                [_statement(db, company, customer, data.year)], company, data.year
+            )
+            ok = send_email(
+                db=db,
+                to_email=customer.email,
+                subject=f"Your {data.year} giving statement from {company.get('company_name', '')}".strip(),
+                html_body=(
+                    f"<p>{customer.salutation or 'Dear ' + customer.name},</p>"
+                    f"<p>Thank you for your support in {data.year}. Your giving statement is attached.</p>"
+                    f"<p>{company.get('company_name', '')}</p>"
+                ),
+                attachment_bytes=pdf,
+                attachment_name=f"GivingStatement_{data.year}.pdf",
+                entity_type="giving_statement",
+                entity_id=customer.id,
+            )
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+                errors.append(f"{customer.name}: email could not be sent")
+        except Exception:
+            logger.exception("giving statement failed for customer %s", customer.id)
+            failed += 1
+            errors.append(f"{customer.name}: unable to send")
+    return {"sent": sent, "failed": failed, "skipped": skipped, "errors": errors}

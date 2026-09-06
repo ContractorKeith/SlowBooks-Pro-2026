@@ -281,6 +281,21 @@ def generate_acknowledgment_letter_pdf(
     return render_pdf(html_str)
 
 
+def generate_giving_statement_pdf(
+    statements: list, company_settings: dict, year: int
+) -> bytes:
+    """Year-end giving statements, one per donor, a page break between
+    them — one PDF prints as the January mailing."""
+    return render_pdf(
+        _render(
+            "giving_statement_pdf.html",
+            company_settings,
+            statements=statements,
+            year=year,
+        )
+    )
+
+
 def generate_check_pdf(check_data: dict, company_settings: dict) -> bytes:
     template = _jinja_env.get_template("check_pdf.html")
     check_data["amount_words"] = _amount_to_words(check_data.get("amount", 0))
