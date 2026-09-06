@@ -25,6 +25,11 @@ NESTED_CODE_SUFFIXES = {".framework", ".bundle", ".plugin", ".xpc", ".appex", ".
 # session (the in-fleet build box is driven over SSH); --notary-keychain
 # points it at the keychain that actually holds the profile.
 NOTARY_EXTRA_ARGS: list[str] = []
+# A build made on the in-fleet Mac has no Actions run to cite; --local-build
+# accepts build-info.txt with github_run_id=local and records the build
+# host as the provenance instead. The signing, notarization and stapling
+# gates are identical.
+LOCAL_BUILD = False
 IDENTITY_PATTERN = re.compile(
     r'^\s*\d+\)\s+[0-9A-Fa-f]+\s+"(Developer ID Application:[^"]+)"$',
     re.MULTILINE,
@@ -411,10 +416,16 @@ def build_release(
     run_id = build_info.get("github_run_id", "")
     run_attempt = build_info.get("github_run_attempt", "")
     run_url = build_info.get("github_run_url", "")
-    if not run_id.isdigit() or not run_attempt.isdigit():
-        raise ValueError("artifact is missing valid Actions run metadata")
-    if run_url != f"{REPOSITORY_URL}/actions/runs/{run_id}":
-        raise ValueError("artifact has an invalid Actions run URL")
+    if LOCAL_BUILD:
+        if run_id != "local" or not build_info.get("build_host"):
+            raise ValueError(
+                "local build needs github_run_id=local and build_host in build-info"
+            )
+    else:
+        if not run_id.isdigit() or not run_attempt.isdigit():
+            raise ValueError("artifact is missing valid Actions run metadata")
+        if run_url != f"{REPOSITORY_URL}/actions/runs/{run_id}":
+            raise ValueError("artifact has an invalid Actions run URL")
     version = build_info.get("app_version", "")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("artifact has an invalid application version")
@@ -567,7 +578,15 @@ def main() -> int:
         help="keychain file holding the notary profile (needed over SSH, "
         "where the login keychain is locked)",
     )
+    parser.add_argument(
+        "--local-build",
+        action="store_true",
+        help="the artifact was built on this Mac, not by Actions (build-info "
+        "carries github_run_id=local and build_host)",
+    )
     args = parser.parse_args()
+    global LOCAL_BUILD
+    LOCAL_BUILD = args.local_build
     if args.notary_keychain:
         NOTARY_EXTRA_ARGS[:] = ["--keychain", str(args.notary_keychain)]
     build_release(
