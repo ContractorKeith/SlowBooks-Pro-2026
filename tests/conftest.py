@@ -61,6 +61,7 @@ from app.models import (  # noqa: F401
     hr,
     invoices,
     items,
+    nonprofit as nonprofit_model,
     payments,
     payroll,
     pto,

@@ -9,6 +9,7 @@ const App = {
         '/jobs':          { page: 'jobs',            label: 'Jobs',               render: () => JobsPage.render() },
         '/jobs/:id':      { page: 'jobs',            label: 'Job',                render: (id) => JobsPage.renderDetail(id) },
         '/job-costs':     { page: 'job-costs',       label: 'Job Cost Entries',   render: () => JobCostsPage.render() },
+        '/releases':      { page: 'releases',        label: 'Releases from Restriction', render: () => ReleasesPage.render() },
         '/vendors':       { page: 'vendors',         label: 'Vendor Center',      render: () => VendorsPage.render() },
         '/items':         { page: 'items',           label: 'Item List',          render: () => ItemsPage.render() },
         '/invoices':      { page: 'invoices',        label: 'Create Invoices',    render: () => InvoicesPage.render() },

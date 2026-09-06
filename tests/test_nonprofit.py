@@ -259,3 +259,178 @@ def test_profit_loss_by_class_uses_line_class(client, db_session, seed_accounts)
     assert abs(data["total_income"] - plain["total_income"]) < 0.01
     assert abs(data["total_expenses"] - plain["total_expenses"]) < 0.01
     assert abs(data["total_net_income"] - plain["net_income"]) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Release from restriction
+# ---------------------------------------------------------------------------
+
+
+def _ledger_balanced(db_session) -> bool:
+    dr = db_session.query(TransactionLine).with_entities(TransactionLine.debit).all()
+    cr = db_session.query(TransactionLine).with_entities(TransactionLine.credit).all()
+    return sum(Decimal(str(d[0])) for d in dr) == sum(Decimal(str(c[0])) for c in cr)
+
+
+def _restricted_fund(client, name="Youth Program"):
+    return client.post(
+        "/api/classes",
+        json={
+            "name": name,
+            "restriction": "temporarily_restricted",
+            "default_function": "program",
+        },
+    ).json()
+
+
+def test_release_suggest_equals_class_expenses_less_prior_releases(
+    client, db_session, seed_accounts
+):
+    fund = _restricted_fund(client)
+    income, expense = _accts(db_session)
+    create_journal_entry(
+        db_session,
+        date(2026, 3, 10),
+        "grant spending",
+        [
+            {
+                "account_id": expense.id,
+                "debit": Decimal("3300"),
+                "credit": Decimal("0"),
+            },
+            {"account_id": income.id, "debit": Decimal("0"), "credit": Decimal("3300")},
+        ],
+        class_id=fund["id"],
+    )
+    db_session.commit()
+
+    s = client.get(
+        f"/api/nonprofit/releases/suggest?class_id={fund['id']}"
+        "&start_date=2026-01-01&end_date=2026-06-30"
+    ).json()
+    assert Decimal(s["expenses"]) == Decimal("3300")
+    assert Decimal(s["released"]) == Decimal("0")
+    assert Decimal(s["suggested"]) == Decimal("3300")
+
+    # release part of it, then the suggestion drops by that much
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={
+            "date": "2026-04-30",
+            "class_id": fund["id"],
+            "amount": "1000",
+            "period_start": "2026-01-01",
+            "period_end": "2026-04-30",
+        },
+    )
+    assert r.status_code == 201, r.text
+    s = client.get(
+        f"/api/nonprofit/releases/suggest?class_id={fund['id']}"
+        "&start_date=2026-01-01&end_date=2026-06-30"
+    ).json()
+    assert Decimal(s["released"]) == Decimal("1000")
+    assert Decimal(s["suggested"]) == Decimal("2300")
+
+    # amount omitted = the suggestion
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={
+            "date": "2026-06-30",
+            "class_id": fund["id"],
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert Decimal(r.json()["amount"]) == Decimal("2300")
+    assert r.json()["number"].startswith("RL-")
+    assert r.json()["class_name"] == "Youth Program"
+
+    # nothing left -> 422
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={"date": "2026-06-30", "class_id": fund["id"], "period_end": "2026-06-30"},
+    )
+    assert r.status_code == 422
+    # an unrestricted fund cannot release
+    plain = client.post("/api/classes", json={"name": "General"}).json()
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={"date": "2026-06-30", "class_id": plain["id"], "amount": "5"},
+    )
+    assert r.status_code == 422
+
+
+def test_release_posts_and_voids_symmetrically(client, db_session, seed_accounts):
+    from app.models.accounts import Account as _A
+
+    fund = _restricted_fund(client, "Scholarship")
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={"date": "2026-06-30", "class_id": fund["id"], "amount": "750.25"},
+    )
+    assert r.status_code == 201, r.text
+    rel = r.json()
+    with_acct = (
+        db_session.query(_A).filter_by(name="Net Assets With Donor Restrictions").one()
+    )
+    without_acct = (
+        db_session.query(_A)
+        .filter_by(name="Net Assets Without Donor Restrictions")
+        .one()
+    )
+    txn = db_session.get(Transaction, rel["transaction_id"])
+    assert txn.source_type == "restriction_release"
+    by_acct = {ln.account_id: ln for ln in txn.lines}
+    assert by_acct[with_acct.id].debit == Decimal("750.25")
+    assert by_acct[without_acct.id].credit == Decimal("750.25")
+    assert all(ln.class_id == fund["id"] for ln in txn.lines)
+    assert all(ln.function is None for ln in txn.lines)
+    assert _ledger_balanced(db_session)
+
+    listed = client.get("/api/nonprofit/releases").json()
+    assert [x["number"] for x in listed] == [rel["number"]]
+
+    r = client.post(f"/api/nonprofit/releases/{rel['id']}/void")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "void"
+    void_txn = (
+        db_session.query(Transaction)
+        .filter(
+            Transaction.source_type == "restriction_release_void",
+            Transaction.source_id == rel["id"],
+        )
+        .one()
+    )
+    rev = {ln.account_id: ln for ln in void_txn.lines}
+    assert rev[with_acct.id].credit == Decimal("750.25")
+    assert rev[with_acct.id].class_id == fund["id"]
+    assert _ledger_balanced(db_session)
+    # the fund's released total nets to zero
+    s = client.get(
+        f"/api/nonprofit/releases/suggest?class_id={fund['id']}&end_date=2026-12-31"
+    ).json()
+    assert Decimal(s["released"]) == Decimal("0")
+    # second void refused
+    assert client.post(f"/api/nonprofit/releases/{rel['id']}/void").status_code == 400
+
+
+def test_release_respects_closing_date(client, db_session, seed_accounts):
+    fund = _restricted_fund(client, "Endowment")
+    r = client.post(
+        "/api/nonprofit/releases",
+        json={"date": "2026-02-15", "class_id": fund["id"], "amount": "10"},
+    )
+    assert r.status_code == 201, r.text
+    assert (
+        client.put("/api/settings", json={"closing_date": "2026-03-31"}).status_code
+        == 200
+    )
+    blocked = client.post(
+        "/api/nonprofit/releases",
+        json={"date": "2026-03-01", "class_id": fund["id"], "amount": "10"},
+    )
+    assert blocked.status_code == 403
+    assert (
+        client.post(f"/api/nonprofit/releases/{r.json()['id']}/void").status_code == 403
+    )
