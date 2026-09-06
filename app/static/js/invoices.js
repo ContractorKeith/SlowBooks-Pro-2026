@@ -33,9 +33,41 @@ const InvoicesPage = {
                         <button class="btn btn-sm btn-secondary" onclick="InvoicesPage.view(${inv.id})">View</button>
                         <button class="btn btn-sm btn-secondary" onclick="InvoicesPage.showForm(${inv.id})">Edit</button>
                         ${inv.status === 'draft' ? `<button class="btn btn-sm btn-primary" onclick="InvoicesPage.markSent(${inv.id})">Mark Sent</button>` : ''}
+                        ${Terms.isNonprofit() && inv.status !== 'void' && parseFloat(inv.balance_due) > 0 ? `<button class="btn btn-sm btn-secondary" onclick="InvoicesPage.showWriteOff(${inv.id}, ${parseFloat(inv.balance_due)})">Write Off</button>` : ''}
                     </td>
                 </tr>`,
         });
+    },
+
+    // Nonprofit: forgive an open balance (a pledge that will never be paid)
+    // — a write-off credit memo to Bad Debt Expense, applied at once.
+    showWriteOff(id, balance) {
+        openModal('Write Off Balance', `
+            <form onsubmit="InvoicesPage.saveWriteOff(event, ${id})">
+                <div class="form-grid">
+                    <div class="form-group"><label>Date *</label><input name="date" type="date" required value="${todayISO()}"></div>
+                    <div class="form-group"><label>Amount *</label><input name="amount" type="number" step="0.01" min="0.01" max="${balance}" required value="${balance.toFixed(2)}"></div>
+                    <div class="form-group full-width"><label>Memo</label><input name="memo" placeholder="e.g. pledge withdrawn"></div>
+                </div>
+                <div style="font-size:11px;color:var(--gray-500);margin-top:6px">Posts a credit memo to Bad Debt Expense and applies it to this ${T('invoice')}. Void the credit memo to undo.</div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Write Off</button>
+                </div>
+            </form>`);
+    },
+
+    async saveWriteOff(e, id) {
+        e.preventDefault();
+        const form = e.target;
+        try {
+            const cm = await API.post(`/invoices/${id}/write-off`, {
+                date: form.date.value, amount: parseFloat(form.amount.value), memo: form.memo.value || null,
+            });
+            toast(`Written off as credit memo ${cm.memo_number}`);
+            closeModal();
+            App.navigate('#/invoices');
+        } catch (err) { toast(err.message, 'error'); }
     },
 
     async view(id) {

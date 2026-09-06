@@ -19,6 +19,7 @@ const ReportsPage = {
         statement_of_activities:         (params) => ReportsPage.statementOfActivities(params),
         fund_balances:                   (params) => ReportsPage.fundBalances(params),
         functional_expenses:             (params) => ReportsPage.functionalExpenses(params),
+        pledges:                         (params) => ReportsPage.pledges(params),
     },
 
     async render() {
@@ -969,7 +970,31 @@ ReportsPage._nonprofitCards = function () {
         <div class="card" style="cursor:pointer" onclick="ReportsPage.functionalExpenses()">
             <div class="card-header">Statement of Functional Expenses</div>
             <p style="font-size:13px; color:var(--gray-500);">Program / management / fundraising by expense account (Form 990 Part IX)</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.pledges()">
+            <div class="card-header">Pledge Report</div>
+            <p style="font-size:13px; color:var(--gray-500);">Promised, received, written off and outstanding by donor and campaign</p>
         </div>`;
+};
+
+ReportsPage.pledges = async function (prefill) {
+    await ReportsPage.openPeriodModal("Pledge Report", "this_year_to_date", async (_period, range) => {
+        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const d = await API.get(`/reports/pledges?${qs}`);
+        const cols = ['pledged', 'invoiced', 'not_yet_invoiced', 'received', 'written_off', 'outstanding'];
+        const cells = (r) => cols.map(c => `<td class="amount">${formatCurrency(r[c])}</td>`).join('');
+        const donors = d.by_donor.map(g => `<tr style="font-weight:600; background:var(--gray-50);"><td>${escapeHtml(g.customer_name)}</td>${cells(g)}</tr>`
+            + g.pledges.map(p => `<tr><td style="padding-left:24px;">${escapeHtml(p.label)} <span style="color:var(--gray-500)">· ${escapeHtml(p.class_name)}</span></td>${cells(p)}</tr>`).join('')).join('');
+        const classes = d.by_class.map(g => `<tr><td>${escapeHtml(g.class_name)}</td>${cells(g)}</tr>`).join('');
+        const head = `<thead><tr><th scope="col"></th><th scope="col" class="amount">Pledged</th><th scope="col" class="amount">Invoiced</th><th scope="col" class="amount">Not yet invoiced</th><th scope="col" class="amount">Received</th><th scope="col" class="amount">Written off</th><th scope="col" class="amount">Outstanding</th></tr></thead>`;
+        const foot = `<tfoot><tr style="font-weight:700; background:var(--gray-50);"><td>Total</td>${cells(d.totals)}</tr></tfoot>`;
+        return `${ReportsPage._exportButtons('pledges', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}</p>
+            <h4 style="margin:8px 0 4px;font-size:12px;">By ${T('customer')}</h4>
+            <div class="table-container"><table>${head}<tbody>${donors || `<tr><td colspan="7" style="color:var(--gray-400);">No pledges in this period</td></tr>`}</tbody>${foot}</table></div>
+            <h4 style="margin:12px 0 4px;font-size:12px;">By campaign (${T('class')})</h4>
+            <div class="table-container"><table>${head}<tbody>${classes || `<tr><td colspan="7" style="color:var(--gray-400);">—</td></tr>`}</tbody></table></div>`;
+    }, "Dates", false, { reportType: 'pledges', prefill });
 };
 
 ReportsPage._exportButtons = function (path, qs) {

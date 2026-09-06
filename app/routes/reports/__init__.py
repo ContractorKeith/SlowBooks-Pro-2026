@@ -3,3 +3,4 @@ from app.routes.reports import financial  # noqa: F401  registers routes
 from app.routes.reports import payables_tax  # noqa: F401  registers routes
 from app.routes.reports import receivables  # noqa: F401  registers routes
 from app.routes.reports import nonprofit  # noqa: F401  registers routes
+from app.routes.reports import donors  # noqa: F401  registers routes

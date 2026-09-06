@@ -42,6 +42,7 @@ _ALLOWED_TYPES = {
     "statement_of_activities",
     "fund_balances",
     "functional_expenses",
+    "pledges",
 }
 
 

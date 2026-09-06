@@ -21,9 +21,19 @@ const CreditMemosPage = {
                     <td class="amount">${formatCurrency(m.balance_remaining)}</td>
                     <td class="actions">
                         ${m.status === 'issued' ? `<button class="btn btn-sm btn-primary" onclick="CreditMemosPage.showApply(${m.id})">Apply</button>` : ''}
+                        ${m.status !== 'void' ? `<button class="btn btn-sm btn-secondary" onclick="CreditMemosPage.void(${m.id})">Void</button>` : ''}
                     </td>
                 </tr>`,
         });
+    },
+
+    async void(id) {
+        if (!confirm('Void this credit memo? Any applied credit goes back onto the invoice and a reversing entry is posted.')) return;
+        try {
+            await API.post(`/credit-memos/${id}/void`, {});
+            toast('Credit memo voided');
+            App.navigate('#/credit-memos');
+        } catch (err) { toast(err.message, 'error'); }
     },
 
     _items: [],
