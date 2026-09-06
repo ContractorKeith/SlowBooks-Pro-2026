@@ -12,10 +12,29 @@ from app.database import get_db
 from app.models.transactions import Transaction
 from app.models.accounts import Account
 from app.schemas.journal import JournalEntryCreate, JournalEntryResponse
-from app.services.accounting import create_journal_entry
+from app.services.accounting import create_journal_entry, reversing_lines
 from app.services.closing_date import check_closing_date
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
+
+
+def _line_dict(line, acct) -> dict:
+    """One posted line with its account and every dimension, for the
+    list and single-entry responses alike."""
+    return {
+        "id": line.id,
+        "account_id": line.account_id,
+        "account_name": acct.name if acct else "",
+        "account_number": acct.account_number if acct else "",
+        "debit": float(line.debit),
+        "credit": float(line.credit),
+        "description": line.description or "",
+        "job_id": line.job_id,
+        "class_id": line.class_id,
+        "cost_code_id": line.cost_code_id,
+        "function": line.function,
+        "is_billable": bool(line.is_billable),
+    }
 
 
 @router.get("", response_model=list[JournalEntryResponse])
@@ -31,22 +50,7 @@ def list_journal_entries(source_type: str = None, db: Session = Depends(get_db))
     for txn in entries:
         lines_data = []
         for line in txn.lines:
-            acct = accounts.get(line.account_id)
-            lines_data.append(
-                {
-                    "id": line.id,
-                    "account_id": line.account_id,
-                    "account_name": acct.name if acct else "",
-                    "account_number": acct.account_number if acct else "",
-                    "debit": float(line.debit),
-                    "credit": float(line.credit),
-                    "description": line.description or "",
-                    "job_id": line.job_id,
-                    "class_id": line.class_id,
-                    "cost_code_id": line.cost_code_id,
-                    "is_billable": bool(line.is_billable),
-                }
-            )
+            lines_data.append(_line_dict(line, accounts.get(line.account_id)))
         results.append(
             JournalEntryResponse(
                 id=txn.id,
@@ -70,18 +74,7 @@ def get_journal_entry(entry_id: int, db: Session = Depends(get_db)):
     accounts = {a.id: a for a in db.query(Account).all()}
     lines_data = []
     for line in txn.lines:
-        acct = accounts.get(line.account_id)
-        lines_data.append(
-            {
-                "id": line.id,
-                "account_id": line.account_id,
-                "account_name": acct.name if acct else "",
-                "account_number": acct.account_number if acct else "",
-                "debit": float(line.debit),
-                "credit": float(line.credit),
-                "description": line.description or "",
-            }
-        )
+        lines_data.append(_line_dict(line, accounts.get(line.account_id)))
     return JournalEntryResponse(
         id=txn.id,
         date=txn.date,
@@ -118,6 +111,7 @@ def create_manual_journal_entry(
                 "class_id": line.class_id,
                 "cost_code_id": line.cost_code_id,
                 "is_billable": line.is_billable,
+                **({"function": line.function} if line.function else {}),
             }
         )
 
@@ -153,15 +147,7 @@ def void_journal_entry(entry_id: int, db: Session = Depends(get_db)):
 
     check_closing_date(db, txn.date)
 
-    reverse_lines = [
-        {
-            "account_id": ol.account_id,
-            "debit": ol.credit,
-            "credit": ol.debit,
-            "description": f"VOID: {ol.description or ''}",
-        }
-        for ol in txn.lines
-    ]
+    reverse_lines = reversing_lines(txn.lines)
     if reverse_lines:
         void_txn = create_journal_entry(
             db,
@@ -171,6 +157,8 @@ def void_journal_entry(entry_id: int, db: Session = Depends(get_db)):
             source_type="manual_void",
             source_id=txn.id,
             reference=txn.reference,
+            class_id=txn.class_id,
+            job_id=txn.job_id,
         )
         db.commit()
         db.refresh(void_txn)

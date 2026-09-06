@@ -132,12 +132,12 @@ const BillsPage = {
                 </div>
                 <h3 style="margin:12px 0 8px;font-size:14px;">Line Items</h3>
                 <table class="line-items-table">
-                    <thead><tr><th scope="col">Item</th><th scope="col">Description</th>${CostCodes.headHtml()}<th scope="col" title="Billable to the job's customer">Bill?</th><th scope="col" class="col-qty">Qty</th><th scope="col" class="col-rate">Rate</th><th scope="col" class="col-amount">Amount</th></tr></thead>
+                    <thead><tr><th scope="col">Item</th><th scope="col">Description</th>${CostCodes.headHtml()}${Nonprofit.headHtml()}<th scope="col" title="Billable to the job's customer">Bill?</th><th scope="col" class="col-qty">Qty</th><th scope="col" class="col-rate">Rate</th><th scope="col" class="col-amount">Amount</th></tr></thead>
                     <tbody id="bill-lines">
                         <tr data-billline="0">
                             <td><select class="line-item"><option value="">--</option>${itemOpts}</select></td>
                             <td><input class="line-desc"></td>
-                            ${CostCodes.cellHtml('line-cost-code')}
+                            ${CostCodes.cellHtml('line-cost-code')}${Nonprofit.cellHtml('line-function')}
                             <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"></td>
                             <td><input class="line-qty" type="number" step="0.01" value="1" oninput="BillsPage.recalc()"></td>
                             <td><input class="line-rate" type="number" step="0.01" value="0" oninput="BillsPage.recalc()"></td>
@@ -263,7 +263,7 @@ const BillsPage = {
             <tr data-billline="${idx}">
                 <td><select class="line-item"><option value="">--</option>${itemOpts}</select></td>
                 <td><input class="line-desc"></td>
-                ${CostCodes.cellHtml('line-cost-code')}
+                ${CostCodes.cellHtml('line-cost-code')}${Nonprofit.cellHtml('line-function')}
                 <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"></td>
                 <td><input class="line-qty" type="number" step="0.01" value="1" oninput="BillsPage.recalc()"></td>
                 <td><input class="line-rate" type="number" step="0.01" value="0" oninput="BillsPage.recalc()"></td>
@@ -282,6 +282,7 @@ const BillsPage = {
                 quantity: parseFloat(row.querySelector('.line-qty')?.value) || 1,
                 rate: parseFloat(row.querySelector('.line-rate')?.value) || 0,
                 cost_code_id: CostCodes.fromRow(row, 'line-cost-code'),
+                function: Nonprofit.fromRow(row, 'line-function'),
                 is_billable: !!row.querySelector('.line-billable')?.checked,
                 line_order: i,
             });

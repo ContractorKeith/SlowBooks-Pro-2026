@@ -293,6 +293,33 @@ async function classFormGroupHtml(selectedId) {
         <select name="class_id">${opts}</select></div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Nonprofit function dimension — program / management / fundraising (the
+// Form 990 Part IX columns). Only rendered in nonprofit mode; a blank
+// value means "default from the fund" (the server fills it at posting).
+// ---------------------------------------------------------------------------
+const Nonprofit = {
+    FUNCTIONS: [['program', 'Program services'], ['management', 'Management & general'], ['fundraising', 'Fundraising']],
+    enabled() { return Terms.isNonprofit(); },
+    optionsHtml(selected, blank = 'From fund') {
+        return `<option value="">${blank}</option>` + Nonprofit.FUNCTIONS.map(([v, l]) =>
+            `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+    },
+    // Header-level picker for one-line documents (expense, CC charge)
+    functionFormGroupHtml(selected) {
+        if (!Nonprofit.enabled()) return '';
+        return `<div class="form-group"><label>Function</label>
+            <select name="function">${Nonprofit.optionsHtml(selected)}</select></div>`;
+    },
+    // Per-line cell + header for multi-line documents (journal, bill)
+    headHtml() { return Nonprofit.enabled() ? '<th scope="col">Function</th>' : ''; },
+    cellHtml(cls, selected) {
+        return Nonprofit.enabled() ? `<td><select class="${cls}">${Nonprofit.optionsHtml(selected, '—')}</select></td>` : '';
+    },
+    fromRow(row, cls) { return row.querySelector(`.${cls}`)?.value || null; },
+    fromForm(form) { return form.function ? (form.function.value || null) : null; },
+};
+
 // Normalize a form's class_id string to int-or-null for the API payload.
 function classIdFromForm(form) {
     const v = form.class_id ? form.class_id.value : '';

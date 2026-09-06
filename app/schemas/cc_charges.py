@@ -14,6 +14,7 @@ class CCChargeCreate(BaseModel):
     reference: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None
+    function: Optional[str] = None  # nonprofit: program | management | fundraising
 
 
 class CCChargeResponse(BaseModel):

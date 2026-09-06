@@ -20,6 +20,7 @@ class ExpenseCreate(BaseModel):
     class_id: Optional[int] = None
     job_id: Optional[int] = None
     cost_code_id: Optional[int] = None
+    function: Optional[str] = None  # nonprofit: program | management | fundraising
     is_billable: bool = False
 
 

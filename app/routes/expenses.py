@@ -14,7 +14,7 @@ from app.models.accounts import Account
 from app.models.contacts import Vendor
 from app.models.transactions import Transaction
 from app.schemas.expenses import ExpenseCreate, ExpenseResponse
-from app.services.accounting import create_journal_entry
+from app.services.accounting import create_journal_entry, reversing_lines
 from app.services.closing_date import check_closing_date
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
@@ -115,24 +115,16 @@ def void_expense(expense_id: int, db: Session = Depends(get_db)):
 
     check_closing_date(db, txn.date)
 
-    reverse_lines = [
-        {
-            "account_id": ln.account_id,
-            "debit": ln.credit,
-            "credit": ln.debit,
-            "description": f"VOID: {ln.description or ''}",
-        }
-        for ln in txn.lines
-    ]
     create_journal_entry(
         db,
         txn.date,
         f"VOID {txn.description or 'Expense'}",
-        reverse_lines,
+        reversing_lines(txn.lines),
         source_type=VOID_SOURCE_TYPE,
         source_id=txn.id,
         reference=txn.reference or "",
         class_id=txn.class_id,
+        job_id=txn.job_id,
     )
     db.commit()
     db.refresh(txn)
@@ -185,6 +177,7 @@ def create_expense(data: ExpenseCreate, db: Session = Depends(get_db)):
             "description": line_desc,
             "cost_code_id": data.cost_code_id,
             "is_billable": data.is_billable,
+            **({"function": data.function} if data.function else {}),
         },
         {
             "account_id": paid_from.id,

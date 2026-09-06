@@ -1002,12 +1002,21 @@ SettingsPage.loadClasses = async function () {
     if (!el) return;
     try {
         const classes = await API.get('/classes?include_archived=true');
+        SettingsPage._classes = classes;
+        const np = Terms.isNonprofit();
+        const fundCols = np ? `<th scope="col">Restriction</th><th scope="col">Function</th><th scope="col">Donor / purpose</th>` : '';
+        const fundCells = c => np ? `
+                <td>${escapeHtml(SettingsPage.RESTRICTION_LABELS[c.restriction] || c.restriction)}</td>
+                <td>${escapeHtml(SettingsPage.FUNCTION_LABELS[c.default_function] || '—')}</td>
+                <td style="font-size:10px;">${escapeHtml(c.donor_name || '')}${c.donor_name && c.purpose ? ' — ' : ''}${escapeHtml(c.purpose || '')}</td>` : '';
         el.innerHTML = `<div class="table-container"><table>
-            <thead><tr><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+            <thead><tr><th scope="col">Name</th>${fundCols}<th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
             <tbody>` + classes.map(c => `<tr>
                 <td>${escapeHtml(c.name)}${c.is_system_default ? ' <span style="font-size:9px;color:var(--text-muted);">(default)</span>' : ''}</td>
+                ${fundCells(c)}
                 <td>${c.is_archived ? 'Archived' : 'Active'}</td>
                 <td class="actions">
+                    ${np ? `<button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.editFund(${c.id})">Edit</button>` : ''}
                     ${c.is_system_default ? '' : `
                         <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.renameClass(${c.id})">Rename</button>
                         <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.toggleArchiveClass(${c.id}, ${!c.is_archived})">${c.is_archived ? 'Unarchive' : 'Archive'}</button>`}
@@ -1026,6 +1035,58 @@ SettingsPage.addClass = async function () {
         await API.post('/classes', { name });
         input.value = '';
         toast('Class added');
+        SettingsPage.loadClasses();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+SettingsPage.RESTRICTION_LABELS = {
+    unrestricted: 'Without donor restrictions',
+    temporarily_restricted: 'With donor restrictions (purpose / time)',
+    permanently_restricted: 'With donor restrictions (permanent)',
+};
+SettingsPage.FUNCTION_LABELS = { program: 'Program services', management: 'Management & general', fundraising: 'Fundraising' };
+
+// Nonprofit: a class is a fund. Restriction decides which net-asset line
+// its activity reports on; the default function is what expenses in the
+// fund count as on the Statement of Functional Expenses unless a line
+// says otherwise.
+SettingsPage.editFund = function (id) {
+    const c = (SettingsPage._classes || []).find(x => x.id === id);
+    if (!c) return;
+    const opt = (map, sel) => Object.entries(map).map(([v, l]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('');
+    openModal(`Fund: ${escapeHtml(c.name)}`, `
+        <form onsubmit="SettingsPage.saveFund(event, ${c.id})">
+            <div class="form-grid">
+                <div class="form-group full-width"><label>Restriction</label>
+                    <select name="restriction" ${c.is_system_default ? 'disabled' : ''}>${opt(SettingsPage.RESTRICTION_LABELS, c.restriction)}</select>
+                    ${c.is_system_default ? '<div style="font-size:10px;color:var(--text-muted);">The default bucket for untagged activity is always without restrictions.</div>' : ''}</div>
+                <div class="form-group full-width"><label>Default function</label>
+                    <select name="default_function"><option value="">— none —</option>${opt(SettingsPage.FUNCTION_LABELS, c.default_function)}</select></div>
+                <div class="form-group full-width"><label>Donor / grantor</label>
+                    <input name="donor_name" maxlength="200" value="${escapeHtml(c.donor_name || '')}"></div>
+                <div class="form-group full-width"><label>Purpose</label>
+                    <textarea name="purpose" rows="2">${escapeHtml(c.purpose || '')}</textarea></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>`);
+};
+
+SettingsPage.saveFund = async function (e, id) {
+    e.preventDefault();
+    const f = e.target;
+    const body = {
+        default_function: f.default_function.value || null,
+        donor_name: f.donor_name.value.trim() || null,
+        purpose: f.purpose.value.trim() || null,
+    };
+    if (!f.restriction.disabled) body.restriction = f.restriction.value;
+    try {
+        await API.put(`/classes/${id}`, body);
+        closeModal();
+        toast(`${T('Class')} saved`);
         SettingsPage.loadClasses();
     } catch (err) { toast(err.message, 'error'); }
 };

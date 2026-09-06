@@ -22,6 +22,7 @@ from app.services.accounting import (
     create_journal_entry,
     compute_line_totals,
     get_ap_account_id,
+    reversing_lines,
 )
 from app.services.closing_date import check_closing_date
 
@@ -230,6 +231,7 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
                 job_id=line_data.job_id,
                 class_id=line_data.class_id,
                 cost_code_id=line_data.cost_code_id,
+                function=line_data.function,
                 is_billable=line_data.is_billable,
                 line_order=line_data.line_order or i,
             )
@@ -246,6 +248,7 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
                     "class_id": line_data.class_id,
                     "cost_code_id": line_data.cost_code_id,
                     "is_billable": line_data.is_billable,
+                    **({"function": line_data.function} if line_data.function else {}),
                 }
             )
 
@@ -339,15 +342,7 @@ def void_bill(bill_id: int, db: Session = Depends(get_db)):
             .filter(TransactionLine.transaction_id == bill.transaction_id)
             .all()
         )
-        reverse_lines = [
-            {
-                "account_id": ol.account_id,
-                "debit": ol.credit,
-                "credit": ol.debit,
-                "description": f"VOID: {ol.description or ''}",
-            }
-            for ol in original_lines
-        ]
+        reverse_lines = reversing_lines(original_lines)
         if reverse_lines:
             create_journal_entry(
                 db,

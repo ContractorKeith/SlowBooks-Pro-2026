@@ -77,6 +77,7 @@ def create_cc_charge(data: CCChargeCreate, db: Session = Depends(get_db)):
             "debit": amount,
             "credit": Decimal("0"),
             "description": data.memo or data.payee or "",
+            **({"function": data.function} if data.function else {}),
         },
         {
             "account_id": cc_account_id,

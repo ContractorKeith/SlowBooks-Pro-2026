@@ -12,6 +12,7 @@ class BillLineCreate(BaseModel):
     job_id: Optional[int] = None
     class_id: Optional[int] = None
     cost_code_id: Optional[int] = None
+    function: Optional[str] = None
     is_billable: bool = False
     description: Optional[str] = None
     quantity: float = 1
@@ -31,6 +32,7 @@ class BillLineResponse(BaseModel):
     job_id: Optional[int] = None
     class_id: Optional[int] = None
     cost_code_id: Optional[int] = None
+    function: Optional[str] = None
     is_billable: bool = False
     description: Optional[str] = None
     quantity: Decimal = Decimal("0")

@@ -103,6 +103,7 @@ class BillLine(Base):
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
     class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
     cost_code_id = Column(Integer, ForeignKey("cost_codes.id"), nullable=True)
+    function = Column(String(20), nullable=True)  # nonprofit function
     # Cost billable to the job's customer; set when it is pulled onto an invoice
     is_billable = Column(Boolean, nullable=False, default=False)
     billed_invoice_line_id = Column(
