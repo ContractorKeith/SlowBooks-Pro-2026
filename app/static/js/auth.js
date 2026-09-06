@@ -107,6 +107,7 @@
         const autocomplete = opts.autocomplete
             ? ' autocomplete="' + opts.autocomplete + '"'
             : "";
+        const value = opts.value ? ' value="' + escapeText(opts.value) + '"' : "";
         // Asterisk: bold + larger so a quick scan catches it. aria-hidden
         // because the same info is conveyed by aria-required on the input.
         const asterisk = opts.required
@@ -132,10 +133,19 @@
             minlength +
             placeholder +
             autocomplete +
+            value +
             ' style="' +
             inputStyle() +
             '">'
         );
+    }
+
+    function escapeText(text) {
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
     }
 
     function row(...cells) {
@@ -258,7 +268,18 @@
 
     // ----- setup view ------------------------------------------------------
 
+    // Filled from /api/auth/status before the setup view renders.
+    let existingCompany = { name: "", hasData: false };
+
     function setupViewHTML() {
+        const existingNotice = existingCompany.hasData
+            ? '<div style="margin:0 0 12px;padding:10px 12px;background:#fff7e0;' +
+              'border:1px solid #e8c56a;border-radius:6px;color:#5a4300;font-size:13px;line-height:1.5;">' +
+              "This company file already contains books" +
+              (existingCompany.name ? " for <strong>" + escapeText(existingCompany.name) + "</strong>" : "") +
+              ". Setup only adds your operator password; keep the company name unless you mean to rename these books." +
+              "</div>"
+            : "";
         return (
             '<form id="auth-form" ' +
             'style="background:#fff;color:#111;padding:28px 28px 24px;border-radius:8px;' +
@@ -268,6 +289,7 @@
             '<p style="margin:0 0 8px;color:#555;font-size:13px;line-height:1.5;">' +
             "Just enough to get you in. You can configure everything else later." +
             "</p>" +
+            existingNotice +
             field("operator_name", "Your name", { required: true }) +
             field("operator_email", "Your email", {
                 type: "email",
@@ -277,6 +299,7 @@
             field("company_name", "Company name", {
                 required: true,
                 placeholder: "My Company",
+                value: existingCompany.name,
             }) +
             field("company_email", "Company email", {
                 type: "email",
@@ -420,6 +443,10 @@
         try {
             const status = await checkStatus();
             multiUser = status.multi_user === true;
+            existingCompany = {
+                name: status.company_name || "",
+                hasData: status.has_data === true,
+            };
             if (status.authenticated) return;
             renderView("login", onSuccess);
         } finally {

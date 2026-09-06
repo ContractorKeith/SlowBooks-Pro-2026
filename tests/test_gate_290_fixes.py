@@ -362,3 +362,144 @@ def test_release_staples_the_app_before_the_dmg():
 def test_openapi_documents_void_over_delete(client):
     spec = client.get("/openapi.json").json()
     assert "void" in spec["info"]["description"].lower()
+
+
+# ---- Round 3: the macOS bridge, silent branches, CSV, identity ----------
+
+
+def test_csp_allows_eval_only_under_the_desktop_launcher():
+    """pywebview builds window.pywebview.api with `new Function`; WebKit
+    enforces the page CSP on it. The desktop shell needs 'unsafe-eval'; a
+    browser install must not get it."""
+    from app.main import _build_csp
+
+    assert "'unsafe-eval'" in _build_csp(desktop=True)
+    assert "'unsafe-eval'" not in _build_csp(desktop=False)
+    assert _build_csp(desktop=True).replace(" 'unsafe-eval'", "") == _build_csp(
+        desktop=False
+    )
+
+
+def test_csp_header_follows_the_desktop_flag(client):
+    r = client.get("/api/auth/status")
+    assert "script-src 'self' 'unsafe-inline'" in r.headers["Content-Security-Policy"]
+    assert "'unsafe-eval'" not in r.headers["Content-Security-Policy"]
+
+
+def test_desktop_fetches_get_inline_not_attachment(client, seed_accounts):
+    """A desktop-shell fetch() never receives Content-Disposition: attachment
+    (both webviews swallow those as native downloads). Every CSV producer,
+    not just app/routes/csv.py, is covered because the middleware does it."""
+    url = "/api/reports/statement-of-activities/csv?start_date=2026-01-01&end_date=2026-12-31"
+    plain = client.get(url)
+    assert plain.status_code == 200, plain.text
+    assert plain.headers["Content-Disposition"].startswith("attachment")
+    desktop = client.get(url, headers={"X-Slowbooks-Desktop": "1"})
+    assert desktop.headers["Content-Disposition"].startswith("inline; filename=")
+    assert desktop.text == plain.text
+
+
+def test_shim_never_returns_in_silence_when_the_bridge_is_missing():
+    src = open("app/static/js/desktop_shim.js").read()
+    assert src.count("bridgeMissing(") >= 3  # pdf, html, liveness check
+    assert "pywebviewready" in src and "checkBridge" in src
+    assert "save_document_file" in src
+
+
+def test_save_document_file_writes_like_save_pdf(monkeypatch, tmp_path):
+    import base64
+
+    import desktop_launcher
+
+    home = tmp_path / "home"
+    (home / "Documents").mkdir(parents=True)
+    monkeypatch.setattr(desktop_launcher.Path, "home", lambda: home)
+    monkeypatch.setattr(desktop_launcher.sys, "platform", "linux")
+    api = desktop_launcher.PickerApi(3001)
+    r = api.save_document_file(
+        "statement-of-activities_2026.csv", base64.b64encode(b"a,b\n1,2\n").decode()
+    )
+    assert r["success"] is True
+    dest = (
+        home
+        / "Documents"
+        / "SlowBooks Pro"
+        / "Reports"
+        / "statement-of-activities_2026.csv"
+    )
+    assert r["path"] == str(dest) and dest.read_bytes() == b"a,b\n1,2\n"
+
+
+def test_installer_clears_internal_on_upgrade():
+    iss = open("packaging/windows/SlowBooksPro.iss").read()
+    assert "[InstallDelete]" in iss
+    assert 'Type: filesandordirs; Name: "{app}\\_internal"' in iss
+    assert iss.index("[InstallDelete]") < iss.index("[Files]")
+
+
+def test_auth_status_names_the_company_a_setup_would_rename(unauthed_client):
+
+    r = unauthed_client.get("/api/auth/status").json()
+    assert (
+        r["setup_needed"] is True and r["company_name"] == "" and r["has_data"] is False
+    )
+
+
+def test_setup_and_settings_keep_the_manifest_name_in_step(tmp_path, monkeypatch):
+    import json
+
+    from app.services import company_service
+    from app.services.company_service import sync_manifest_name
+
+    data = tmp_path / "data"
+    monkeypatch.setenv("SLOWBOOKS_DATA_DIR", str(data))
+    monkeypatch.setattr(
+        company_service,
+        "DATABASE_URL",
+        "sqlite:///" + str(data / "companies" / "riverbend.db"),
+    )
+    company_service._write_manifest(
+        {
+            "companies": [{"name": "Riverbend Community Arts", "file": "riverbend.db"}],
+            "last_opened": "riverbend.db",
+        }
+    )
+    assert sync_manifest_name("NEONpulse Techshop") is True
+    manifest = json.loads((data / "companies.json").read_text())
+    assert manifest["companies"][0]["name"] == "NEONpulse Techshop"
+    assert sync_manifest_name("NEONpulse Techshop") is False  # idempotent
+    assert sync_manifest_name("") is False  # blank never renames
+
+
+def test_settings_company_name_updates_manifest(client, tmp_path, monkeypatch):
+    import json
+
+    from app.services import company_service
+
+    data = tmp_path / "data"
+    monkeypatch.setenv("SLOWBOOKS_DATA_DIR", str(data))
+    monkeypatch.setattr(
+        company_service,
+        "DATABASE_URL",
+        "sqlite:///" + str(data / "companies" / "acme.db"),
+    )
+    company_service._write_manifest(
+        {
+            "companies": [{"name": "Old Name", "file": "acme.db"}],
+            "last_opened": "acme.db",
+        }
+    )
+    r = client.put("/api/settings", json={"company_name": "New Name LLC"})
+    assert r.status_code == 200, r.text
+    assert (
+        json.loads((data / "companies.json").read_text())["companies"][0]["name"]
+        == "New Name LLC"
+    )
+    # and the list reconciles from settings even if the manifest is edited by hand
+    company_service._write_manifest(
+        {
+            "companies": [{"name": "Hand Edited", "file": "acme.db"}],
+            "last_opened": "acme.db",
+        }
+    )
+    assert client.get("/api/companies").json()[0]["name"] == "New Name LLC"

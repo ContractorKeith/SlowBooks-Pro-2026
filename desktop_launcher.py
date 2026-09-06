@@ -805,6 +805,29 @@ class PickerApi:
             result["note"] = note
         return result
 
+    def save_document_file(self, title: str, base64_data: str) -> dict:
+        """Save an already-fetched export (a CSV, or anything the page would
+        otherwise hand to a download link) under Documents/SlowBooks Pro/
+        Reports, with the same fallback and "note" contract as
+        open_document_pdf, and without opening a viewer. The shell prefers
+        this over a blob <a download>: both WebView2 and WKWebView route a
+        page-initiated download through native plumbing that the page
+        cannot observe, so the user never learns whether or where the
+        file landed."""
+        import base64
+
+        try:
+            data = base64.b64decode(base64_data)
+            given = Path(str(title or ""))
+            suffix = given.suffix if given.suffix else ".txt"
+            dest, note = _save_report(_safe_temp_filename(given.stem, suffix), data)
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+        result = {"success": True, "path": str(dest)}
+        if note:
+            result["note"] = note
+        return result
+
     def reveal_path(self, path: str) -> dict:
         """Open the folder that holds a file this app saved (Explorer /
         Finder / the desktop's file manager). Only paths under the app's

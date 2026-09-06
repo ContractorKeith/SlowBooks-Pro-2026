@@ -153,8 +153,29 @@
         // "document" window instead of saving. text/csv is never meant to be
         // *displayed* here, only saved, regardless of its disposition.
         if (/attachment/i.test(disposition) || contentType.includes('csv')) {
+            const name = filenameFromDisposition(disposition, fallbackName);
+            // Prefer the bridge: it writes to Documents/SlowBooks Pro/Reports
+            // and says where, exactly like Save PDF. A blob <a download> is
+            // the fallback for a shell without the bridge.
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.save_document_file) {
+                const buffer = await response.arrayBuffer();
+                const result = await window.pywebview.api.save_document_file(name, arrayBufferToBase64(buffer));
+                if (result && result.success && result.path) {
+                    const message = result.note || ('Saved to ' + result.path);
+                    if (typeof toastAction === 'function') {
+                        toastAction(message, 'Show in folder', function () {
+                            window.pywebview.api.reveal_path(result.path);
+                        }, result.note ? 20000 : 10000);
+                    } else if (typeof toast === 'function') {
+                        toast(message);
+                    }
+                } else if (typeof toast === 'function') {
+                    toast('Could not save the file: ' + ((result && result.error) || 'unknown error'), 'error');
+                }
+                return;
+            }
             const blob = await response.blob();
-            saveBlob(blob, filenameFromDisposition(disposition, fallbackName));
+            saveBlob(blob, name);
             return;
         }
 
@@ -180,6 +201,8 @@
                 } else if (result && result.error && typeof toast === 'function') {
                     toast('Could not save the PDF: ' + result.error, 'error');
                 }
+            } else {
+                bridgeMissing('save the PDF');
             }
             return;
         }
@@ -188,8 +211,39 @@
         const html = await response.text();
         if (window.pywebview && window.pywebview.api && window.pywebview.api.open_document_html) {
             await window.pywebview.api.open_document_html('SlowBooks Pro 2026', html);
+        } else {
+            bridgeMissing('open the document');
         }
     }
+
+    // A branch that can do nothing must say so. "Click does nothing" cost a
+    // full gate round to diagnose (2.9.0, macOS): the bridge object existed
+    // but had no methods, and both branches above returned in silence.
+    function bridgeMissing(what) {
+        const msg = 'The desktop viewer is unavailable: the native bridge (window.pywebview.api) '
+            + 'has no methods, so SlowBooks cannot ' + what + '. Restart the app; if it persists, '
+            + 'report it with the launcher log.';
+        console.error(msg);
+        if (typeof toast === 'function') toast(msg, 'error');
+    }
+
+    // Liveness check at startup: once pywebview reports ready (or after a
+    // grace period if it never does), the api object must carry methods.
+    // An empty api is exactly the failure mode that hid for months.
+    let bridgeChecked = false;
+    function checkBridge() {
+        if (bridgeChecked || !inDesktopShell()) return;
+        bridgeChecked = true;
+        const api = window.pywebview && window.pywebview.api;
+        const methods = api ? Object.keys(api).length : 0;
+        if (methods === 0) {
+            bridgeMissing('save or open documents');
+        } else if (window.console && console.debug) {
+            console.debug('desktop bridge ready: ' + methods + ' methods');
+        }
+    }
+    window.addEventListener('pywebviewready', checkBridge);
+    setTimeout(checkBridge, 8000);
 
     const realOpen = window.open.bind(window);
     window.open = function (url, target, features) {

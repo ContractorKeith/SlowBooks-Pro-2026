@@ -164,6 +164,11 @@ def update_settings(
             continue
         set_setting(db, key, str(value) if value is not None else "")
     db.commit()
+    incoming = data.model_dump()
+    if "company_name" in incoming:
+        from app.services.company_service import sync_manifest_name
+
+        sync_manifest_name(incoming.get("company_name"))
     return _redact_secrets(get_all_settings(db))
 
 

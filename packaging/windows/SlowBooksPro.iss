@@ -31,6 +31,16 @@ DisableProgramGroupPage=yes
 ; (--_serve) has no window, so [Code] below also stops it by name.
 CloseApplications=yes
 
+; An upgrade must not layer today's bundle over last month's. Inno Setup
+; only overwrites files it ships; everything else under {app} survives, so
+; every upgrade left the previous build's *.dist-info trees (and any module
+; the new build dropped) in _internal\. importlib.metadata then reported
+; whichever version it found first — cryptography 48.0.1 while the 50.0.1
+; extension was the code running (2.9.0 gate, skytech). User data is never
+; under {app} (see the header), so clearing it is safe.
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "dist\SlowBooksPro\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 ; Microsoft's Evergreen WebView2 bootstrapper (~2 MB), downloaded by CI.

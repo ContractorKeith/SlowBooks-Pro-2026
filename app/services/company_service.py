@@ -192,6 +192,35 @@ def manifest_list_companies() -> list[dict]:
     ]
 
 
+def sync_manifest_name(company_name: str | None) -> bool:
+    """Make the manifest entry for the running company file carry the
+    company_name the books display.
+
+    A company has two names: the manifest's (what the picker and
+    GET /api/companies show, and what a client's is_current safety check
+    reads) and settings.company_name (what every screen and every printed
+    document shows). They were independently writable, so first-run setup
+    typed into a populated file renamed the books to another company while
+    the manifest — and the harness guard reading it — still said the old
+    name (2.9.0 gate, skytech). Settings is authoritative for display;
+    this keeps the manifest equal to it. Returns True when it changed."""
+    if not _is_sqlite():
+        return False
+    name = (company_name or "").strip()
+    current = _current_company_file()
+    if not name or not current:
+        return False
+    manifest = _read_manifest()
+    changed = False
+    for entry in manifest["companies"]:
+        if entry.get("file") == current and entry.get("name") != name:
+            entry["name"] = name
+            changed = True
+    if changed:
+        _write_manifest(manifest)
+    return changed
+
+
 def get_last_opened() -> str | None:
     last = _read_manifest().get("last_opened")
     return safe_company_filename(last) if last else None
@@ -322,6 +351,14 @@ def _base_url():
 
 def list_companies(db: Session) -> list[dict]:
     if _is_sqlite():
+        # Reconcile before answering: a file staged by hand (or renamed by
+        # an older build) can carry a manifest name the books no longer use.
+        try:
+            from app.services.settings_service import get_setting_raw
+
+            sync_manifest_name(get_setting_raw(db, "company_name"))
+        except Exception:
+            logger.exception("Could not reconcile the manifest name")
         return manifest_list_companies()
 
     from app.models.companies import Company

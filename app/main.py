@@ -9,6 +9,7 @@
 # want to print invoices.
 # ============================================================================
 
+import os
 import re as _re
 import time as _time
 from contextlib import asynccontextmanager
@@ -301,19 +302,38 @@ app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 # misses a sink. 'self' for scripts/styles + 'unsafe-inline' for the inline
 # bootstrap script in index.html. Tighten to a nonce-based CSP once the SPA
 # is migrated off inline scripts.
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://js.stripe.com; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: blob:; "
-    "font-src 'self' data:; "
-    "connect-src 'self' https://api.stripe.com; "
-    "frame-src https://js.stripe.com https://hooks.stripe.com; "
-    "frame-ancestors 'none'; "
-    "form-action 'self'; "
-    "base-uri 'self'; "
-    "object-src 'none'"
-)
+# 'unsafe-eval' is added ONLY under the desktop launcher. pywebview builds
+# every window.pywebview.api method with `new Function(...)` (its js/api.js),
+# and WebKit enforces the page's CSP on that call even though pywebview
+# injects the script itself: under the strict policy WKWebView threw
+# "Refused to evaluate a string as JavaScript because 'unsafe-eval' ... is
+# not an allowed source" and the bridge stayed permanently empty — Save PDF,
+# print preview, Save backup, Show in folder, the company picker: all dead
+# on macOS, silently (2.9.0 gate, round 3; the policy dates from v2.1.0, so
+# every macOS build since then). Chromium lets injected scripts bypass CSP,
+# which is why Windows never showed it. Measured on macbase1 with a
+# three-way probe: strict CSP → EvalError; + 'unsafe-eval' → api populated;
+# no CSP → api populated. A browser install (Server Edition / Docker) has
+# no bridge and keeps the strict policy.
+def _build_csp(desktop: bool) -> str:
+    script_src = "script-src 'self' 'unsafe-inline'"
+    if desktop:
+        script_src += " 'unsafe-eval'"
+    script_src += " https://js.stripe.com; "
+    return (
+        "default-src 'self'; " + script_src + "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://api.stripe.com; "
+        "frame-src https://js.stripe.com https://hooks.stripe.com; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "base-uri 'self'; "
+        "object-src 'none'"
+    )
+
+
+_CSP = _build_csp(desktop=os.environ.get("SLOWBOOKS_DESKTOP") == "1")
 
 
 def _set_if_unset(headers, name: str, value: str) -> None:
@@ -327,6 +347,18 @@ def _set_if_unset(headers, name: str, value: str) -> None:
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    # The desktop shell fetches documents from page JS and saves them
+    # through its native bridge. Both WebView2 and WKWebView intercept a
+    # Content-Disposition: attachment response at the network layer as a
+    # download — the fetch() promise never resolves ("Failed to fetch" /
+    # "Load failed"). app/routes/csv.py already served inline for these
+    # requests; every other CSV and PDF producer had to remember to, and
+    # the nonprofit report CSVs did not (2.9.0 gate: Save CSV → "Could not
+    # load the document: Load failed" on macOS). Done once here instead.
+    if request.headers.get("X-Slowbooks-Desktop"):
+        disposition = response.headers.get("Content-Disposition", "")
+        if disposition.lower().startswith("attachment"):
+            response.headers["Content-Disposition"] = "inline" + disposition[10:]
     _set_if_unset(response.headers, "X-Content-Type-Options", "nosniff")
     _set_if_unset(response.headers, "X-Frame-Options", "DENY")
     _set_if_unset(

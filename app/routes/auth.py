@@ -106,12 +106,24 @@ def auth_status(request: Request, db: Session = Depends(get_db)):
     """Tell the SPA whether first-run setup is needed and whether the
     current session is authenticated."""
     authenticated = request.session.get("authenticated") is True
+    setup_needed = not password_is_set(db)
     out = {
-        "setup_needed": not password_is_set(db),
+        "setup_needed": setup_needed,
         "authenticated": authenticated,
         # Login UI shows a username field only when this is true.
         "multi_user": is_multi_user(db),
     }
+    if setup_needed:
+        # First-run setup can be reached on a file that already holds a
+        # company's books (a file copied in, or seeded through the API
+        # before anyone set a password). The form prefills the name the
+        # books already carry and warns, so setup does not silently rename
+        # another company's ledger (2.9.0 gate).
+        from app.models.transactions import Transaction
+        from app.services.settings_service import get_setting_raw
+
+        out["company_name"] = get_setting_raw(db, "company_name") or ""
+        out["has_data"] = db.query(Transaction.id).first() is not None
     if authenticated and request.session.get("username"):
         out["user"] = {
             "username": request.session.get("username"),
@@ -148,6 +160,10 @@ def setup(
     # Materialize the operator as the admin user row right away (Server
     # Edition principal model) — same password, zero extra questions.
     admin = ensure_admin_user(db)
+    if payload.company_name:
+        from app.services.company_service import sync_manifest_name
+
+        sync_manifest_name(payload.company_name)
     # Rotate session before issuing — clears anything an attacker might have
     # planted via a fixation attempt. Starlette's signed-cookie session is
     # already fixation-resistant (signature changes with payload) but this

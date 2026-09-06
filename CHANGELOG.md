@@ -95,6 +95,23 @@ enums in the spec; an empty pay run is refused with the roster named;
 runs first time; a missing `companies.json` is logged with the data
 directory that was searched.
 
+**Round 3 of the gate found the macOS desktop bridge dead — since v2.1.0.**
+Save PDF, print preview, Save backup, Show in folder and the company picker
+all rely on pywebview's `window.pywebview.api`, which pywebview builds with
+`new Function`; the app's Content-Security-Policy had no `'unsafe-eval'`,
+WebKit enforces that inside the page, and the bridge stayed empty on every
+Mac while Chromium on Windows let it through. The policy now allows eval
+only under the desktop launcher (a browser install keeps the strict one).
+The shell also stops failing in silence: a missing bridge is reported on the
+first click and checked at startup, Save CSV goes through the bridge to the
+same Reports folder as Save PDF, and every export a desktop fetch receives
+is served inline so neither webview swallows it as a download. Two more
+from the same round: first-run setup on a file that already holds books now
+says whose books they are and prefills the name, and the company name in
+Settings keeps the manifest (the picker's name) in step so the two can no
+longer diverge; the Windows installer clears `_internal` before an upgrade
+so stale package metadata from earlier builds no longer ships.
+
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 
 ### Export parity with import (#70)
