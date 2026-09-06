@@ -131,7 +131,16 @@ def _render(template_name: str, company_settings: dict, **context) -> str:
 
 
 def generate_invoice_pdf(invoice, company_settings: dict) -> bytes:
-    return render_pdf(_render("invoice_pdf.html", company_settings, inv=invoice))
+    from app.services.donor_documents import invoice_pdf_context
+
+    return render_pdf(
+        _render(
+            "invoice_pdf.html",
+            company_settings,
+            inv=invoice,
+            **invoice_pdf_context(invoice, company_settings),
+        )
+    )
 
 
 def generate_estimate_pdf(estimate, company_settings: dict) -> bytes:

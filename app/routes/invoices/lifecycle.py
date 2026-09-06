@@ -273,6 +273,9 @@ def duplicate_invoice(invoice_id: int, db: Session = Depends(get_db)):
         tax_amount=original.tax_amount,
         total=original.total,
         balance_due=original.total,
+        is_pledge=original.is_pledge,
+        fair_value_amount=original.fair_value_amount,
+        fair_value_description=original.fair_value_description,
         notes=original.notes,
         class_id=original.class_id,
     )

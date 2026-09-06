@@ -197,6 +197,8 @@ const InvoicesPage = {
         if (id) inv = await API.get(`/invoices/${id}`);
         const classGroup = await classFormGroupHtml(inv.class_id);
         const jobGroup = await jobFormGroupHtml(inv.job_id, 'inv-customer-select');
+        // Nonprofit: a pledge prints as one; program fees and rentals stay invoices
+        const pledgeGroup = Terms.isNonprofit() ? `<div class="form-group"><label>Document</label><label style="font-weight:normal;"><input type="checkbox" name="is_pledge" ${(id ? inv.is_pledge : true) ? 'checked' : ''}> This is a pledge (prints as PLEDGE)</label></div>` : '';
         if (inv.lines.length === 0) inv.lines = [{ item_id: '', description: '', quantity: 1, rate: 0 }];
 
         InvoicesPage.lineCount = inv.lines.length;
@@ -234,7 +236,7 @@ const InvoicesPage = {
                             title="Auto-calculated from Date + Terms. Edit to override."></div>
                     <div class="form-group"><label>PO #</label>
                         <input name="po_number" value="${escapeHtml(inv.po_number || '')}"></div>
-                    ${classGroup}${jobGroup}
+                    ${classGroup}${jobGroup}${pledgeGroup}
                     ${currencyFormGroupsHtml(inv.currency, inv.exchange_rate)}
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="${(inv.tax_rate * 100) || 0}"
@@ -418,6 +420,7 @@ const InvoicesPage = {
             due_date: form.due_date.value || null,
             terms: form.terms.value,
             po_number: form.po_number.value || null,
+            is_pledge: form.is_pledge ? form.is_pledge.checked : false,
             class_id: classIdFromForm(form),
             job_id: jobIdFromForm(form),
             ...currencyPayloadFromForm(form),

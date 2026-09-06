@@ -53,6 +53,12 @@ class Customer(Base):
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     balance = Column(Numeric(12, 2), default=0)
+    # Nonprofit: the donor record. individual | organization; the
+    # salutation opens the acknowledgment letter; the year-end statement
+    # batch skips donors who opted out.
+    donor_type = Column(String(20), nullable=True)
+    salutation = Column(String(100), nullable=True)
+    send_year_end_statement = Column(Boolean, nullable=False, default=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

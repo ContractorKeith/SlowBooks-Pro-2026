@@ -60,6 +60,7 @@ from app.models import (  # noqa: F401
     estimates,
     hr,
     invoices,
+    in_kind as in_kind_model,
     items,
     nonprofit as nonprofit_model,
     payments,

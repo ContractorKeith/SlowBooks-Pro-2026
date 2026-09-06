@@ -39,6 +39,10 @@ class CustomerCreate(BaseModel):
     tax_id: Optional[str] = Field(None, max_length=50)
     is_taxable: bool = True
     notes: Optional[str] = None
+    # Nonprofit donor record
+    donor_type: Optional[str] = Field(None, max_length=20)
+    salutation: Optional[str] = Field(None, max_length=100)
+    send_year_end_statement: bool = True
 
 
 class CustomerUpdate(BaseModel):
@@ -66,6 +70,10 @@ class CustomerUpdate(BaseModel):
     tax_id: Optional[str] = Field(None, max_length=50)
     is_taxable: Optional[bool] = None
     notes: Optional[str] = None
+    # Nonprofit donor record
+    donor_type: Optional[str] = Field(None, max_length=20)
+    salutation: Optional[str] = Field(None, max_length=100)
+    send_year_end_statement: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
@@ -99,6 +107,10 @@ class CustomerResponse(BaseModel):
     balance: Decimal
     created_at: datetime
     updated_at: datetime
+
+    donor_type: Optional[str] = None
+    salutation: Optional[str] = None
+    send_year_end_statement: bool = True
 
     model_config = {"from_attributes": True}
 

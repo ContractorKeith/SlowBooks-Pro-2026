@@ -19,6 +19,7 @@ from app.models.job_costing import (  # noqa: F401 — registers the tables
     JobCostLine,
 )
 from app.models.fixed_assets import FixedAsset, FixedAssetType  # noqa: F401
+from app.models.in_kind import InKindGift, InKindGiftLine  # noqa: F401
 from app.models.nonprofit import (  # noqa: F401 — registers the tables
     AllocationRule,
     AllocationRuleTarget,

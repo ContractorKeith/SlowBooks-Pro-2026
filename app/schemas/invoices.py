@@ -2,7 +2,7 @@ from datetime import date as dt_date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.invoices import InvoiceStatus
 from app.schemas.common import validate_non_negative_line
@@ -68,6 +68,10 @@ class InvoiceCreate(BaseModel):
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
     lines: list[InvoiceLineCreate] = []
+    # Nonprofit: pledge face; goods/services the donor received (gala dinner)
+    is_pledge: bool = False
+    fair_value_amount: Optional[Decimal] = None
+    fair_value_description: Optional[str] = Field(None, max_length=200)
 
     @field_validator("lines")
     @classmethod
@@ -90,6 +94,9 @@ class InvoiceUpdate(BaseModel):
     job_id: Optional[int] = None
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
+    is_pledge: Optional[bool] = None
+    fair_value_amount: Optional[Decimal] = None
+    fair_value_description: Optional[str] = Field(None, max_length=200)
     lines: Optional[list[InvoiceLineCreate]] = None
 
 
@@ -122,6 +129,10 @@ class InvoiceResponse(BaseModel):
     class_id: Optional[int] = None
     job_id: Optional[int] = None
     is_sales_receipt: bool = False
+    is_pledge: bool = False
+    fair_value_amount: Optional[Decimal] = None
+    fair_value_description: Optional[str] = None
+    recurring_invoice_id: Optional[int] = None
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
     payment_token: Optional[str] = None

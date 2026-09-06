@@ -59,6 +59,8 @@ const SalesReceiptsPage = {
                 <div class="total-row"><span class="label">Subtotal</span><span class="value">${formatCurrency(sr.subtotal)}</span></div>
                 <div class="total-row"><span class="label">Tax</span><span class="value">${formatCurrency(sr.tax_amount)}</span></div>
                 <div class="total-row grand-total"><span class="label">Total</span><span class="value">${formatCurrency(sr.total)}</span></div>
+                ${sr.fair_value_amount ? `<div class="total-row"><span class="label">Fair value of goods/services${sr.fair_value_description ? ` (${escapeHtml(sr.fair_value_description)})` : ''}</span><span class="value">${formatCurrency(sr.fair_value_amount)}</span></div>
+                <div class="total-row"><span class="label">Deductible portion</span><span class="value">${formatCurrency(sr.total - sr.fair_value_amount)}</span></div>` : ''}
             </div>
             ${sr.notes ? `<p style="margin-top:12px;color:var(--gray-500);">${escapeHtml(sr.notes)}</p>` : ''}
             <div class="form-actions">
@@ -159,6 +161,15 @@ const SalesReceiptsPage = {
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="${(sr.tax_rate * 100) || 0}"
                             oninput="SalesReceiptsPage.recalc()"></div>
+                    ${Terms.isNonprofit() ? `
+                    <div class="form-group full-width" style="border-top:1px solid var(--gray-200); padding-top:8px; margin-top:4px;">
+                        <label>Goods or services provided in exchange?</label>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <input name="fair_value_amount" type="number" step="0.01" min="0" placeholder="Fair value ($)" style="width:140px;">
+                            <input name="fair_value_description" maxlength="200" placeholder="e.g. gala dinner" style="flex:1; min-width:180px;">
+                        </div>
+                        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Leave blank for a pure gift. The receipt states the deductible portion (IRS Pub. 1771).</div>
+                    </div>` : ''}
                 </div>
                 <h3 style="margin:16px 0 8px; font-size:14px; color:var(--gray-600);">Line Items</h3>
                 <table class="line-items-table">
@@ -398,6 +409,8 @@ const SalesReceiptsPage = {
             ...currencyPayloadFromForm(form),
             tax_rate: (parseFloat(form.tax_rate.value) || 0) / 100,
             notes: form.notes.value || null,
+            fair_value_amount: form.fair_value_amount && form.fair_value_amount.value ? parseFloat(form.fair_value_amount.value) : null,
+            fair_value_description: form.fair_value_description ? (form.fair_value_description.value || null) : null,
             lines,
         };
 

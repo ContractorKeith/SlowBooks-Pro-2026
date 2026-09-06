@@ -76,6 +76,18 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
     return resp
 
 
+def _check_fair_value(fair_value_amount, total) -> None:
+    """A donation receipt's fair-value-of-goods can't exceed the gift."""
+    if fair_value_amount is None:
+        return
+    fv = Decimal(str(fair_value_amount))
+    if fv < 0 or fv > Decimal(str(total)):
+        raise HTTPException(
+            status_code=400,
+            detail="Fair value of goods or services must be between 0 and the total",
+        )
+
+
 @router.post("", response_model=InvoiceResponse, status_code=201)
 def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
     check_closing_date(db, data.date)
@@ -87,6 +99,7 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
     due_date = data.due_date or _due_date_from_terms(data.date, data.terms)
     resolve_line_taxable(db, data.lines, customer)
     subtotal, tax_amount, total = _compute_totals(data.lines, data.tax_rate)
+    _check_fair_value(data.fair_value_amount, total)
 
     # Capture every customer field we need post-flush, because we may have to
     # rollback the session (which expires `customer`) when two concurrent
@@ -136,6 +149,9 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
             notes=data.notes,
             class_id=data.class_id,
             job_id=data.job_id,
+            is_pledge=data.is_pledge,
+            fair_value_amount=data.fair_value_amount,
+            fair_value_description=data.fair_value_description,
             **cust_fields,
         )
         db.add(invoice)
@@ -284,6 +300,8 @@ def update_invoice(invoice_id: int, data: InvoiceUpdate, db: Session = Depends(g
     update_data = data.model_dump(exclude_unset=True, exclude={"lines"})
     tax_rate_changed = "tax_rate" in update_data
     for key, val in update_data.items():
+        if key == "is_pledge" and val is None:
+            continue
         setattr(invoice, key, val)
 
     # The SPA always sends due_date now (a field added in the UX pass). An
@@ -412,6 +430,7 @@ def update_invoice(invoice_id: int, data: InvoiceUpdate, db: Session = Depends(g
                 txn_date=invoice.date,
             )
 
+    _check_fair_value(invoice.fair_value_amount, invoice.total)
     db.commit()
     db.refresh(invoice)
     resp = InvoiceResponse.model_validate(invoice)

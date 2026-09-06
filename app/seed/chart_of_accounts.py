@@ -85,6 +85,11 @@ CHART_OF_ACCOUNTS = [
     {"account_number": "4100", "name": "Product Sales", "account_type": "income"},
     {"account_number": "4200", "name": "Material Income", "account_type": "income"},
     {"account_number": "4300", "name": "Labor Income", "account_type": "income"},
+    {
+        "account_number": "4400",
+        "name": "In-Kind Contributions",
+        "account_type": "income",
+    },
     {"account_number": "4900", "name": "Other Income", "account_type": "income"},
     # COGS (5000s)
     {"account_number": "5000", "name": "Cost of Goods Sold", "account_type": "cogs"},
@@ -153,4 +158,5 @@ CHART_OF_ACCOUNTS = [
         "name": "Miscellaneous Expense",
         "account_type": "expense",
     },
+    {"account_number": "6960", "name": "Bad Debt Expense", "account_type": "expense"},
 ]

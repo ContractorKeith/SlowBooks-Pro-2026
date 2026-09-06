@@ -161,13 +161,13 @@ def test_terms_from_db_follow_the_setting(client, db_session):
 
 
 def test_setup_accounts_is_idempotent_and_yields_taken_numbers(client, seed_accounts):
-    # 3300 is free in the seed chart; take 6960 first to prove the yield.
+    # 3300 is free in the seed chart; take 3400 first to prove the yield.
     r = client.post(
         "/api/accounts",
         json={
-            "name": "Some Old Expense",
-            "account_number": "6960",
-            "account_type": "expense",
+            "name": "Old Reserve",
+            "account_number": "3400",
+            "account_type": "equity",
         },
     )
     assert r.status_code in (200, 201), r.text
@@ -177,8 +177,9 @@ def test_setup_accounts_is_idempotent_and_yields_taken_numbers(client, seed_acco
     by_name = {a["name"]: a for a in first.json()}
     assert by_name["Net Assets Without Donor Restrictions"]["account_number"] == "3300"
     assert by_name["Net Assets With Donor Restrictions"]["account_type"] == "equity"
+    assert by_name["Net Assets With Donor Restrictions"]["account_number"] is None
     assert by_name["In-Kind Contributions"]["account_number"] == "4400"
-    assert by_name["Bad Debt Expense"]["account_number"] is None  # 6960 was taken
+    assert by_name["Bad Debt Expense"]["account_number"] == "6960"  # seeded
     assert all(a["is_system"] for a in first.json())
 
     second = client.post("/api/nonprofit/setup-accounts")
@@ -238,7 +239,8 @@ def test_route_labels_are_rewritten_at_boot():
 
 def test_pdf_templates_use_terms_for_document_names():
     inv = (ROOT / "app/templates/invoice_pdf.html").read_text()
-    assert "terms('Invoice')" in inv and "terms('Sales Receipt')" in inv
+    # the printed face is literal by design: the doc kind decides it
+    assert "doc_kind" in inv and "terms('Invoice')" not in inv
     stmt = (ROOT / "app/templates/statement_pdf.html").read_text()
     assert "terms('Total Invoiced')" in stmt
 
@@ -296,10 +298,10 @@ def test_invoice_and_receipt_pdfs_are_named_in_the_company_words(
     r = client.get(f"/api/invoices/{inv_id}/pdf")
     assert r.content[:5] == b"%PDF-"
     assert (
-        f"Donation_{sr.json()['invoice']['invoice_number']}.pdf"
+        f"DonationReceipt_{sr.json()['invoice']['invoice_number']}.pdf"
         in r.headers["content-disposition"]
     )
     preview = client.get(f"/api/invoices/{inv_id}/print-preview").text
-    assert "DONATION" in preview and "SALES RECEIPT" not in preview
+    assert "DONATION RECEIPT" in preview and "SALES RECEIPT" not in preview
     stmt = client.get(f"/api/reports/customer-statement/{seed_customer.id}/pdf")
     assert stmt.status_code == 200 and stmt.content[:5] == b"%PDF-"

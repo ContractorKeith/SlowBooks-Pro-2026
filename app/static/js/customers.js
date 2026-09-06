@@ -295,6 +295,16 @@ const CustomersPage = {
                         <input name="tax_id" value="${escapeHtml(c.tax_id || '')}"></div>
                     <div class="form-group"><label>Credit Limit</label>
                         <input name="credit_limit" type="number" step="0.01" value="${c.credit_limit || ''}"></div>
+                    ${Terms.isNonprofit() ? `
+                    <div class="form-group"><label>${T('Customer')} type</label>
+                        <select name="donor_type">
+                            <option value="" ${!c.donor_type ? 'selected' : ''}>—</option>
+                            <option value="individual" ${c.donor_type === 'individual' ? 'selected' : ''}>Individual</option>
+                            <option value="organization" ${c.donor_type === 'organization' ? 'selected' : ''}>Organization / foundation</option>
+                        </select></div>
+                    <div class="form-group"><label>Salutation (letters)</label>
+                        <input name="salutation" maxlength="100" placeholder="e.g. Dear Maria" value="${escapeHtml(c.salutation || '')}"></div>
+                    <div class="form-group full-width"><label style="font-weight:normal;"><input type="checkbox" name="send_year_end_statement" ${c.send_year_end_statement === false ? '' : 'checked'}> Send the year-end giving statement</label></div>` : ''}
                     <div class="form-group full-width"><label>Notes</label>
                         <textarea name="notes">${escapeHtml(c.notes || '')}</textarea></div>
                 </div>
@@ -311,6 +321,8 @@ const CustomersPage = {
         const data = Object.fromEntries(form.entries());
         if (data.credit_limit) data.credit_limit = parseFloat(data.credit_limit);
         else delete data.credit_limit;
+        if (e.target.send_year_end_statement) data.send_year_end_statement = e.target.send_year_end_statement.checked;
+        if ('donor_type' in data && !data.donor_type) data.donor_type = null;
 
         try {
             if (id) {

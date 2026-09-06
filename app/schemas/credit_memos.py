@@ -70,6 +70,7 @@ class CreditMemoResponse(BaseModel):
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None
+    is_write_off: bool = False
     lines: list[CreditMemoLineResponse] = []
     created_at: Optional[datetime] = None
     model_config = {"from_attributes": True}
