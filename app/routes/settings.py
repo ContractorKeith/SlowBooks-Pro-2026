@@ -151,6 +151,25 @@ def update_settings(
         db,
         {k: v for k, v in data.model_dump().items() if k in DEFAULT_SETTINGS},
     )
+    incoming = data.model_dump()
+    if incoming.get("company_name"):
+        from app.services.company_service import (
+            _current_company_file,
+            company_name_taken_by,
+        )
+
+        other = company_name_taken_by(
+            incoming["company_name"], exclude_file=_current_company_file()
+        )
+        if other:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Another company file ({other}) is already named "
+                    f"'{incoming['company_name'].strip()}'. Choose a name that "
+                    "tells the two apart."
+                ),
+            )
     for key, value in data.model_dump().items():
         if key not in DEFAULT_SETTINGS:
             continue
@@ -164,7 +183,6 @@ def update_settings(
             continue
         set_setting(db, key, str(value) if value is not None else "")
     db.commit()
-    incoming = data.model_dump()
     if "company_name" in incoming:
         from app.services.company_service import sync_manifest_name
 

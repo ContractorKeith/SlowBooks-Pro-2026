@@ -148,6 +148,25 @@ def setup(
             detail="Password already set — use /login",
         )
 
+    if payload.company_name:
+        from app.services.company_service import (
+            _current_company_file,
+            company_name_taken_by,
+        )
+
+        other = company_name_taken_by(
+            payload.company_name, exclude_file=_current_company_file()
+        )
+        if other:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Another company file ({other}) is already named "
+                    f"'{payload.company_name.strip()}'. Choose a name that "
+                    "tells the two apart."
+                ),
+            )
+
     # Persist any non-blank settings the user provided. set_password() will
     # commit at the end, so all writes land in a single transaction.
     payload_dict = payload.model_dump()

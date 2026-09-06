@@ -210,6 +210,20 @@ def sync_manifest_name(company_name: str | None) -> bool:
     current = _current_company_file()
     if not name or not current:
         return False
+    other = company_name_taken_by(name, exclude_file=current)
+    if other:
+        # Never emit a duplicate: two files with one name make is_current —
+        # the only signal a client has for which company it reached —
+        # ambiguous, and a harness guard matching on the name passed
+        # against the wrong file (2.9.0 gate, round 4). Creation already
+        # refuses the collision; reconciliation must not sneak past it.
+        logger.warning(
+            "Not renaming manifest entry %s to %r: %s already uses that name",
+            current,
+            name,
+            other,
+        )
+        return False
     manifest = _read_manifest()
     changed = False
     for entry in manifest["companies"]:
@@ -219,6 +233,27 @@ def sync_manifest_name(company_name: str | None) -> bool:
     if changed:
         _write_manifest(manifest)
     return changed
+
+
+def company_name_taken_by(name: str, exclude_file: str | None = None) -> str | None:
+    """The manifest file (other than ``exclude_file``) that already carries
+    ``name`` — by the same rule creation uses (the derived filename) or a
+    case-insensitive name match — or None. SQLite mode only."""
+    if not _is_sqlite():
+        return None
+    name = (name or "").strip()
+    if not name:
+        return None
+    wanted_file = company_filename_for(name)
+    for entry in _read_manifest()["companies"]:
+        file = entry.get("file") or ""
+        if exclude_file and file == exclude_file:
+            continue
+        if (entry.get("name") or "").strip().lower() == name.lower():
+            return file
+        if wanted_file and file == wanted_file:
+            return file
+    return None
 
 
 def get_last_opened() -> str | None:

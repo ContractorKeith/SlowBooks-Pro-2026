@@ -111,6 +111,10 @@ says whose books they are and prefills the name, and the company name in
 Settings keeps the manifest (the picker's name) in step so the two can no
 longer diverge; the Windows installer clears `_internal` before an upgrade
 so stale package metadata from earlier builds no longer ships.
+Round 4 closed the loop on the name reconciliation itself: two company files
+can never end up with one name — renaming a company (in Settings or in
+first-run setup) to a name another file already carries is refused with the
+file named, the same rule creating a company has always applied.
 
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 

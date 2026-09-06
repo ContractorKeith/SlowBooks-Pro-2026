@@ -503,3 +503,91 @@ def test_settings_company_name_updates_manifest(client, tmp_path, monkeypatch):
         }
     )
     assert client.get("/api/companies").json()[0]["name"] == "New Name LLC"
+
+
+# ---- Round 4: reconciliation must never create two files with one name ----
+
+
+def _two_company_manifest(tmp_path, monkeypatch, current="qa-host.db"):
+    from app.services import company_service
+
+    data = tmp_path / "data"
+    monkeypatch.setenv("SLOWBOOKS_DATA_DIR", str(data))
+    monkeypatch.setattr(
+        company_service,
+        "DATABASE_URL",
+        "sqlite:///" + str(data / "companies" / current),
+    )
+    company_service._write_manifest(
+        {
+            "companies": [
+                {"name": "QA Host", "file": "qa-host.db"},
+                {"name": "NEONpulse Techshop", "file": "neonpulse-techshop.db"},
+            ],
+            "last_opened": current,
+        }
+    )
+    return data
+
+
+def test_sync_refuses_a_name_another_file_already_uses(tmp_path, monkeypatch, caplog):
+    import json
+    import logging
+
+    from app.services.company_service import sync_manifest_name
+
+    data = _two_company_manifest(tmp_path, monkeypatch)
+    with caplog.at_level(logging.WARNING, logger="app.services.company_service"):
+        assert sync_manifest_name("NEONpulse Techshop") is False
+        assert sync_manifest_name("neonpulse techshop") is False  # case-insensitive
+    names = [
+        c["name"]
+        for c in json.loads((data / "companies.json").read_text())["companies"]
+    ]
+    assert names == ["QA Host", "NEONpulse Techshop"]
+    assert "already uses that name" in caplog.text
+    # its own current name, or a genuinely new one, is fine
+    assert sync_manifest_name("QA Host") is False
+    assert sync_manifest_name("QA Host 2") is True
+
+
+def test_settings_rename_to_another_files_name_is_409(client, tmp_path, monkeypatch):
+    import json
+
+    data = _two_company_manifest(tmp_path, monkeypatch)
+    r = client.put("/api/settings", json={"company_name": "NEONpulse Techshop"})
+    assert r.status_code == 409, r.text
+    assert "neonpulse-techshop.db" in r.json()["detail"]
+    assert client.get("/api/settings").json()["company_name"] != "NEONpulse Techshop"
+    names = [
+        c["name"]
+        for c in json.loads((data / "companies.json").read_text())["companies"]
+    ]
+    assert names == ["QA Host", "NEONpulse Techshop"]
+    # renaming to something unique still works and follows through
+    assert (
+        client.put("/api/settings", json={"company_name": "QA Host Books"}).status_code
+        == 200
+    )
+    names = [
+        c["name"]
+        for c in json.loads((data / "companies.json").read_text())["companies"]
+    ]
+    assert names == ["QA Host Books", "NEONpulse Techshop"]
+
+
+def test_setup_with_another_files_name_is_409_and_writes_nothing(
+    unauthed_client, tmp_path, monkeypatch
+):
+    _two_company_manifest(tmp_path, monkeypatch)
+    r = unauthed_client.post(
+        "/api/auth/setup",
+        json={
+            "operator_name": "T",
+            "operator_email": "t@example.com",
+            "company_name": "NEONpulse Techshop",
+            "password": "test-password-123",
+        },
+    )
+    assert r.status_code == 409, r.text
+    assert unauthed_client.get("/api/auth/status").json()["setup_needed"] is True
