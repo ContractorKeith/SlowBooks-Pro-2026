@@ -7,7 +7,69 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
-_Nothing yet._
+### v2.9.0 — Nonprofit mode
+
+**A nonprofit sees its own words in the first minute.** Settings → Company
+Type → Nonprofit swaps the vocabulary everywhere it shows: Customer → Donor,
+Invoice → Pledge, Sales Receipt → Donation, Class → Fund, Job → Grant, Profit
+& Loss → Statement of Activities, Balance Sheet → Statement of Financial
+Position, Equity → Net Assets. One dictionary, applied at render, on screens,
+in report titles, in PDF filenames and on the dashboard; nothing in the API
+or the database changes name, and a business file renders exactly what it
+did before. Printed documents are literal, not vocabulary: a donation prints
+as DONATION RECEIPT, a pledge as PLEDGE, a program fee still as INVOICE.
+
+**Net assets by restriction, without a closing entry.** A class is a fund
+with a restriction (without / with donor restrictions, purpose or permanent)
+and a default function. When a restricted fund spends for its purpose, a
+**Release from Restriction** moves that much to net assets without donor
+restrictions — one document, DR 3400 / CR 3300 tagged to the fund, with the
+amount suggested from the fund's unreleased spending. The **Statement of
+Financial Position** splits the change in net assets by restriction at
+report time, the way the balance sheet already synthesizes net income, so
+the two net-asset lines always add up to the balance sheet's equity; the
+**Statement of Activities** shows revenue and expenses in two columns with
+releases between them and its change in net assets is the P&L net income;
+**Fund Balances** shows each restricted fund's beginning, contributions,
+spending, releases, ending and unreleased. P&L by Class now groups on the
+line's class first (a bill with three line classes and a blank header used
+to land whole in Uncategorized), and every void reverses with job, class,
+cost code and function carried.
+
+**Every expense knows its function.** Posted lines carry program /
+management / fundraising, defaulted from the fund. Shared costs — rent, the
+office manager's wages — are posted unassigned and divided by a saved
+**allocation rule** (percent, square feet, or hours on grants), either with
+**Split** on the entry line or as a month-end **Functional Allocation** that
+reclasses whatever is still unassigned on the rule's source account without
+moving the P&L by a cent; running a month twice finds nothing to move. The
+**Statement of Functional Expenses** puts every expense account in Form 990
+Part IX columns, with the program-by-program breakout, as PDF and CSV.
+
+**Donor documents.** A donation receipt prints the IRS Publication 1771
+acknowledgment — the date, the amount, and either "no goods or services were
+provided" or the fair value of the gala dinner with the deductible portion.
+Every gift gets an **acknowledgment letter** (PDF and email) worded by the
+editable `donation_acknowledgment` template with `{{ irs.text }}` supplied.
+**In-kind gifts** are their own two-sided document (the piano to Musical
+Instruments, the credit to In-Kind Contributions) acknowledged without a
+stated value. **Year-end giving statements** list every cash gift with the
+deductible portion and non-cash gifts without amounts — one donor, every
+donor in one PDF with a page break each, or emailed to everyone who has not
+opted out. The **pledge report** reads promised, invoiced, received, written
+off and outstanding off recurring pledges and their installments (generated
+invoices now remember their template and carry its grant), and a pledge that
+will never be paid is **written off** through a credit memo to Bad Debt
+Expense — credit memos gained the void they never had, which is also the
+undo.
+
+**Riverbend Community Arts.** The stage's acceptance test is a seeded
+nonprofit year — a grant, an endowment, a gala, pledgers, a piano, rent
+split 70/20/10, a June release — driven entirely through the API with scoped
+tokens the way a bring-your-own-AI agent would, checking that every
+statement reconciles to the cent and that a readonly agent cannot write.
+Design notes: [docs/design/nonprofit.md](docs/design/nonprofit.md); user
+guide: [docs/nonprofit-module.md](docs/nonprofit-module.md).
 
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 

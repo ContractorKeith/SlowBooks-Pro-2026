@@ -68,6 +68,20 @@ Tax calculations are approximate — verify with a tax professional. Full module
 - **Customer Statements** — PDF statement with invoice/payment history and running balance
 - **Schedule C (Tax)** — Generate Schedule C data from P&L with configurable account-to-tax-line mappings. Export as CSV
 
+## Nonprofit mode
+- **One switch** — Settings → Company Type → Nonprofit swaps the vocabulary (Donor, Pledge, Donation, Fund, Grant, Statement of Activities / Financial Position, Net Assets) on screens, report titles, PDF names and the dashboard; the API and database never change name. Printed faces are literal: Donation Receipt / Pledge / Invoice by the document, not the setting
+- **Funds** — a class carries a restriction (without / with donor restrictions, purpose or permanent), a default function, donor and purpose; the untagged bucket is always unrestricted
+- **Release from Restriction** — DR Net Assets With / CR Net Assets Without, tagged to the fund; amount suggested from the fund's unreleased spending; voidable
+- **Function on every posted line** — program / management / fundraising, defaulted from the fund; explicit "Unassigned" for shared costs
+- **Allocation rules** — percent, square feet or hours on grants, across funds and/or functions; Split on a bill or journal line at entry; a period-end Functional Allocation reclasses what is still unassigned (same account, P&L unchanged, idempotent per period, voidable)
+- **Statements** — Statement of Activities (two columns by restriction, releases between), Statement of Financial Position (net assets by restriction, no closing entry needed), Fund Balances, Statement of Functional Expenses (Form 990 Part IX columns + program breakout), Pledge Report — each JSON, PDF and CSV, each reconciling to the P&L / balance sheet to the cent
+- **Donation receipt** — IRS Pub. 1771 block: no goods or services, or the fair value of what was and the deductible portion
+- **Acknowledgment letters** — PDF and email for donations, pledge payments, unapplied gifts and in-kind gifts, worded by the editable `donation_acknowledgment` email template
+- **In-kind gifts** — two-sided document (asset/expense ↔ In-Kind Contributions), acknowledged without a value
+- **Year-end giving statements** — per donor, all donors in one PDF, or batch email honouring each donor's opt-out
+- **Pledges** — recurring pledges and their installments (generated invoices link to their template and carry its grant), one-off pledges, write-off to Bad Debt Expense through a credit memo; credit memo void
+- Guide: [nonprofit-module.md](nonprofit-module.md); design: [design/nonprofit.md](design/nonprofit.md)
+
 ## Dashboard
 - Company Snapshot with Total Receivables, Overdue Invoices, Active Customers, Total Payables
 - **AR Aging Bar Chart** — Color-coded stacked bar (Current/30/60/90+ days)
@@ -499,6 +513,20 @@ All payroll, HR, tax-form, and self-service portal endpoints are documented with
 | `/api/reports/income-by-customer` | GET | Sales totals per customer |
 | `/api/tax/schedule-c` | GET | Schedule C data from P&L |
 | `/api/tax/schedule-c/csv` | GET | Schedule C CSV export |
+| `/api/reports/statement-of-activities` (+`/pdf`, `/csv`) | GET | Nonprofit: revenue, releases, expenses by restriction |
+| `/api/reports/statement-of-financial-position` (+`/pdf`, `/csv`) | GET | Nonprofit: net assets with / without donor restrictions |
+| `/api/reports/fund-balances` (+`/pdf`, `/csv`) | GET | Nonprofit: per restricted fund |
+| `/api/reports/functional-expenses` (+`/pdf`, `/csv`) | GET | Nonprofit: Form 990 Part IX columns |
+| `/api/reports/pledges` (+`/pdf`, `/csv`) | GET | Nonprofit: promised / received / written off / outstanding |
+| `/api/nonprofit/setup-accounts` | POST | Create the net-asset, in-kind and bad-debt accounts if missing |
+| `/api/nonprofit/releases` (+`/suggest`, `/{id}/void`) | GET, POST | Release from restriction |
+| `/api/nonprofit/allocation-rules` (+`/{id}/split`, `/{id}/preview`) | GET, POST, PUT, DELETE | Saved shared-cost rules |
+| `/api/nonprofit/allocations` (+`/{id}/void`) | GET, POST | Period-end functional allocation runs |
+| `/api/in-kind-gifts` (+`/{id}/void`) | GET, POST | In-kind gift documents |
+| `/api/donors/gifts/{kind}/{id}/acknowledgment/{preview,pdf,email}` | GET, POST | Acknowledgment letters |
+| `/api/donors/{id}/giving-statement/pdf`, `/api/donors/giving-statements/{pdf,batch-email}` | GET, POST | Year-end giving statements |
+| `/api/invoices/{id}/write-off` | POST | Write an open balance off to Bad Debt Expense |
+| `/api/credit-memos/{id}/void` | POST | Void a credit memo (unwinds applications) |
 
 ### Import/Export
 | Endpoint | Methods | Description |

@@ -1,7 +1,43 @@
 # Nonprofit mode — design
 
-Status: **DESIGN** (2026-09-04, parked on `feat/nonprofit`). Nothing here is
-product behavior yet. Sized as a v2.9 candidate next to the kiosk.
+Status: **SHIPPED** in v2.9.0 (2026-09-06, `feat/nonprofit`). User guide:
+[../nonprofit-module.md](../nonprofit-module.md).
+
+## Shipped vs designed
+
+- **One `company_type` setting** (business | nonprofit) gates vocabulary, nav
+  items, reports and the on-demand accounts — not a separate terminology key.
+- **Job → Grant** in the vocabulary (the design said programs are classes;
+  Customer:Job maps one-to-one onto Funder:Grant). **Estimate kept** — a
+  nonprofit still quotes hall rentals and class fees.
+- **Printed faces are literal, not vocabulary**: DONATION RECEIPT / PLEDGE /
+  INVOICE by the document's flags, so a program fee never prints as a pledge.
+- **In-kind income is 4400**, not 4300 — the seed chart already had 4300
+  Labor Income.
+- **No year-end close** was built; the Statement of Financial Position
+  splits the change in net assets by restriction at report time, the way the
+  balance sheet already synthesizes net income. Expenses always report
+  "without" (ASU 2016-14), so the release-by-expense default and the fund
+  balances never double count.
+- **Functional allocation is a same-account reclass**, not an applied-cost
+  offset like job allocations: the Statement of Functional Expenses needs
+  natural-account rows, and a pool of only-unassigned lines makes a run
+  idempotent per period. Rules split at entry (Split) and at month end.
+- **Hours basis needs a job on each target** (time entries carry jobs, not
+  classes).
+- **Payroll posts unassigned**; a rule on the wages account allocates it.
+- **Write-off is a credit memo** flagged `is_write_off` (DR 6960 / CR A/R,
+  applied at once) so the subledger stays consistent; credit memo void was
+  added and is the undo.
+- **Download-all giving statements is one combined PDF** with a page break
+  per donor, not a zip.
+- **An unapplied payment is a donor credit on A/R**, not revenue, until it
+  meets a pledge; a gift with no pledge is entered as a Donation.
+- **Form 990 Part IX**: the CSV ships in column order; the row mapping to
+  Part IX line numbers is a follow-up.
+- Fixed on the way: P&L by Class grouped on the header class only; voids
+  dropped job / class / cost code on the reversal; recurring generation
+  dropped the template's job and did not link the invoice to its template.
 
 ## Why
 

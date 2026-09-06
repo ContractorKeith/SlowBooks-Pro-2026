@@ -51,6 +51,18 @@ Details, known gaps and how to report a barrier:
 
 ## What's New
 
+**v2.9 — Nonprofit mode.** One switch in Settings and a church, a club, a
+PTO or a community arts group sees its own words — donors, pledges,
+donations, funds, grants — and gets the documents every treasurer and
+auditor asks for: net assets by restriction with a release-from-restriction
+document, the Statement of Activities and Statement of Financial Position,
+fund balances, a Statement of Functional Expenses fed by allocation rules
+that split rent and wages across program / management / fundraising, donor
+acknowledgments with the IRS language, in-kind gifts, pledge tracking with
+write-offs, and year-end giving statements. Everything reconciles to the
+P&L and balance sheet to the cent. Guide:
+[docs/nonprofit-module.md](docs/nonprofit-module.md).
+
 **v2.7 — Jobs, job costing, and receipt intake.** QuickBooks-style
 Customer:Job on every form and every posted line, nested cost codes with
 cost types and burden, Job Cost Entries for labor / equipment / mileage /
@@ -165,6 +177,9 @@ Full catalog (300+ entries) in **[docs/features.md](docs/features.md)**. Highlig
   Sage 50 / Wave / Zoho Books / GnuCash, Opening Balances wizard
 - **Fixed assets** — register, depreciation runs, disposal with
   gain/loss, reconciliation report
+- **Nonprofit mode** — funds with restrictions, releases, functional
+  expenses, donor acknowledgments, giving statements, pledges
+  ([docs/nonprofit-module.md](docs/nonprofit-module.md))
 - **Duplicate detection** — fuzzy customer/vendor matching at create time
 
 ![Company Snapshot in light and dark themes](screenshots/hero-themes.png)

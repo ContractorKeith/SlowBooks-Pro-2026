@@ -1,4 +1,15 @@
 {
+  "2.9.0": {
+    "title": "Nonprofit mode",
+    "items": [
+      "Company Type → Nonprofit: donors, pledges, donations, funds and grants on every screen; the data never changes name",
+      "Funds with donor restrictions, a Release from Restriction document, Statement of Activities and Statement of Financial Position, fund balances",
+      "Program / management / fundraising on every expense, allocation rules with Split and month-end runs, Statement of Functional Expenses (Form 990 Part IX)",
+      "Donation receipts and acknowledgment letters with the IRS language; in-kind gifts; year-end giving statements",
+      "Pledge report over recurring pledges; write-offs to Bad Debt Expense; credit memos can be voided",
+      "P&L by Class groups on the line's class; voids carry every dimension"
+    ]
+  },
   "2.8.0": {
     "title": "Benefits, all-state payroll, and an overview you can arrange",
     "items": [
