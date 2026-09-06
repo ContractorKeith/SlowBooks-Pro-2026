@@ -121,7 +121,8 @@ def _read_manifest() -> dict:
     if not path.exists():
         return {"companies": [], "last_opened": None}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig: a manifest saved by Notepad or PowerShell carries a BOM
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         logger.exception("Could not read company manifest %s", path)
         return {"companies": [], "last_opened": None}
