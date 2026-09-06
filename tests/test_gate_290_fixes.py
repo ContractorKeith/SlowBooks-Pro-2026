@@ -668,3 +668,59 @@ def test_postgres_company_list_reports_is_current(monkeypatch, db_session):
     rows = company_service.list_companies(db_session)
     current = [r for r in rows if r["is_current"]]
     assert len(current) == 1 and current[0]["database_name"] == "bookkeeper"
+
+
+# ---- Linux gate: `docker compose up` must start as documented -------------
+
+
+def _prod_postgres(monkeypatch, url="postgresql://u:p@postgres:5432/db"):
+    import app.config as cfg
+
+    monkeypatch.setattr(cfg, "DATABASE_URL", url)
+    monkeypatch.setattr(
+        cfg, "PAYROLL_ENCRYPTION_SECRET", "a-real-secret-not-the-dev-one"
+    )
+    monkeypatch.setattr(cfg, "APP_DEBUG", False)
+
+
+def test_production_guard_refuses_plaintext_db_without_the_flag(monkeypatch):
+    import app.main as m
+
+    _prod_postgres(monkeypatch)
+    monkeypatch.delenv("SLOWBOOKS_PRIVATE_NETWORK", raising=False)
+    with pytest.raises(RuntimeError, match="TLS mode"):
+        m._run_startup_security_checks()
+
+
+def test_private_network_flag_relaxes_only_the_transport_guards(monkeypatch, caplog):
+    import logging
+
+    import app.main as m
+
+    _prod_postgres(monkeypatch)
+    monkeypatch.setenv("SLOWBOOKS_PRIVATE_NETWORK", "1")
+    monkeypatch.setattr(m, "FORCE_HTTPS", False)
+    monkeypatch.setattr(m.Base.metadata, "create_all", lambda **kw: None)
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        m._run_startup_security_checks()  # the compose case: plain http, bridge-network db
+    assert "SLOWBOOKS_PRIVATE_NETWORK=1" in caplog.text
+
+    # the encryption-key guards are never relaxed
+    import app.config as cfg
+
+    monkeypatch.setattr(
+        cfg, "PAYROLL_ENCRYPTION_SECRET", "slowbooks-dev-payroll-key-change-me"
+    )
+    with pytest.raises(RuntimeError, match="dev default"):
+        m._run_startup_security_checks()
+
+
+def test_compose_file_declares_the_single_host_flag():
+    import yaml
+
+    compose = yaml.safe_load(open("docker-compose.yml"))
+    env = compose["services"]["slowbooks"]["environment"]
+    assert env["SLOWBOOKS_PRIVATE_NETWORK"].startswith(
+        "${SLOWBOOKS_PRIVATE_NETWORK:-1}"
+    )
+    assert env["FORCE_HTTPS"].startswith("${FORCE_HTTPS:-false}")

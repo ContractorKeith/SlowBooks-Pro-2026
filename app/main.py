@@ -9,6 +9,7 @@
 # want to print invoices.
 # ============================================================================
 
+import logging
 import os
 import re as _re
 import time as _time
@@ -164,6 +165,25 @@ def _run_startup_security_checks():
                 "All employee bank account data would be decryptable by anyone with the source code. "
                 "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
             )
+
+        # The single-host install: `docker compose up` puts Postgres on the
+        # compose-internal bridge and serves the app on http://localhost.
+        # Both transport guards below are about traffic leaving the host,
+        # which that traffic never does — but the guards fired anyway, and
+        # the documented Docker path has refused to start since they landed
+        # (2.9.0 Linux gate). docker-compose.yml sets this flag and says so;
+        # anyone exposing the stack beyond the host puts a TLS proxy in
+        # front (docs/tls-proxy-setup.md), sets FORCE_HTTPS=true and drops
+        # the flag. The encryption-key guards above are never relaxed.
+        if os.environ.get("SLOWBOOKS_PRIVATE_NETWORK") == "1":
+            logging.getLogger("app.main").warning(
+                "SLOWBOOKS_PRIVATE_NETWORK=1: serving plain HTTP and a "
+                "non-TLS database connection on the assumption that neither "
+                "leaves this host. Do not expose this instance beyond the "
+                "host without a TLS proxy (docs/tls-proxy-setup.md)."
+            )
+            Base.metadata.create_all(bind=engine)
+            return
 
         if not DATABASE_URL.startswith("sqlite"):
             if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():

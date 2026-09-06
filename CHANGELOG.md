@@ -123,6 +123,14 @@ that reference, a test walks the migrated schema for any foreign key whose
 target no migration creates, and under PostgreSQL the company list flags
 the database the server is connected to as current so an agent can tell
 which books it reached.
+Behind that lay an older one: the production guards that demand a TLS
+database connection and an HTTPS redirect refused the compose stack's own
+plaintext bridge-network URL, so the documented one-command install had not
+started since those guards landed in v2.1. The compose file now declares
+`SLOWBOOKS_PRIVATE_NETWORK=1`, which relaxes exactly those two transport
+checks with a logged warning and nothing else; the encryption-key guards are
+never relaxed, and the install guide says what to change before exposing
+the stack beyond the host.
 
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 

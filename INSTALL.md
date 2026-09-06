@@ -117,6 +117,14 @@ docker compose up
 
 Open **http://localhost:3001** in your browser.
 
+> The compose stack is a **single-host** install: Postgres lives on the
+> compose-internal network and the app serves plain HTTP on localhost, so
+> `docker-compose.yml` sets `SLOWBOOKS_PRIVATE_NETWORK=1` to relax the two
+> production transport guards (database TLS, HTTPS redirect). Before you
+> expose it beyond the host, put a TLS proxy in front
+> ([docs/tls-proxy-setup.md](docs/tls-proxy-setup.md)), set `FORCE_HTTPS=true`,
+> add `?sslmode=require` to `DATABASE_URL`, and unset that flag.
+
 > On Windows, **Option 0** avoids all of this (no Docker at all, secret
 > generated for you, opens a desktop window) — prefer it unless you
 > specifically want a multi-user Docker + PostgreSQL server.
@@ -193,6 +201,11 @@ sudo apt install -y postgresql python3-venv libcairo2-dev libpango-1.0-0 \
 # Optional — receipt scanning (Tier 2 OCR). The feature degrades
 # gracefully without these; the Scan Receipt button just stays disabled.
 sudo apt install -y tesseract-ocr poppler-utils
+# Only if you want the desktop window (python3 desktop_launcher.py) rather
+# than a browser: pywebview renders through WebKitGTK and needs the
+# GObject-introspection typelib, which is a separate package from the
+# library itself.
+sudo apt install -y gir1.2-webkit2-4.1
 
 # Create database
 sudo -u postgres createuser bookkeeper -P    # password: bookkeeper
