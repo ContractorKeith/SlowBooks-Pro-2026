@@ -217,7 +217,7 @@ const DashboardPage = {
         },
         pnl_month(d) {
             const row = (m) => `<tr><td>${escapeHtml(m.label)}</td><td class="amount">${formatCurrency(m.income)}</td><td class="amount">${formatCurrency(m.expenses)}</td><td class="amount" style="font-weight:700;color:${m.net < 0 ? '#a4242b' : '#1f7a36'}">${formatCurrency(m.net)}</td></tr>`;
-            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col"></th><th scope="col" class="amount">Income</th><th scope="col" class="amount">Expenses</th><th scope="col" class="amount">Net</th></tr></thead>
+            return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col"></th><th scope="col" class="amount">${T('Income')}</th><th scope="col" class="amount">Expenses</th><th scope="col" class="amount">Net</th></tr></thead>
                 <tbody>${row(d.this_month)}${row(d.last_month)}</tbody></table>
                 <div style="font-size:11px;margin-top:4px;color:${d.net_change < 0 ? '#a4242b' : '#1f7a36'}">${d.net_change >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(d.net_change))} vs last month · <a href="#/reports">Full P&L</a></div>`;
         },

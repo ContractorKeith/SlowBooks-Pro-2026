@@ -289,7 +289,7 @@ async function classFormGroupHtml(selectedId) {
     const opts = classes.map(c =>
         `<option value="${c.id}" ${selectedId ? (c.id === selectedId ? 'selected' : '') : (c.is_system_default ? 'selected' : '')}>${escapeHtml(c.name)}</option>`
     ).join('');
-    return `<div class="form-group"><label>Class</label>
+    return `<div class="form-group"><label>${T('Class')}</label>
         <select name="class_id">${opts}</select></div>`;
 }
 

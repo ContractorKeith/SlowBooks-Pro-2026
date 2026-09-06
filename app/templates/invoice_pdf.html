@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Invoice</title>
+    <title>{% if inv.is_sales_receipt %}{{ terms('Sales Receipt') }}{% else %}{{ terms('Invoice') }}{% endif %}</title>
 <style>
     @page { size: letter; margin: 0.6in 0.75in; }
     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #1a1a2e; line-height: 1.4; }
@@ -47,7 +47,7 @@
             </div>
         </div>
         <div class="invoice-title">
-            <h1>{% if inv.is_sales_receipt %}SALES RECEIPT{% else %}INVOICE{% endif %}</h1>
+            <h1>{% if inv.is_sales_receipt %}{{ terms('Sales Receipt') | upper }}{% else %}{{ terms('Invoice') | upper }}{% endif %}</h1>
             <div class="invoice-number">#{{ inv.invoice_number }}</div>
         </div>
     </div>

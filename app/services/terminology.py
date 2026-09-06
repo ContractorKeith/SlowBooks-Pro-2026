@@ -51,6 +51,7 @@ NONPROFIT: dict[str, str] = {
     "Profit & Loss": "Statement of Activities",
     "P&L": "Activities",
     "P&L by Class": "Activities by Fund",
+    "P&L: This Month vs Last": "Activities: This Month vs Last",
     "Balance Sheet": "Statement of Financial Position",
     "Class": "Fund",
     "Classes": "Funds",

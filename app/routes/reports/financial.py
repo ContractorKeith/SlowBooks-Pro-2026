@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.accounts import Account, AccountType
 from app.models.transactions import Transaction, TransactionLine
 from app.routes.reports._router import router
+from app.services.terminology import Terms, terms_from_db
 
 # Debit-normal account types. For these, natural balance = debit - credit.
 # For the rest (liability, equity, income), natural balance = credit - debit.
@@ -580,10 +581,13 @@ def _money(value) -> str:
     return f"{sign}${abs(amount):,.2f}"
 
 
-def _pl_section(data: dict) -> dict:
+def _pl_section(data: dict, t=None) -> dict:
+    """P&L rows for the PDF; t (Terms) picks the company's words —
+    "Statement of Activities" / "Revenue & Support" for a nonprofit."""
+    t = t or Terms()
     rows = []
     for label, key, total_key in (
-        ("Income", "income", "total_income"),
+        (t("Income"), "income", "total_income"),
         ("Cost of Goods Sold", "cogs", "total_cogs"),
     ):
         rows.append({"cells": [label, ""], "style": "subtotal"})
@@ -607,22 +611,23 @@ def _pl_section(data: dict) -> dict:
         }
     )
     rows.append(
-        {"cells": ["Net Income", _money(data["net_income"])], "style": "grand-total"}
+        {"cells": [t("Net Income"), _money(data["net_income"])], "style": "grand-total"}
     )
     return {
-        "title": "Profit & Loss",
+        "title": t("Profit & Loss"),
         "period": f"{data['start_date']} — {data['end_date']}",
         "columns": ["", "Amount"],
         "rows": rows,
     }
 
 
-def _bs_section(data: dict) -> dict:
+def _bs_section(data: dict, t=None) -> dict:
+    t = t or Terms()
     rows = []
     for label, key, total_key in (
         ("Assets", "assets", "total_assets"),
         ("Liabilities", "liabilities", "total_liabilities"),
-        ("Equity", "equity", "total_equity"),
+        (t("Equity"), "equity", "total_equity"),
     ):
         rows.append({"cells": [label, ""], "style": "subtotal"})
         for item in data[key]:
@@ -635,14 +640,14 @@ def _bs_section(data: dict) -> dict:
     rows.append(
         {
             "cells": [
-                "Liabilities + Equity",
+                t("Liabilities + Equity"),
                 _money(data["total_liabilities"] + data["total_equity"]),
             ],
             "style": "grand-total",
         }
     )
     return {
-        "title": "Balance Sheet",
+        "title": t("Balance Sheet"),
         "period": f"As of {data['as_of_date']}",
         "columns": ["", "Amount"],
         "rows": rows,
@@ -698,7 +703,8 @@ def profit_loss_pdf(
     db: Session = Depends(get_db),
 ):
     data = profit_loss(start_date, end_date, db)
-    return _pdf_response([_pl_section(data)], db, "profit-loss.pdf")
+    t = terms_from_db(db)
+    return _pdf_response([_pl_section(data, t)], db, f"{t.slug('Profit & Loss')}.pdf")
 
 
 @router.get("/balance-sheet/pdf")
@@ -706,7 +712,8 @@ def balance_sheet_pdf(
     as_of_date: date = Query(default=None), db: Session = Depends(get_db)
 ):
     data = balance_sheet(as_of_date, db)
-    return _pdf_response([_bs_section(data)], db, "balance-sheet.pdf")
+    t = terms_from_db(db)
+    return _pdf_response([_bs_section(data, t)], db, f"{t.slug('Balance Sheet')}.pdf")
 
 
 @router.get("/financial-statements/pdf")
@@ -722,8 +729,9 @@ def financial_statements_pdf(
     tb = trial_balance(
         date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"]), db
     )
+    t = terms_from_db(db)
     return _pdf_response(
-        [_pl_section(pl), _bs_section(bs), _tb_section(tb)],
+        [_pl_section(pl, t), _bs_section(bs, t), _tb_section(tb)],
         db,
         "financial-statements.pdf",
     )

@@ -8,16 +8,16 @@ const SalesReceiptsPage = {
     async render() {
         const receipts = await API.get('/sales-receipts');
         return renderListPage({
-            title: 'Sales Receipts',
+            title: T('Sales Receipts'),
             headerHtml: `<button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()">+ New Sales Receipt</button>`,
             filter: {
                 id: 'sr-status-filter',
                 rowSelector: '.sr-row',
                 options: [['paid', 'Paid'], ['void', 'Void']],
             },
-            empty: `<p>No sales receipts yet. Use them for point-of-sale style sales where the customer pays on the spot.</p>
-                <button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()" style="margin-top:10px;">+ Enter your first sales receipt</button>`,
-            columns: ['Sale #', 'Customer', 'Date', 'Status',
+            empty: Terms.text(`<p>No sales receipts yet. Use them for point-of-sale style sales where the customer pays on the spot.</p>
+                <button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()" style="margin-top:10px;">+ Enter your first sales receipt</button>`),
+            columns: ['Sale #', T('Customer'), 'Date', 'Status',
                 { label: 'Total', cls: 'amount' }, 'Actions'],
             items: receipts,
             row: sr => `<tr class="sr-row" data-status="${sr.status}">

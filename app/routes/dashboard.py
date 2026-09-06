@@ -13,20 +13,24 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.dashboard_widgets import DEFAULT_LAYOUT, WIDGETS, build, catalog
+from app.services.dashboard_widgets import WIDGETS, build, catalog, default_layout
+from app.services.terminology import terms_from_db
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/widgets")
-def list_widgets():
-    return {"widgets": catalog(), "default_order": list(DEFAULT_LAYOUT)}
+def list_widgets(db: Session = Depends(get_db)):
+    t = terms_from_db(db)
+    return {"widgets": catalog(t), "default_order": default_layout(t)}
 
 
 @router.get("/data")
 def widget_data(ids: str = Query(default=""), db: Session = Depends(get_db)):
     """Data for the requested widget ids (comma-separated). Unknown ids are
     ignored; no ids means the default layout."""
-    wanted = [w.strip() for w in ids.split(",") if w.strip()] or list(DEFAULT_LAYOUT)
+    wanted = [w.strip() for w in ids.split(",") if w.strip()] or default_layout(
+        terms_from_db(db)
+    )
     wanted = [w for w in wanted if w in WIDGETS]
     return build(db, wanted)

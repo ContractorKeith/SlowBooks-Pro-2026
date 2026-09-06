@@ -483,9 +483,35 @@ DEFAULT_LAYOUT = [
 ]
 
 
-def catalog() -> list[dict]:
+# What a nonprofit sees first: pledges and donors, no purchase orders,
+# the grant (job) budget card on by default.
+NONPROFIT_DEFAULT_LAYOUT = [
+    "receivables",
+    "overdue_invoices",
+    "active_customers",
+    "bank_balances",
+    "monthly_revenue",
+    "recent_payments",
+    "pnl_month",
+    "cash_position",
+    "job_budget_vs_actual",
+]
+
+
+def default_layout(t=None) -> list[str]:
+    if t is not None and t.is_nonprofit:
+        return list(NONPROFIT_DEFAULT_LAYOUT)
+    return list(DEFAULT_LAYOUT)
+
+
+def catalog(t=None) -> list[dict]:
+    """The card catalog in the company's words (t = Terms; None = business)."""
+    if t is None:
+        from app.services.terminology import Terms
+
+        t = Terms()
     return [
-        {"id": wid, "title": title, "size": size, "description": desc}
+        {"id": wid, "title": t(title), "size": size, "description": t.text(desc)}
         for wid, (title, size, desc, _) in WIDGETS.items()
     ]
 

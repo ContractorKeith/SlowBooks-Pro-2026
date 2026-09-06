@@ -186,3 +186,120 @@ def test_setup_accounts_is_idempotent_and_yields_taken_numbers(client, seed_acco
     assert client.get("/api/accounts").status_code == 200
     names = [a["name"] for a in client.get("/api/accounts").json()]
     assert names.count("Bad Debt Expense") == 1
+
+
+# ---------------------------------------------------------------------------
+# Chokepoints: labels in these positions must go through T()
+# ---------------------------------------------------------------------------
+
+# Interop and form pages keep their own vocabulary on purpose: QuickBooks
+# words on the import screens, IRS words on the tax screens, workers-comp
+# "class code" on employees.
+LEAVE_ALONE = {
+    "iif.js",
+    "qbo.js",
+    "ocr.js",
+    "ocr_canvas.js",
+    "migration.js",
+    "tax.js",
+    "employees.js",
+    "companies.js",
+    "terms.js",
+}
+CHOKEPOINT_PATTERNS = [
+    # renderListPage({ title: 'Invoices' ... })
+    r"\btitle:\s*['\"][^'\"]*\b(Customers?|Invoices?|Sales Receipts?|Class(es)?|Jobs?)\b",
+    # Report Center cards and modal titles
+    r'<div class="card-header">[^<$]*\b(Customer|Profit & Loss|Balance Sheet|Class|Income|Jobs?)\b',
+    r"openPeriodModal\(\s*[\"'][^\"']*\b(Customer|Profit & Loss|Balance Sheet|Class|Job)\b",
+]
+
+
+def test_chokepoint_literals_go_through_T():
+    offenders = []
+    for f in sorted((ROOT / "app/static/js").glob("*.js")):
+        if f.name in LEAVE_ALONE:
+            continue
+        src = f.read_text()
+        for pat in CHOKEPOINT_PATTERNS:
+            for m in re.finditer(pat, src):
+                offenders.append(f"{f.name}: {m.group(0)[:70]}")
+    assert not offenders, offenders
+
+
+def test_route_labels_are_rewritten_at_boot():
+    app_js = (ROOT / "app/static/js/app.js").read_text()
+    labels = re.findall(r"label:\s*'([^']+)'", app_js)
+    business = [lb for lb in labels if BUSINESS_WORD.search(lb)]
+    assert business, "expected business-worded route labels to exist"
+    missing = [lb for lb in business if lb not in NONPROFIT]
+    assert not missing, missing
+
+
+def test_pdf_templates_use_terms_for_document_names():
+    inv = (ROOT / "app/templates/invoice_pdf.html").read_text()
+    assert "terms('Invoice')" in inv and "terms('Sales Receipt')" in inv
+    stmt = (ROOT / "app/templates/statement_pdf.html").read_text()
+    assert "terms('Total Invoiced')" in stmt
+
+
+# ---------------------------------------------------------------------------
+# Behavioural: the server speaks the company's words
+# ---------------------------------------------------------------------------
+
+
+def test_report_pdf_filenames_and_dashboard_follow_company_type(client, seed_accounts):
+    r = client.get(
+        "/api/reports/profit-loss/pdf?start_date=2026-01-01&end_date=2026-12-31"
+    )
+    assert 'filename="profit-loss.pdf"' in r.headers["content-disposition"]
+    widgets = client.get("/api/dashboard/widgets").json()
+    assert {w["id"]: w["title"] for w in widgets["widgets"]}[
+        "receivables"
+    ] == "Total Receivables"
+
+    client.put("/api/settings", json={"company_type": "nonprofit"})
+    r = client.get(
+        "/api/reports/profit-loss/pdf?start_date=2026-01-01&end_date=2026-12-31"
+    )
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+    assert 'filename="statement-of-activities.pdf"' in r.headers["content-disposition"]
+    r = client.get("/api/reports/balance-sheet/pdf?as_of_date=2026-12-31")
+    assert (
+        'filename="statement-of-financial-position.pdf"'
+        in r.headers["content-disposition"]
+    )
+    widgets = client.get("/api/dashboard/widgets").json()
+    titles = {w["id"]: w["title"] for w in widgets["widgets"]}
+    assert titles["receivables"] == "Pledges Receivable"
+    assert titles["active_customers"] == "Active Donors"
+    assert titles["pnl_month"].startswith("Activities:")
+    assert "open_pos" not in widgets["default_order"]
+    assert "job_budget_vs_actual" in widgets["default_order"]
+
+
+def test_invoice_and_receipt_pdfs_are_named_in_the_company_words(
+    client, seed_accounts, seed_customer
+):
+    client.put("/api/settings", json={"company_type": "nonprofit"})
+    sr = client.post(
+        "/api/sales-receipts",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-03-01",
+            "deposit_to_account_id": seed_accounts["1010"].id,
+            "lines": [{"description": "Gift", "quantity": 1, "rate": 100}],
+        },
+    )
+    assert sr.status_code in (200, 201), sr.text
+    inv_id = sr.json()["invoice"]["id"]
+    r = client.get(f"/api/invoices/{inv_id}/pdf")
+    assert r.content[:5] == b"%PDF-"
+    assert (
+        f"Donation_{sr.json()['invoice']['invoice_number']}.pdf"
+        in r.headers["content-disposition"]
+    )
+    preview = client.get(f"/api/invoices/{inv_id}/print-preview").text
+    assert "DONATION" in preview and "SALES RECEIPT" not in preview
+    stmt = client.get(f"/api/reports/customer-statement/{seed_customer.id}/pdf")
+    assert stmt.status_code == 200 and stmt.content[:5] == b"%PDF-"

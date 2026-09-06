@@ -9,16 +9,16 @@ const InvoicesPage = {
         // page, so keep them out of this list.
         const invoices = await API.get('/invoices?is_sales_receipt=false');
         return renderListPage({
-            title: 'Invoices',
+            title: T('Invoices'),
             headerHtml: `<button class="btn btn-primary" onclick="InvoicesPage.showForm()">+ New Invoice</button>`,
             filter: {
                 id: 'inv-status-filter',
                 rowSelector: '.inv-row',
                 options: [['draft', 'Draft'], ['sent', 'Sent'], ['partial', 'Partial'], ['paid', 'Paid'], ['void', 'Void']],
             },
-            empty: `<p>No invoices yet.</p>
-                <button class="btn btn-primary" onclick="InvoicesPage.showForm()" style="margin-top:10px;">+ Create your first invoice</button>`,
-            columns: ['#', 'Customer', 'Date', 'Due Date', 'Status',
+            empty: Terms.text(`<p>No invoices yet.</p>
+                <button class="btn btn-primary" onclick="InvoicesPage.showForm()" style="margin-top:10px;">+ Create your first invoice</button>`),
+            columns: ['#', T('Customer'), 'Date', 'Due Date', 'Status',
                 { label: 'Total', cls: 'amount' }, { label: 'Balance', cls: 'amount' }, 'Actions'],
             items: invoices,
             row: inv => `<tr class="inv-row" data-status="${inv.status}">

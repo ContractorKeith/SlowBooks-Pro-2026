@@ -112,11 +112,26 @@ def _format_date(value):
 _jinja_env.filters["currency"] = _format_currency
 _jinja_env.filters["fdate"] = _format_date
 
+# Templates may call terms('Invoice'); a direct render without company
+# settings gets the business words. _render() overrides this per call.
+from app.services.terminology import Terms as _Terms  # noqa: E402
+
+_jinja_env.globals["terms"] = _Terms()
+
+
+def _render(template_name: str, company_settings: dict, **context) -> str:
+    """Render a template with the company settings and its vocabulary
+    (``terms('Invoice')`` in a template reads Pledge for a nonprofit)."""
+    from app.services.terminology import terms_for
+
+    template = _jinja_env.get_template(template_name)
+    return template.render(
+        company=company_settings, terms=terms_for(company_settings), **context
+    )
+
 
 def generate_invoice_pdf(invoice, company_settings: dict) -> bytes:
-    template = _jinja_env.get_template("invoice_pdf.html")
-    html_str = template.render(inv=invoice, company=company_settings)
-    return render_pdf(html_str)
+    return render_pdf(_render("invoice_pdf.html", company_settings, inv=invoice))
 
 
 def generate_estimate_pdf(estimate, company_settings: dict) -> bytes:
@@ -128,12 +143,12 @@ def generate_estimate_pdf(estimate, company_settings: dict) -> bytes:
 def generate_statement_pdf(
     customer, invoices, payments, company_settings: dict, as_of_date=None
 ) -> bytes:
-    template = _jinja_env.get_template("statement_pdf.html")
-    html_str = template.render(
+    html_str = _render(
+        "statement_pdf.html",
+        company_settings,
         customer=customer,
         invoices=invoices,
         payments=payments,
-        company=company_settings,
         as_of_date=as_of_date,
     )
     return render_pdf(html_str)

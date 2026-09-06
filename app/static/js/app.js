@@ -156,8 +156,8 @@ const App = {
         }
 
         const typeOrder = ['asset', 'liability', 'equity', 'income', 'cogs', 'expense'];
-        const typeNames = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity',
-            income: 'Income', cogs: 'Cost of Goods Sold', expense: 'Expenses' };
+        const typeNames = { asset: 'Assets', liability: 'Liabilities', equity: T('Equity'),
+            income: T('Income'), cogs: 'Cost of Goods Sold', expense: 'Expenses' };
 
         let html = `
             <div class="page-header">
@@ -275,15 +275,15 @@ const App = {
                     <h3>Export</h3>
                     <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Download data as CSV files.</p>
                     <div style="display:flex; flex-direction:column; gap:8px;">
-                        <a href="/api/csv/export/customers" class="btn btn-secondary" download>Export Customers</a>
+                        <a href="/api/csv/export/customers" class="btn btn-secondary" download>Export ${T('Customers')}</a>
                         <a href="/api/csv/export/vendors" class="btn btn-secondary" download>Export Vendors</a>
                         <a href="/api/csv/export/items" class="btn btn-secondary" download>Export Items</a>
-                        <a href="/api/csv/export/invoices" class="btn btn-secondary" download>Export Invoices</a>
+                        <a href="/api/csv/export/invoices" class="btn btn-secondary" download>Export ${T('Invoices')}</a>
                         <a href="/api/csv/export/bills" class="btn btn-secondary" download>Export Bills</a>
-                        <a href="/api/csv/export/sales-receipts" class="btn btn-secondary" download>Export Sales Receipts</a>
+                        <a href="/api/csv/export/sales-receipts" class="btn btn-secondary" download>Export ${T('Sales Receipts')}</a>
                         <a href="/api/csv/export/deposits" class="btn btn-secondary" download>Export Deposits</a>
-                        <a href="/api/csv/export/classes" class="btn btn-secondary" download>Export Classes</a>
-                        <a href="/api/csv/export/jobs" class="btn btn-secondary" download>Export Jobs</a>
+                        <a href="/api/csv/export/classes" class="btn btn-secondary" download>Export ${T('Classes')}</a>
+                        <a href="/api/csv/export/jobs" class="btn btn-secondary" download>Export ${T('Jobs')}</a>
                         <a href="/api/csv/export/accounts" class="btn btn-secondary" download>Export Chart of Accounts</a>
                     </div>
                 </div>
@@ -293,7 +293,7 @@ const App = {
                     <form id="csv-import-form" onsubmit="App.importCSV(event)">
                         <div class="form-group"><label>Entity Type</label>
                             <select name="entity_type" id="csv-entity">
-                                <option value="customers">Customers</option>
+                                <option value="customers">${T('Customers')}</option>
                                 <option value="vendors">Vendors</option>
                                 <option value="items">Items</option>
                             </select></div>
