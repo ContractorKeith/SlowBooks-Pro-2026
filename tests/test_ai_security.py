@@ -94,13 +94,13 @@ def test_custom_endpoint_accepts_public_https():
 
 def test_custom_endpoint_rejects_lan_and_private():
     for bad in (
-        "http://api.example.com/v1",           # plain http (MITM)
-        "https://192.168.1.50/v1",             # private
-        "https://10.0.0.8/v1",                 # private
-        "https://127.0.0.1:11434/v1",          # loopback (local ollama etc.)
-        "https://localhost/v1",                # localhost
-        "https://user:pass@api.example.com/v1",# embedded creds
-        "https://api.example.com/" + "x" * 4096, # oversize
+        "http://api.example.com/v1",  # plain http (MITM)
+        "https://192.168.1.50/v1",  # private
+        "https://10.0.0.8/v1",  # private
+        "https://127.0.0.1:11434/v1",  # loopback (local ollama etc.)
+        "https://localhost/v1",  # localhost
+        "https://user:pass@api.example.com/v1",  # embedded creds
+        "https://api.example.com/" + "x" * 4096,  # oversize
     ):
         with pytest.raises(ValueError):
             validate_worker_url(bad)

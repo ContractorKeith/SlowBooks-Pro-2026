@@ -721,7 +721,14 @@ def parse_response(provider_key: str, body: Dict[str, Any]) -> str:
     Returns an empty string on parse failure — the caller decides
     whether to treat that as an error.
     """
-    if provider_key in ("grok", "groq", "openai", "cloudflare", "cloudflare_worker", "custom"):
+    if provider_key in (
+        "grok",
+        "groq",
+        "openai",
+        "cloudflare",
+        "cloudflare_worker",
+        "custom",
+    ):
         try:
             return body["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError):
@@ -795,7 +802,13 @@ def call_provider(
     `client` is injectable for tests that want to stub out the transport.
     """
     req = build_request(
-        provider_key, api_key, model, system, user, account_id, worker_url,
+        provider_key,
+        api_key,
+        model,
+        system,
+        user,
+        account_id,
+        worker_url,
         endpoint_url,
     )
     # Re-validate outbound URL against the per-provider allowlist before

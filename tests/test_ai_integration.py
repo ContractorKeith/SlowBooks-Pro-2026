@@ -542,9 +542,7 @@ def test_build_request_custom_keeps_explicit_chat_completions():
 
 def test_build_request_custom_requires_endpoint():
     with pytest.raises(ValueError):
-        build_request(
-            "custom", "sk-fake", "model-x", "sys", "user", endpoint_url=None
-        )
+        build_request("custom", "sk-fake", "model-x", "sys", "user", endpoint_url=None)
 
 
 def test_parse_response_custom_openai_shape():
