@@ -63,6 +63,8 @@ write-offs, and year-end giving statements. Everything reconciles to the
 P&L and balance sheet to the cent. Guide:
 [docs/nonprofit-module.md](docs/nonprofit-module.md).
 
+![Nonprofit mode on macOS and Windows: the Company Snapshot in donor words, the Statement of Functional Expenses, the Statement of Activities compared to prior year, Releases from Restriction, the Report Center in dark theme, and a Pledge Report PDF](screenshots/nonprofit-grid.png)
+
 **v2.7 — Jobs, job costing, and receipt intake.** QuickBooks-style
 Customer:Job on every form and every posted line, nested cost codes with
 cost types and burden, Job Cost Entries for labor / equipment / mileage /
@@ -103,7 +105,7 @@ a native `.app` in a DMG, no Docker or Python required.
 [SimpleFIN](https://www.simplefin.org/) — you hold the bank credential,
 no middleman server, dedup + bank rules on arrival
 ([docs/setup-bank-feeds.md](docs/setup-bank-feeds.md)). Every install
-also serves a self-documenting 357-operation local REST API; point
+also serves a self-documenting local REST API (483 operations in v2.9); point
 Claude Code or any agentic CLI at it —
 [slowbookspro.com/ai](https://www.slowbookspro.com/ai/) has the
 paste-prompt.
@@ -298,12 +300,8 @@ offer it as a paid service. Full terms in [LICENSE](LICENSE).
 
 ## Contributors
 
-- [VonHoltenCodes](https://github.com/VonHoltenCodes) — Creator
-- [PNWImport](https://github.com/PNWImport) — Security hardening (auth, CORS, path traversal, atomic writes, non-root Docker, rate limiting), analytics engine, AI insights with 7-provider support, Cloudflare Worker gateway, inventory ledger, drill-down reports, fuzzy duplicate detection, saved reports, payroll/HR module, tax-form audit chain, reseller-permit module, customer details popout
-- [jake-378](https://github.com/jake-378) — Backup UI fixes, report period selectors, invoice terms autofill, date validation fixes
-- [moshgrossman](https://github.com/moshgrossman) — Native Windows desktop mode groundwork: SQLite file-per-company with manifest, company picker, desktop launcher, SQLite-compatible migrations, print/PDF window handling; desktop download/save fixes
-- [WC3D](https://github.com/WC3D) — Jinja2 XSS security fix
-- [Alex Jordan (@LayoverLogic)](https://github.com/LayoverLogic) — Security hardening, IIF BILL/DEPOSIT import, class tracking design, multi-currency design with the Bank of Canada FX service, sortable list columns, country dropdowns
-- [amazon1148](https://github.com/amazon1148) — CSV bank import with auto-detection for Chase and PayPal statement formats
-- [Joel Macklow (@joelmacklow)](https://github.com/joelmacklow) — Fixed assets, Xero import with dry-run, opening-balance wizard, report PDF pipeline, and security regression-suite concepts, specified in his NZ localization fork
-- [Keith (@ContractorKeith)](https://github.com/ContractorKeith) — macOS maintainer: built the native Apple Silicon `.app`/DMG pipeline and the sign/notarize/staple release tooling that now runs in CI, per-user Application Support data layout, frozen-bundle fontconfig self-containment, `.env` permission hardening; long-time macOS field tester
+- [VonHoltenCodes](https://github.com/VonHoltenCodes) — creator and maintainer
+- [Keith (@ContractorKeith)](https://github.com/ContractorKeith) — macOS maintainer
+
+Everyone who has contributed is credited in the [CHANGELOG](CHANGELOG.md) and
+the git history.
