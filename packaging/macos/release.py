@@ -20,6 +20,11 @@ from prepare_bundle import prepare_bundle
 BUNDLE_ID = "com.vonholtencodes.slowbookspro"
 REPOSITORY_URL = "https://github.com/VonHoltenCodes/SlowBooks-Pro-2026"
 NESTED_CODE_SUFFIXES = {".framework", ".bundle", ".plugin", ".xpc", ".appex", ".app"}
+# Extra arguments for every notarytool call. notarytool reads the credential
+# profile from the LOGIN keychain by default, which is locked in an SSH
+# session (the in-fleet build box is driven over SSH); --notary-keychain
+# points it at the keychain that actually holds the profile.
+NOTARY_EXTRA_ARGS: list[str] = []
 IDENTITY_PATTERN = re.compile(
     r'^\s*\d+\)\s+[0-9A-Fa-f]+\s+"(Developer ID Application:[^"]+)"$',
     re.MULTILINE,
@@ -315,6 +320,7 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
         str(dmg),
         "--keychain-profile",
         profile,
+        *NOTARY_EXTRA_ARGS,
         "--wait",
         "--output-format",
         "json",
@@ -343,6 +349,7 @@ def _notarize(dmg: Path, profile: str, report_dir: Path) -> None:
         str(log_path),
         "--keychain-profile",
         profile,
+        *NOTARY_EXTRA_ARGS,
         check=False,
     )
     (report_dir / "notary-log-command.txt").write_text(
@@ -554,7 +561,15 @@ def main() -> int:
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--identity")
     parser.add_argument("--notary-profile", default="slowbooks-notary")
+    parser.add_argument(
+        "--notary-keychain",
+        type=Path,
+        help="keychain file holding the notary profile (needed over SSH, "
+        "where the login keychain is locked)",
+    )
     args = parser.parse_args()
+    if args.notary_keychain:
+        NOTARY_EXTRA_ARGS[:] = ["--keychain", str(args.notary_keychain)]
     build_release(
         args.artifact_dir,
         args.expected_sha,
