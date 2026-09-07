@@ -68,6 +68,8 @@ NONPROFIT: dict[str, str] = {
     "A/R Aging": "Pledge Aging",
     "Accounts Receivable Aging": "Pledges Receivable Aging",
     "Monthly Revenue": "Monthly Revenue & Support",
+    "Receivables": "Pledges Receivable",
+    "Revenue by Customer": "Revenue & Support by Donor",
 }
 
 # Words that must never be mapped, whole or as a phrase start.

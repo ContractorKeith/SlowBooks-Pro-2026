@@ -237,7 +237,7 @@ const CustomersPage = {
             terms: 'Net 30', credit_limit: '', tax_id: '', is_taxable: true, notes: '' };
         if (id) c = await API.get(`/customers/${id}`);
 
-        const title = id ? 'Edit Customer' : 'New Customer';
+        const title = id ? `Edit ${T('Customer')}` : T('New Customer');
         openModal(title, `
             <form id="customer-form" onsubmit="CustomersPage.save(event, ${id})">
                 <div class="form-grid">
@@ -311,7 +311,7 @@ const CustomersPage = {
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'} Customer</button>
+                    <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'} ${T('Customer')}</button>
                 </div>
             </form>`);
     },
@@ -328,10 +328,10 @@ const CustomersPage = {
         try {
             if (id) {
                 await API.put(`/customers/${id}`, data);
-                toast('Customer updated');
+                toast(`${T('Customer')} updated`);
             } else {
                 await API.post('/customers', data, force ? { query: { force: true } } : undefined);
-                toast('Customer created');
+                toast(`${T('Customer')} created`);
             }
             closeModal();
             App.navigate(location.hash);

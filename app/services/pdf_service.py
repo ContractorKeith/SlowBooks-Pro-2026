@@ -167,11 +167,14 @@ def generate_analytics_pdf(
     dashboard: dict, period: dict, company_settings: dict
 ) -> bytes:
     """Render the analytics dashboard snapshot as a printable PDF."""
+    from app.services.terminology import terms_for
+
     template = _jinja_env.get_template("analytics_pdf.html")
     html_str = template.render(
         dashboard=dashboard,
         period=period,
         company=company_settings,
+        terms=terms_for(company_settings),
         company_logo_data_uri=_company_logo_data_uri(company_settings),
     )
     return render_pdf(html_str)
@@ -249,11 +252,14 @@ def generate_collection_letter_pdf(
 ) -> bytes:
     from datetime import date as _date
 
+    from app.services.terminology import terms_for
+
     template = _jinja_env.get_template("collection_letter.html")
     html_str = template.render(
         customer=customer,
         invoices=invoices,
         company=company_settings,
+        terms=terms_for(company_settings),
         letter_type=letter_type,
         total_due=total_due,
         today=_date.today(),

@@ -117,7 +117,7 @@ const AnalyticsPage = {
             <div class="analytics-kpi-grid">
                 <div class="analytics-kpi"><div class="analytics-kpi-label">Revenue</div><div class="analytics-kpi-value kpi-green">${formatCurrency(totalRevenue)}</div></div>
                 <div class="analytics-kpi"><div class="analytics-kpi-label">Expenses</div><div class="analytics-kpi-value kpi-red">${formatCurrency(totalExpenses)}</div></div>
-                <div class="analytics-kpi" title="Days Sales Outstanding — average number of days between invoicing a customer and collecting the payment. Lower is better. Computed as (open A/R balance ÷ last-30-day paid revenue) × 30."><div class="analytics-kpi-label">DSO (Days)</div><div class="analytics-kpi-value kpi-blue">${dso.toFixed(1)}</div></div>
+                <div class="analytics-kpi" title="${Terms.text('Days Sales Outstanding — average number of days between invoicing a customer and collecting the payment.')} Lower is better. Computed as (open A/R balance ÷ last-30-day paid revenue) × 30."><div class="analytics-kpi-label">DSO (Days)</div><div class="analytics-kpi-value kpi-blue">${dso.toFixed(1)}</div></div>
                 <div class="analytics-kpi"><div class="analytics-kpi-label">Margin %</div><div class="analytics-kpi-value kpi-purple">${margin.toFixed(1)}%</div></div>
             </div>
 
@@ -126,7 +126,7 @@ const AnalyticsPage = {
 
             <div class="analytics-two-col">
                 <div class="analytics-card">
-                    <div class="analytics-section-title">Revenue by Customer</div>
+                    <div class="analytics-section-title">${Terms.text('Revenue by Customer')}</div>
                     ${this._revenueTable(data.revenue_by_customer)}
                 </div>
                 <div class="analytics-card">
@@ -136,7 +136,7 @@ const AnalyticsPage = {
                 </div>
             </div>
 
-            <div class="analytics-section-title">Accounts Receivable Aging</div>
+            <div class="analytics-section-title">${T('Accounts Receivable Aging')}</div>
             <div class="analytics-card">
                 <div class="chart-wrap chart-wrap-sm"><canvas id="chart-ar-aging"></canvas></div>
                 ${this._agingTable(data.ar_aging, T("Customer"))}
@@ -356,7 +356,7 @@ const AnalyticsPage = {
       this._renderAgingChart(
         "chart-ar-aging",
         this.state.data.ar_aging,
-        "A/R",
+        T("A/R Aging").replace(/ Aging$/, ""),
         "#00c48f",
       );
       this._renderAgingChart(

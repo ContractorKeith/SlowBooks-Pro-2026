@@ -85,7 +85,7 @@ const JobCostsPage = {
                 <div style="margin-top:8px;text-align:right;font-weight:700" id="jc-total">Total: $0.00</div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Post Job Cost</button>
+                    <button type="submit" class="btn btn-primary">Post ${T('Job')} Cost</button>
                 </div>
             </form>`);
         JobCostsPage._lineCount = 1;
@@ -189,7 +189,7 @@ const JobCostsPage = {
         const codeOpts = JobCostsPage._opt(JobCostsPage._codes, 'id', c => c.label, null);
         const typeOpts = JobCostsPage._opt(JobCostsPage._types, 'code', t => t.name, 'other', 'auto');
         const acctOpts = JobCostsPage._opt(JobCostsPage._accounts, 'id', a => `${a.account_number || ''} ${a.name}`.trim(), null, 'default');
-        openModal('Allocate a Cost Across Jobs', `
+        openModal(`Allocate a Cost Across ${T('Jobs')}`, `
             <form onsubmit="JobCostsPage.saveAllocate(event)">
                 <div class="form-grid">
                     <div class="form-group"><label>Date *</label><input name="date" type="date" required value="${todayISO()}"></div>
@@ -209,7 +209,7 @@ const JobCostsPage = {
                     <div class="form-group"><label>Cost account</label><select name="debit_account_id">${acctOpts}</select></div>
                     <div class="form-group"><label>Offset account</label><select name="credit_account_id">${acctOpts}</select></div>
                     <div class="form-group full-width"><label>Memo</label><input name="memo" placeholder="e.g. July small tools & consumables"></div>
-                    <div class="form-group full-width"><label>Jobs</label><div style="max-height:220px;overflow:auto;border:1px solid var(--gray-200);padding:6px">${jobOpts || '<em>No active jobs</em>'}</div></div>
+                    <div class="form-group full-width"><label>${T('Jobs')}</label><div style="max-height:220px;overflow:auto;border:1px solid var(--gray-200);padding:6px">${jobOpts || '<em>No active jobs</em>'}</div></div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -272,7 +272,7 @@ const JobCostsPage = {
         if (!confirm('Void this job cost entry? A reversing entry is posted; the original stays in the ledger.')) return;
         try {
             await API.post(`/job-costs/${id}/void`, {});
-            toast('Job cost voided');
+            toast(`${T('Job')} cost voided`);
             closeModal();
             JobCostsPage._afterChange();
         } catch (err) { toast(err.message, 'error'); }

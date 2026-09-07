@@ -30,7 +30,7 @@ const DepositsPage = {
                 <input type="date" id="deposit-date" value="${todayISO()}">
                 <label style="font-size:10px;font-weight:700;">Reference:</label>
                 <input type="text" id="deposit-ref" placeholder="Deposit slip #" style="width:120px;">
-                ${classOpts ? `<label style="font-size:10px;font-weight:700;">Class:</label>
+                ${classOpts ? `<label style="font-size:10px;font-weight:700;">${T('Class')}:</label>
                 <select id="deposit-class">${classOpts}</select>` : ''}
             </div>`;
 

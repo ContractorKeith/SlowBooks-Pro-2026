@@ -79,17 +79,17 @@ const SettingsPage = {
                             </select></div>
                         <div class="form-group"><label>Default Tax Rate (%)</label>
                             <input name="default_tax_rate" type="number" step="0.01" value="${s.default_tax_rate || '0.0'}"></div>
-                        <div class="form-group"><label>${T('Invoice Prefix')}</label>
+                        <div class="form-group"><label>${`${T('Invoice')} Prefix`}</label>
                             <input name="invoice_prefix" value="${escapeHtml(s.invoice_prefix || '')}" placeholder="e.g. INV-"></div>
-                        <div class="form-group"><label>${T('Next Invoice #')}</label>
+                        <div class="form-group"><label>${`Next ${T('Invoice')} #`}</label>
                             <input name="invoice_next_number" value="${escapeHtml(s.invoice_next_number || '1001')}"></div>
                         <div class="form-group"><label>Estimate Prefix</label>
                             <input name="estimate_prefix" value="${escapeHtml(s.estimate_prefix || '')}" placeholder="e.g. E-"></div>
                         <div class="form-group"><label>Next Estimate #</label>
                             <input name="estimate_next_number" value="${escapeHtml(s.estimate_next_number || '1001')}"></div>
-                        <div class="form-group full-width"><label>${T('Default Invoice Notes')}</label>
+                        <div class="form-group full-width"><label>${`Default ${T('Invoice')} Notes`}</label>
                             <textarea name="invoice_notes">${escapeHtml(s.invoice_notes || '')}</textarea></div>
-                        <div class="form-group full-width"><label>${T('Invoice Footer')}</label>
+                        <div class="form-group full-width"><label>${`${T('Invoice')} Footer`}</label>
                             <input name="invoice_footer" value="${escapeHtml(s.invoice_footer || '')}"></div>
                         <div class="form-group"><label>Report PDF Paper Size</label>
                             <select name="pdf_paper_size">
@@ -247,7 +247,7 @@ const SettingsPage = {
                 <div class="settings-section" id="settings-ocr">
                     <h3>Receipt Scanning</h3>
                     <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
-                        Local OCR for the Scan Receipt button on the Enter Sales Receipt and Enter Bill forms.
+                        ${Terms.text('Local OCR for the Scan Receipt button on the Enter Sales Receipt and Enter Bill forms.')}
                         Everything runs on this computer — no cloud, no data leaves the machine.
                         The desktop app ships with a built-in engine (Windows OCR / Apple Vision), so scanning
                         works out of the box; Tesseract is an optional extra engine you can install yourself.
@@ -335,10 +335,10 @@ const SettingsPage = {
                 <div class="settings-section">
                     <h3>Cost Codes</h3>
                     <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
-                        The job-costing chart: which part of a job a cost belongs to
+                        ${Terms.text('The job-costing chart: which part of a job a cost belongs to')}
                         ("03 Concrete", "26 Electrical"), independent of the account it posts
                         to. Picked per line on bills, expenses, purchase orders and journal
-                        entries; the Job detail rolls costs up by code and cost type.
+                        entries; ${Terms.text('the Job detail rolls costs up by code and cost type.')}
                     </div>
                     <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
                         <input type="text" id="new-cc-code" placeholder="Code" style="width:90px;">
@@ -359,7 +359,7 @@ const SettingsPage = {
                 <div class="settings-section">
                     <h3>Equipment</h3>
                     <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
-                        Owned machines charged to jobs by the hour from a Job Cost Entry. The recovery account is
+                        ${Terms.text('Owned machines charged to jobs by the hour from a Job Cost Entry.')} The recovery account is
                         the credit side (defaults to the equipment cost type's offset).
                     </div>
                     <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">

@@ -899,8 +899,8 @@ ReportsPage.financialStatementsPdf = async function () {
     await ReportsPage.openPeriodModal("Financial Statements Pack", "this_year_to_date", async (_period, range) => {
         window.open(`/api/reports/financial-statements/pdf?start_date=${range.start}&end_date=${range.end}`, '_blank');
         return `<div style="font-size:12px;">The statements pack opened in a new tab —
-            P&L and Trial Balance for ${escapeHtml(range.start)} — ${escapeHtml(range.end)},
-            Balance Sheet as of ${escapeHtml(range.end)}. Paper size follows
+            ${T('P&L')} and Trial Balance for ${escapeHtml(range.start)} — ${escapeHtml(range.end)},
+            ${T('Balance Sheet')} as of ${escapeHtml(range.end)}. Paper size follows
             Settings → Report PDF Paper Size.</div>`;
     });
 };
@@ -920,7 +920,7 @@ ReportsPage.jobProfitability = async function () {
         </tr>`).join('');
         return `
             <div style="font-size:11px; color:var(--gray-500); margin-bottom:8px;">
-                ${escapeHtml(data.start_date)} — ${escapeHtml(data.end_date)} · "No job" holds untagged activity <em>and</em> the applied-cost credits behind Job Cost Entries (labor, equipment, overhead applied to jobs), so its costs can be negative and the totals still match the P&L
+                ${escapeHtml(data.start_date)} — ${escapeHtml(data.end_date)} · ${Terms.text('"No job" holds untagged activity')} <em>and</em> ${Terms.text('the applied-cost credits behind Job Cost Entries (labor, equipment, overhead applied to jobs), so its costs can be negative and the totals still match the P&L')}
             </div>
             <div class="table-container"><table>
                 <thead><tr><th scope="col">${T('Customer')}</th><th scope="col">${T('Job')}</th><th scope="col" class="amount">Contract</th><th scope="col" class="amount">${T('Income')}</th>

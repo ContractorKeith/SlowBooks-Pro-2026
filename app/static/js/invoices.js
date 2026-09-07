@@ -4,6 +4,10 @@
  * auto-fill on item selection lives in itemSelected() below.
  */
 const InvoicesPage = {
+    // The document's literal face, as the PDF prints it: a flagged pledge is a
+    // PLEDGE, everything else an INVOICE regardless of company vocabulary.
+    docLabel(inv) { return inv.is_pledge ? 'Pledge' : 'Invoice'; }, // literal face
+
     async render() {
         // Sales receipts are invoices under the hood; they get their own
         // page, so keep them out of this list.
@@ -79,7 +83,7 @@ const InvoicesPage = {
 
         openModal(`${T('Invoice')} #${inv.invoice_number}`, `
             <div style="margin-bottom:12px;">
-                <strong>Customer:</strong> ${escapeHtml(inv.customer_name || '')}<br>
+                <strong>${T('Customer')}:</strong> ${escapeHtml(inv.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(inv.date)}<br>
                 <strong>Due:</strong> ${formatDate(inv.due_date)}<br>
                 <strong>Status:</strong> ${statusBadge(inv.status)}<br>
@@ -107,11 +111,11 @@ const InvoicesPage = {
                 <button class="btn btn-secondary" onclick="window.open('/api/invoices/${inv.id}/pdf','_blank')">Save PDF</button>
                 <button class="btn btn-secondary" onclick="window.open('/api/invoices/${inv.id}/print-preview','_blank')">Print</button>
                 <button class="btn btn-secondary" onclick="InvoicesPage.duplicate(${inv.id})">Duplicate</button>
-                <button class="btn btn-secondary" onclick="InvoicesPage.emailInvoice(${inv.id})">Email Invoice</button>
+                <button class="btn btn-secondary" onclick="InvoicesPage.emailInvoice(${inv.id})">Email ${T('Invoice')}</button>
                 <button class="btn btn-secondary" onclick="InvoicesPage.copyPaymentLink(${inv.id})">Copy Payment Link</button>
                 ${inv.checkout_provider && inv.status !== 'paid' && inv.status !== 'void' ? `<button class="btn btn-secondary" onclick="InvoicesPage.checkPaymentStatus(${inv.id}, '${inv.checkout_provider}')">Check Payment Status</button>` : ''}
                 ${inv.status === 'draft' ? `<button class="btn btn-primary" onclick="InvoicesPage.markSent(${inv.id})">Mark Sent</button>` : ''}
-                ${inv.status !== 'void' ? `<button class="btn btn-danger" onclick="InvoicesPage.void(${inv.id})">Void Invoice</button>` : ''}
+                ${inv.status !== 'void' ? `<button class="btn btn-danger" onclick="InvoicesPage.void(${inv.id})">Void ${T('Invoice')}</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>`);
         InvoicesPage.loadAttachments('invoice', inv.id);
@@ -121,7 +125,7 @@ const InvoicesPage = {
         if (!confirm('Void this invoice? This cannot be undone.')) return;
         try {
             await API.post(`/invoices/${id}/void`);
-            toast('Invoice voided');
+            toast(`${T('Invoice')} voided`);
             closeModal();
             App.navigate(location.hash);
         } catch (err) { toast(err.message, 'error'); }
@@ -130,7 +134,7 @@ const InvoicesPage = {
     async markSent(id) {
         try {
             await API.post(`/invoices/${id}/send`);
-            toast('Invoice marked as sent');
+            toast(`${T('Invoice')} marked as sent`);
             closeModal();
             App.navigate(location.hash);
         } catch (err) { toast(err.message, 'error'); }
@@ -139,7 +143,7 @@ const InvoicesPage = {
     async duplicate(id) {
         try {
             const inv = await API.post(`/invoices/${id}/duplicate`);
-            toast(`Duplicated as Invoice #${inv.invoice_number}`);
+            toast(`Duplicated as ${T('Invoice')} #${inv.invoice_number}`);
             closeModal();
             App.navigate('#/invoices');
         } catch (err) { toast(err.message, 'error'); }
@@ -181,7 +185,7 @@ const InvoicesPage = {
                     <div class="form-group full-width"><label>Recipient Email *</label>
                         <input name="recipient" type="email" required value="${escapeHtml(email)}"></div>
                     <div class="form-group full-width"><label>Subject</label>
-                        <input name="subject" value="Invoice #${escapeHtml(inv.invoice_number)} from ${escapeHtml(inv.customer_name || 'us')}"></div>
+                        <input name="subject" value="${InvoicesPage.docLabel(inv)} #${escapeHtml(inv.invoice_number)} from ${escapeHtml(inv.customer_name || 'us')}"></div>
                     <div class="form-group full-width"><label>Message</label>
                         <textarea name="message">Please find attached Invoice #${escapeHtml(inv.invoice_number)}.</textarea></div>
                 </div>
@@ -201,7 +205,7 @@ const InvoicesPage = {
                 subject: form.subject.value,
                 message: form.message.value,
             });
-            toast('Invoice emailed');
+            toast(`${T('Invoice')} emailed`);
             closeModal();
         } catch (err) { toast(err.message, 'error'); }
     },
@@ -294,7 +298,7 @@ const InvoicesPage = {
                     <textarea name="notes">${escapeHtml(inv.notes || '')}</textarea></div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'} Invoice</button>
+                    <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'} ${T('Invoice')}</button>
                 </div>
             </form>`);
         if (!id && inv.customer_id) InvoicesPage.customerSelected(inv.customer_id);
@@ -324,7 +328,7 @@ const InvoicesPage = {
 
     async saveNewCustomer() {
         const name = $('#inv-new-cust-name').value.trim();
-        if (!name) { toast('Customer name is required', 'error'); return; }
+        if (!name) { toast(`${T('Customer')} name is required`, 'error'); return; }
         try {
             const cust = await API.post('/customers', {
                 name, email: $('#inv-new-cust-email').value.trim() || null,
@@ -336,7 +340,7 @@ const InvoicesPage = {
             opt.value = cust.id; opt.textContent = cust.name; opt.selected = true;
             sel.appendChild(opt);
             $('#inv-new-customer-form').style.display = 'none';
-            toast(`Customer "${cust.name}" created`);
+            toast(`${T('Customer')} "${cust.name}" created`);
         } catch (err) { toast(err.message, 'error'); }
     },
 

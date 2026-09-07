@@ -240,10 +240,10 @@ const App = {
                 const results = await API.get(`/search?q=${encodeURIComponent(query)}`);
                 let html = '';
                 const sections = [
-                    { key: 'customers', label: 'Customers', onClick: (item) => `App.navigate('#/customers');closeSearchDropdown();` },
+                    { key: 'customers', label: T('Customers'), onClick: (item) => `App.navigate('#/customers');closeSearchDropdown();` },
                     { key: 'vendors', label: 'Vendors', onClick: (item) => `App.navigate('#/vendors');closeSearchDropdown();` },
                     { key: 'items', label: 'Items', onClick: (item) => `App.navigate('#/items');closeSearchDropdown();` },
-                    { key: 'invoices', label: 'Invoices', onClick: (item) => `InvoicesPage.view(${item.id});closeSearchDropdown();` },
+                    { key: 'invoices', label: T('Invoices'), onClick: (item) => `InvoicesPage.view(${item.id});closeSearchDropdown();` },
                     { key: 'estimates', label: 'Estimates', onClick: (item) => `App.navigate('#/estimates');closeSearchDropdown();` },
                     { key: 'payments', label: 'Payments', onClick: (item) => `App.navigate('#/payments');closeSearchDropdown();` },
                 ];
@@ -460,7 +460,7 @@ const App = {
                 `<div style="padding:4px 0; font-size:11px; border-bottom:1px solid var(--gray-200);">
                     <strong>#${escapeHtml(inv.invoice_number)}</strong> created — ${escapeHtml(inv.customer_name || '')} — ${formatCurrency(inv.total)}
                 </div>`);
-            toast(`Invoice #${inv.invoice_number} created`);
+            toast(`${T('Invoice')} #${inv.invoice_number} created`);
             // Reset form for next entry
             form.po_number.value = '';
             $('#qe-lines').innerHTML = `

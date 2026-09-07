@@ -44,7 +44,7 @@ const SalesReceiptsPage = {
 
         openModal(`${T('Sales Receipt')} #${sr.invoice_number}`, `
             <div style="margin-bottom:12px;">
-                <strong>Customer:</strong> ${escapeHtml(sr.customer_name || '')}<br>
+                <strong>${T('Customer')}:</strong> ${escapeHtml(sr.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(sr.date)}<br>
                 <strong>Status:</strong> ${statusBadge(sr.status)}<br>
                 ${payment && payment.method ? `<strong>Payment Method:</strong> ${escapeHtml(payment.method)}<br>` : ''}
@@ -193,7 +193,7 @@ const SalesReceiptsPage = {
                     <textarea name="notes"></textarea></div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="ScanHelper.discard(); closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Record Sales Receipt</button>
+                    <button type="submit" class="btn btn-primary">Record ${T('Sales Receipt')}</button>
                 </div>
             </form>`);
         SalesReceiptsPage.recalc();
@@ -305,7 +305,7 @@ const SalesReceiptsPage = {
 
     async saveNewCustomer() {
         const name = $('#sr-new-cust-name').value.trim();
-        if (!name) { toast('Customer name is required', 'error'); return; }
+        if (!name) { toast(`${T('Customer')} name is required`, 'error'); return; }
         try {
             const cust = await API.post('/customers', {
                 name, email: $('#sr-new-cust-email').value.trim() || null,
@@ -317,7 +317,7 @@ const SalesReceiptsPage = {
             opt.value = cust.id; opt.textContent = cust.name; opt.selected = true;
             sel.appendChild(opt);
             $('#sr-new-customer-form').style.display = 'none';
-            toast(`Customer "${cust.name}" created`);
+            toast(`${T('Customer')} "${cust.name}" created`);
         } catch (err) { toast(err.message, 'error'); }
     },
 

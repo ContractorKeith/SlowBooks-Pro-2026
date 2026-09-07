@@ -69,7 +69,7 @@ const JobsPage = {
                     <option value="">${Terms.text('All customers')}</option>${custOpts}</select>
                 <select id="job-filter-status" onchange="JobsPage.setFilter('status', this.value)">
                     <option value="">Active jobs</option>${statusOpts}<option value="__inactive__">Inactive</option></select>
-                <span style="font-size:11px; color:var(--gray-500);">Job-to-date figures from posted lines. Click a job to drill down.</span>
+                <span style="font-size:11px; color:var(--gray-500);">${Terms.text('Job-to-date figures from posted lines. Click a job to drill down.')}</span>
             </div>
             <div id="jobs-table">${JobsPage._tableHtml()}</div>`;
     },
@@ -169,7 +169,7 @@ const JobsPage = {
         return `
             <div class="page-header">
                 <div>
-                    <div style="font-size:11px;"><a href="#/jobs">Jobs</a> › ${escapeHtml(job.customer_name)}</div>
+                    <div style="font-size:11px;"><a href="#/jobs">${T('Jobs')}</a> › ${escapeHtml(job.customer_name)}</div>
                     <h2 style="margin:2px 0 0 0;">${escapeHtml(job.name)}
                         <span class="badge" style="font-size:11px; vertical-align:middle;">${escapeHtml(JobsPage.STATUS_LABELS[job.status] || job.status)}</span>
                         ${job.is_active ? '' : '<span style="font-size:11px;color:#a4242b;">inactive</span>'}
@@ -177,7 +177,7 @@ const JobsPage = {
                 </div>
                 <div>
                     <button class="btn btn-secondary" onclick="InvoicesPage.showForm(null,${job.customer_id})">${T('New Invoice')}</button>
-                    <button class="btn btn-secondary" onclick="JobCostsPage.showForm(null, ${job.id})">Job Cost Entry</button>
+                    <button class="btn btn-secondary" onclick="JobCostsPage.showForm(null, ${job.id})">${T('Job')} Cost Entry</button>
                     <button class="btn btn-secondary" onclick="JobsPage.showForm(${job.id})">Edit</button>
                 </div>
             </div>
@@ -187,7 +187,7 @@ const JobsPage = {
                 <span style="margin-left:auto; font-size:11px; display:flex; gap:6px; align-items:center;">
                     Period <input type="date" id="job-period-start" value="${JobsPage._period.start}" onchange="JobsPage.setPeriod()">
                     – <input type="date" id="job-period-end" value="${JobsPage._period.end}" onchange="JobsPage.setPeriod()">
-                    <button class="btn btn-sm btn-secondary" onclick="JobsPage.clearPeriod()" title="Job to date">JTD</button>
+                    <button class="btn btn-sm btn-secondary" onclick="JobsPage.clearPeriod()" title="${T('Job')} to date">JTD</button>
                 </span>
             </div>
             <div id="job-tab-body">${await JobsPage.tabHtml()}</div>`;
@@ -279,7 +279,7 @@ const JobsPage = {
                     </table></div>
                 </div>
                 <div style="font-size:13px">
-                    <h4 style="font-size:11px;text-transform:uppercase;color:#888;margin:0 0 4px 0">Job</h4>
+                    <h4 style="font-size:11px;text-transform:uppercase;color:#888;margin:0 0 4px 0">${T('Job')}</h4>
                     <div>${job.job_number ? `#${escapeHtml(job.job_number)} · ` : ''}${escapeHtml(job.job_type || '')}</div>
                     <div>${job.start_date ? escapeHtml(job.start_date) : ''}${job.projected_end_date ? ` → ${escapeHtml(job.projected_end_date)}` : ''}${job.end_date ? ` (ended ${escapeHtml(job.end_date)})` : ''}</div>
                     ${job.site_address ? `<pre style="font-family:inherit;white-space:pre-wrap;margin:6px 0">${escapeHtml(job.site_address)}</pre>` : ''}
@@ -401,9 +401,9 @@ const JobsPage = {
     },
 
     sourceLabel(t) {
-        return { invoice: 'Invoice', bill: 'Bill', expense: 'Expense', cc_charge: 'Card charge', manual: 'Journal',
+        return { invoice: T('Invoice'), bill: 'Bill', expense: 'Expense', cc_charge: 'Card charge', manual: 'Journal',
             credit_memo: 'Credit memo', sales_receipt: 'Sales receipt', deposit: 'Deposit', check: 'Check',
-            job_cost: 'Job cost', job_cost_void: 'Void job cost', expense_void: 'Void expense', bill_void: 'Void bill' }[t] || (t || 'Entry');
+            job_cost: `${T('Job')} cost`, job_cost_void: `Void ${T('Job').toLowerCase()} cost`, expense_void: 'Void expense', bill_void: 'Void bill' }[t] || (t || 'Entry');
     },
 
     async toggle(key) { JobsPage._open.has(key) ? JobsPage._open.delete(key) : JobsPage._open.add(key); await JobsPage.setTab('costs'); },
@@ -526,7 +526,7 @@ const JobsPage = {
             <td class="amount">${l.kind === 'cost' ? formatCurrency(l.amount) : ''}</td>
         </tr>`).join('');
         return `<div class="table-container"><table class="data-table" style="font-size:12px">
-            <thead><tr><th scope="col">Date</th><th scope="col">Source</th><th scope="col">Account</th><th scope="col">Memo</th><th scope="col" class="amount">Income</th><th scope="col" class="amount">Cost</th></tr></thead>
+            <thead><tr><th scope="col">Date</th><th scope="col">Source</th><th scope="col">Account</th><th scope="col">Memo</th><th scope="col" class="amount">${T('Income')}</th><th scope="col" class="amount">Cost</th></tr></thead>
             <tbody>${rows}</tbody></table></div>`;
     },
 
@@ -547,7 +547,7 @@ const JobsPage = {
             ${unposted.length ? `<div style="margin-bottom:8px"><button class="btn btn-sm btn-primary" onclick="JobsPage.postTime([${unposted.map(e => e.id).join(',')}])">Post ${unposted.length} approved entr${unposted.length === 1 ? 'y' : 'ies'} to this job</button>
                 <span style="font-size:11px;color:#888">Labor posts at the employee's loaded cost rate with burden as its own line.</span></div>` : ''}
             <div class="table-container"><table class="data-table" style="font-size:12px">
-                <thead><tr><th scope="col">Date</th><th scope="col">Employee</th><th scope="col">Cost code</th><th scope="col" class="amount">Reg</th><th scope="col" class="amount">OT</th><th scope="col" class="amount">DT</th><th scope="col">Status</th><th scope="col">Job cost</th></tr></thead>
+                <thead><tr><th scope="col">Date</th><th scope="col">Employee</th><th scope="col">Cost code</th><th scope="col" class="amount">Reg</th><th scope="col" class="amount">OT</th><th scope="col" class="amount">DT</th><th scope="col">Status</th><th scope="col">${T('Job')} cost</th></tr></thead>
                 <tbody>${rows}</tbody></table></div>`;
     },
 
@@ -578,13 +578,13 @@ const JobsPage = {
                 <div class="form-grid">
                     <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required><option value="">Select...</option>${custOpts}</select></div>
-                    <div class="form-group"><label>${T('Job name')} *</label>
+                    <div class="form-group"><label>${T('Job')} name *</label>
                         <input name="name" required maxlength="200" value="${escapeHtml(job.name)}" placeholder="Kitchen remodel"></div>
-                    <div class="form-group"><label>${T('Job #')}</label>
+                    <div class="form-group"><label>${T('Job')} #</label>
                         <input name="job_number" maxlength="50" value="${escapeHtml(job.job_number || '')}"></div>
                     <div class="form-group"><label>Status</label>
                         <select name="status">${statusOpts}</select></div>
-                    <div class="form-group"><label>${T('Job type')}</label>
+                    <div class="form-group"><label>${T('Job')} type</label>
                         <input name="job_type" maxlength="100" value="${escapeHtml(job.job_type || '')}" placeholder="Remodel, New build, Service…"></div>
                     <div class="form-group"><label>Contract amount</label>
                         <input name="contract_amount" type="number" step="0.01" min="0" value="${job.contract_amount ?? ''}"></div>
@@ -606,10 +606,10 @@ const JobsPage = {
                 <div class="form-actions">
                     ${id ? `<button type="button" class="btn btn-secondary" onclick="JobsPage.remove(${id})" style="margin-right:auto;">Delete</button>` : ''}
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">${id ? 'Save Job' : 'Create Job'}</button>
+                    <button type="submit" class="btn btn-primary">${id ? `Save ${T('Job')}` : `Create ${T('Job')}`}</button>
                 </div>
             </form>`;
-        openModal(id ? 'Edit Job' : 'New Job', html);
+        openModal(id ? `Edit ${T('Job')}` : `New ${T('Job')}`, html);
     },
 
     async save(e, id) {
@@ -633,17 +633,17 @@ const JobsPage = {
         if (form.is_active) data.is_active = form.is_active.value === 'true';
         try {
             const saved = id ? await API.put(`/jobs/${id}`, data) : await API.post('/jobs', data);
-            toast(id ? 'Job saved' : 'Job created');
+            toast(id ? `${T('Job')} saved` : `${T('Job')} created`);
             closeModal();
             App.navigate(`#/jobs/${id || saved.id}`);
         } catch (err) { toast(err.message, 'error'); }
     },
 
     async remove(id) {
-        if (!confirm('Delete this job? Jobs with posted activity cannot be deleted — mark them inactive instead.')) return;
+        if (!confirm(Terms.text('Delete this job? Jobs with posted activity cannot be deleted — mark them inactive instead.'))) return;
         try {
             await API.del(`/jobs/${id}`);
-            toast('Job deleted');
+            toast(`${T('Job')} deleted`);
             closeModal();
             App.navigate('#/jobs');
         } catch (err) { toast(err.message, 'error'); }

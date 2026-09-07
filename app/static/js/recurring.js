@@ -69,7 +69,7 @@ const RecurringPage = {
         const custOpts = customers.map(c => `<option value="${c.id}" ${rec.customer_id==c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
         const itemOpts = items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
 
-        openModal(id ? 'Edit Recurring Invoice' : 'New Recurring Invoice', `
+        openModal(id ? `Edit ${T('Recurring Invoices').replace(/s$/, '')}` : `New ${T('Recurring Invoices').replace(/s$/, '')}`, `
             <form onsubmit="RecurringPage.save(event, ${id})">
                 <div class="form-grid">
                     <div class="form-group"><label>${T('Customer')} *</label>

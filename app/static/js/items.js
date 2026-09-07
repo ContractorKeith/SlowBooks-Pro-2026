@@ -82,7 +82,7 @@ const ItemsPage = {
                         <input name="rate" type="number" step="0.01" value="${item.rate}"></div>
                     <div class="form-group"><label>Cost</label>
                         <input name="cost" type="number" step="0.01" value="${item.cost}"></div>
-                    <div class="form-group"><label>Income Account</label>
+                    <div class="form-group"><label>${T('Income')} Account</label>
                         <select name="income_account_id">
                             <option value="">-- None --</option>
                             ${incomeAccts.map(a => `<option value="${a.id}" ${item.income_account_id==a.id?'selected':''}>${a.account_number} - ${escapeHtml(a.name)}</option>`).join('')}

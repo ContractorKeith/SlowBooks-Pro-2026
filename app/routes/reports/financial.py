@@ -93,6 +93,7 @@ def profit_loss(
 def balance_sheet(
     as_of_date: date = Query(default=None), db: Session = Depends(get_db)
 ):
+    t = terms_from_db(db)
     if not as_of_date:
         as_of_date = date.today()
 
@@ -122,7 +123,7 @@ def balance_sheet(
         equity = list(equity) + [
             {
                 "account_id": None,
-                "account_name": "Net Income (current period)",
+                "account_name": f"{t('Net Income')} (current period)",
                 "account_number": None,
                 "amount": float(net_income),
             }

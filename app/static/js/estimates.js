@@ -39,7 +39,7 @@ const EstimatesPage = {
 
         openModal(`Estimate #${est.estimate_number}`, `
             <div style="margin-bottom:12px;">
-                <strong>Customer:</strong> ${escapeHtml(est.customer_name || '')}<br>
+                <strong>${T('Customer')}:</strong> ${escapeHtml(est.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(est.date)}<br>
                 ${est.expiration_date ? `<strong>Expires:</strong> ${formatDate(est.expiration_date)}<br>` : ''}
                 <strong>Status:</strong> ${statusBadge(est.status)}
@@ -57,7 +57,7 @@ const EstimatesPage = {
             <div class="form-actions">
                 <button class="btn btn-secondary" onclick="window.open('/api/estimates/${est.id}/pdf','_blank')">Save PDF</button>
                 <button class="btn btn-secondary" onclick="window.open('/api/estimates/${est.id}/print-preview','_blank')">Print</button>
-                ${est.status !== 'converted' ? `<button class="btn btn-primary" onclick="EstimatesPage.convert(${est.id})">Convert to Invoice</button>` : ''}
+                ${est.status !== 'converted' ? `<button class="btn btn-primary" onclick="EstimatesPage.convert(${est.id})">Convert to ${T('Invoice')}</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>`);
     },
@@ -66,7 +66,7 @@ const EstimatesPage = {
         if (!confirm('Convert this estimate to an invoice?')) return;
         try {
             const inv = await API.post(`/estimates/${id}/convert`);
-            toast(`Created Invoice #${inv.invoice_number}`);
+            toast(`Created ${T('Invoice')} #${inv.invoice_number}`);
             closeModal();
             App.navigate('#/invoices');
         } catch (err) { toast(err.message, 'error'); }
@@ -88,7 +88,7 @@ const EstimatesPage = {
 
     async saveNewCustomer() {
         const name = $('#est-new-cust-name').value.trim();
-        if (!name) { toast('Customer name is required', 'error'); return; }
+        if (!name) { toast(`${T('Customer')} name is required`, 'error'); return; }
         try {
             const cust = await API.post('/customers', {
                 name, email: $('#est-new-cust-email').value.trim() || null,
@@ -100,7 +100,7 @@ const EstimatesPage = {
             opt.value = cust.id; opt.textContent = cust.name; opt.selected = true;
             sel.appendChild(opt);
             $('#est-new-customer-form').style.display = 'none';
-            toast(`Customer "${cust.name}" created`);
+            toast(`${T('Customer')} "${cust.name}" created`);
         } catch (err) { toast(err.message, 'error'); }
     },
 

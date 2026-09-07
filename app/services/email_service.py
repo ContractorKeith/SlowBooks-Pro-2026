@@ -153,11 +153,34 @@ def render_template_from_db(db: Session, template_name: str, context: dict) -> t
     return None, None
 
 
+def invoice_email_label(invoice, company_settings: dict) -> str:
+    """What the attached document is called in the email: Invoice, Pledge,
+    Sales Receipt or Donation Receipt — the same literal face the PDF
+    prints (donor_documents.invoice_doc_kind), never the vocabulary swap."""
+    from app.services.donor_documents import invoice_doc_kind
+    from app.services.terminology import terms_for
+
+    kind = invoice_doc_kind(invoice, terms_for(company_settings))
+    return {
+        "SalesReceipt": "Sales Receipt",
+        "DonationReceipt": "Donation Receipt",
+    }.get(kind, kind)
+
+
 def render_invoice_email(invoice, company_settings: dict, pay_url: str = None) -> str:
     """Render the invoice email HTML body."""
+    from app.services.terminology import terms_for
+
+    doc_label = invoice_email_label(invoice, company_settings)
     try:
         template = _jinja_env.get_template("invoice_email.html")
-        return template.render(inv=invoice, company=company_settings, pay_url=pay_url)
+        return template.render(
+            inv=invoice,
+            company=company_settings,
+            pay_url=pay_url,
+            doc_label=doc_label,
+            terms=terms_for(company_settings),
+        )
     except Exception:
         # Fallback simple email. Customer name + company name are escaped
         # via html.escape() since they can contain user-controlled text
@@ -167,14 +190,16 @@ def render_invoice_email(invoice, company_settings: dict, pay_url: str = None) -
         import html as _html
 
         customer_name = _html.escape(
-            invoice.customer.name if invoice.customer else "Customer"
+            invoice.customer.name
+            if invoice.customer
+            else terms_for(company_settings)("Customer")
         )
         company_name = _html.escape(company_settings.get("company_name", "Our Company"))
         invoice_number = _html.escape(str(invoice.invoice_number))
         return f"""<html><body>
         <p>Dear {customer_name},</p>
-        <p>Please find attached Invoice #{invoice_number} for ${float(invoice.total):,.2f}.</p>
+        <p>Please find attached {doc_label} #{invoice_number} for ${float(invoice.total):,.2f}.</p>
         <p>Payment is due by {invoice.due_date}.</p>
-        <p>Thank you for your business.</p>
+        <p>{'Thank you for your support.' if terms_for(company_settings).is_nonprofit else 'Thank you for your business.'}</p>
         <p>{company_name}</p>
         </body></html>"""

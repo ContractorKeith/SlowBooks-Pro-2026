@@ -54,7 +54,9 @@ const TERMS_NONPROFIT = {
     "Total Receivables": "Pledges Receivable",
     "A/R Aging": "Pledge Aging",
     "Accounts Receivable Aging": "Pledges Receivable Aging",
-    "Monthly Revenue": "Monthly Revenue & Support"
+    "Monthly Revenue": "Monthly Revenue & Support",
+    "Receivables": "Pledges Receivable",
+    "Revenue by Customer": "Revenue & Support by Donor"
 };
 
 const Terms = {

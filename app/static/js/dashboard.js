@@ -219,13 +219,13 @@ const DashboardPage = {
             const row = (m) => `<tr><td>${escapeHtml(m.label)}</td><td class="amount">${formatCurrency(m.income)}</td><td class="amount">${formatCurrency(m.expenses)}</td><td class="amount" style="font-weight:700;color:${m.net < 0 ? '#a4242b' : '#1f7a36'}">${formatCurrency(m.net)}</td></tr>`;
             return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col"></th><th scope="col" class="amount">${T('Income')}</th><th scope="col" class="amount">Expenses</th><th scope="col" class="amount">Net</th></tr></thead>
                 <tbody>${row(d.this_month)}${row(d.last_month)}</tbody></table>
-                <div style="font-size:11px;margin-top:4px;color:${d.net_change < 0 ? '#a4242b' : '#1f7a36'}">${d.net_change >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(d.net_change))} vs last month · <a href="#/reports">Full P&L</a></div>`;
+                <div style="font-size:11px;margin-top:4px;color:${d.net_change < 0 ? '#a4242b' : '#1f7a36'}">${d.net_change >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(d.net_change))} vs last month · <a href="#/reports">Full ${T('P&L')}</a></div>`;
         },
         cash_position(d) {
             return `<div class="card-value">${formatCurrency(d.cash)}</div>
                 <div style="font-size:11px;color:var(--gray-500)">in the bank today</div>
                 <table class="data-table" style="font-size:12px;margin-top:8px"><tbody>
-                    <tr><td>+ Receivables due within 30 days</td><td class="amount">${formatCurrency(d.ar_due_30)}</td></tr>
+                    <tr><td>+ ${T('Receivables')} due within 30 days</td><td class="amount">${formatCurrency(d.ar_due_30)}</td></tr>
                     <tr><td>− Payables due within 30 days</td><td class="amount">${formatCurrency(d.ap_due_30)}</td></tr>
                     <tr style="font-weight:700"><td>30-day forecast</td><td class="amount" style="color:${d.forecast_30 < 0 ? '#a4242b' : '#1f7a36'}">${formatCurrency(d.forecast_30)}</td></tr>
                 </tbody></table>
@@ -243,7 +243,7 @@ const DashboardPage = {
                 <div style="font-size:11px;margin-top:4px"><a href="#/expenses">Enter Expenses →</a></div>`;
         },
         job_budget_vs_actual(d) {
-            if (!d.count) return '<div style="color:var(--gray-500);font-size:12px">No jobs with a budget or activity yet. <a href="#/jobs">Jobs →</a></div>';
+            if (!d.count) return '<div style="color:var(--gray-500);font-size:12px">' + Terms.text('No jobs with a budget or activity yet.') + ' <a href="#/jobs">' + T('Jobs') + ' →</a></div>';
             const pct = v => v === null || v === undefined ? '—' : `${v.toFixed(0)}%`;
             return `<table class="data-table" style="font-size:12px"><thead><tr><th scope="col">${T('Job')}</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th><th scope="col" class="amount">Actual</th><th scope="col" class="amount">Projected</th><th scope="col" class="amount">Variance</th><th scope="col" class="amount">% Used</th></tr></thead>
                 <tbody>${d.items.map(j => `<tr class="clickable" onclick="App.navigate('#/jobs/${j.job_id}')"><td>${escapeHtml(j.customer_name)}: ${escapeHtml(j.job_name)}</td><td class="amount">${formatCurrency(j.revised)}</td><td class="amount">${formatCurrency(j.committed)}</td><td class="amount">${formatCurrency(j.actual)}</td><td class="amount">${formatCurrency(j.projected)}</td><td class="amount" style="font-weight:700;color:${j.revised && j.variance < 0 ? '#a4242b' : '#1f7a36'}">${formatCurrency(j.variance)}</td><td class="amount">${pct(j.pct_used)}</td></tr>`).join('')}</tbody>

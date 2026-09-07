@@ -49,7 +49,7 @@ const PaymentsPage = {
         }
         let allocHtml = '';
         if (p.allocations.length) {
-            allocHtml = `<h4 style="margin:12px 0 8px;">Applied to Invoices</h4>
+            allocHtml = `<h4 style="margin:12px 0 8px;">Applied to ${T('Invoices')}</h4>
                 <div class="table-container"><table><thead><tr>
                 <th scope="col">${T('Invoice')}</th><th scope="col" class="amount">Amount</th></tr></thead><tbody>`;
             for (const a of p.allocations) {
@@ -60,7 +60,7 @@ const PaymentsPage = {
 
         openModal('Payment Details', `
             <div style="margin-bottom:12px;">
-                <strong>Customer:</strong> ${escapeHtml(p.customer_name || '')}<br>
+                <strong>${T('Customer')}:</strong> ${escapeHtml(p.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(p.date)}<br>
                 <strong>Amount:</strong> ${formatCurrency(p.amount)}<br>
                 <strong>Method:</strong> ${escapeHtml(p.method || 'N/A')}<br>
@@ -80,7 +80,7 @@ const PaymentsPage = {
     },
 
     async void(id) {
-        if (!confirm('Void this payment? Invoice balances will be restored.')) return;
+        if (!confirm(`Void this payment? ${T('Invoice')} balances will be restored.`)) return;
         try {
             await API.post(`/payments/${id}/void`);
             toast('Payment voided');
@@ -150,7 +150,7 @@ const PaymentsPage = {
             return;
         }
 
-        let html = `<h4 style="margin-bottom:8px;">Apply to Invoices</h4>
+        let html = `<h4 style="margin-bottom:8px;">Apply to ${T('Invoices')}</h4>
             <div class="table-container"><table><thead><tr>
             <th scope="col">${T('Invoice')}</th><th scope="col">Date</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th>
             </tr></thead><tbody>`;

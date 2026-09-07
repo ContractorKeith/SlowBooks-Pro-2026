@@ -309,3 +309,124 @@ def test_invoice_and_receipt_pdfs_are_named_in_the_company_words(
     assert "DONATION RECEIPT" in preview and "SALES RECEIPT" not in preview
     stmt = client.get(f"/api/reports/customer-statement/{seed_customer.id}/pdf")
     assert stmt.status_code == 200 and stmt.content[:5] == b"%PDF-"
+
+
+# ---------------------------------------------------------------------------
+# Static sweep: no user-facing literal in the SPA may carry a business word
+# without going through T() / Terms.text(). Found the hard way — two leaks
+# shipped in 2.9.0 screenshots ("Sales totals per donor", an aging header
+# that said Customer) that the narrower regexes above never looked at.
+# ---------------------------------------------------------------------------
+
+_SWEEP_EXEMPT = {
+    # interop, tax, HR and shell files keep their own vocabulary by design
+    "iif.js",
+    "qbo.js",
+    "ocr.js",
+    "ocr_receipts.js",
+    "migration.js",
+    "tax.js",
+    "employees.js",
+    "companies.js",
+    "terms.js",
+    "desktop_shim.js",
+    "bootstrap.js",
+    "api.js",
+    "auth.js",
+    "payroll.js",
+    "benefits.js",
+    "pto.js",
+    "onboarding.js",
+    "garnishments.js",
+    "time_entries.js",
+    "tax_forms.js",
+    "portal.js",
+    "reseller_permits.js",
+    "ocr_canvas.js",
+}
+_SWEEP_WORDS = re.compile(
+    r"\b(Customers?|Invoices?|Sales Receipts?|Class(?:es)?|Jobs?|Net Income|"
+    r"Profit & Loss|P&L|Balance Sheet|Equity|Income|A/R|Receivables?)\b"
+)
+
+
+def _sweep_hits():
+    hits = []
+    for path in sorted((ROOT / "app/static/js").glob("*.js")):
+        if path.name in _SWEEP_EXEMPT:
+            continue
+        for lineno, line in enumerate(path.read_text().split("\n"), 1):
+            if re.search(r"\bT\(|Terms\.(text|isNonprofit)\(", line):
+                continue
+            if line.lstrip().startswith(("//", "*", "/*")):
+                continue
+            if (
+                "// literal face" in line
+            ):  # printed-document names are literal by design
+                continue
+            found = []
+            found += [m.group(1) for m in re.finditer(r">([^<>{}]*?)<", line)]
+            # text that trails a ${...} expression: `${id ? 'Update' : 'Create'} Customer</button>`
+            found += [m.group(1) for m in re.finditer(r"\}([^<>{}$]*?)<", line)]
+            # quoted UI strings on the line (modal titles, toasts inside ternaries)
+            found += [
+                m.group(2)
+                for m in re.finditer(r"(['\"])((?:(?!\1).){3,120})\1", line)
+                if not re.search(r"^[#/]|^[a-z_./-]+$|\.png|\.pdf|://", m.group(2))
+            ]
+            found += [
+                m.group(1)
+                for m in re.finditer(
+                    r'(?:placeholder|title|aria-label|label)="([^"]*)"', line
+                )
+            ]
+            found += [
+                m.group(2)
+                for m in re.finditer(
+                    r"(?:toast|confirm|alert)\(\s*(['\"`])(.*?)\1", line
+                )
+            ]
+            found += [
+                m.group(2)
+                for m in re.finditer(
+                    r"(?:title|label|heading)\s*:\s*(['\"])(.*?)\1", line
+                )
+            ]
+            for text in found:
+                if _SWEEP_WORDS.search(text):
+                    hits.append((path.name, lineno, text.strip()))
+    return hits
+
+
+def test_no_unwrapped_business_words_in_spa_text():
+    """Every hit must be an App.routes label (rewritten at boot by
+    applyTerminology — see test_route_labels_are_rewritten_at_boot); anything
+    else is a leak the nonprofit switch will show."""
+    keys = set(NONPROFIT)
+    leaks = [
+        h
+        for h in _sweep_hits()
+        if not (h[0] == "app.js" and h[1] < 60 and h[2] in keys)
+    ]
+    assert leaks == [], "unwrapped business words in SPA text:\n" + "\n".join(
+        f"  {f}:{n}: {t}" for f, n, t in leaks
+    )
+
+
+def test_every_T_call_resolves_to_a_dictionary_key():
+    """T('Job name') is not a key, so it rendered "Job name" for a nonprofit —
+    the wrapper looked right and did nothing (2.9.1 audit). Every argument
+    must be a key, or a singular/plural of one, case-insensitively."""
+    keys = {k.lower() for k in NONPROFIT}
+
+    def resolves(arg):
+        a = arg.lower()
+        return a in keys or (a.endswith("s") and a[:-1] in keys) or (a + "s") in keys
+
+    bad = []
+    for path in sorted((ROOT / "app/static/js").glob("*.js")):
+        for lineno, line in enumerate(path.read_text().split("\n"), 1):
+            for m in re.finditer(r"\bT\(\s*(['\"])(.*?)\1\s*\)", line):
+                if not resolves(m.group(2)):
+                    bad.append(f"{path.name}:{lineno}: T({m.group(2)!r})")
+    assert bad == [], "T() keys that do not resolve:\n" + "\n".join(bad)

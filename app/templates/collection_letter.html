@@ -52,7 +52,7 @@
     <div class="letter-type">Friendly Reminder</div>
     <div class="body-text urgency-30">
         <p>Dear {{ customer.name }},</p>
-        <p>Our records indicate that the following invoice(s) are past due. We understand that
+        <p>Our records indicate that {{ terms.text('the following invoice(s) are past due.') }} We understand that
         oversights happen, and we wanted to bring this to your attention.</p>
         <p>If you have already sent payment, please disregard this notice. Otherwise, we would
         appreciate your prompt attention to this matter.</p>
@@ -62,7 +62,7 @@
     <div class="letter-type">Second Notice — Account Past Due</div>
     <div class="body-text urgency-60">
         <p>Dear {{ customer.name }},</p>
-        <p>Despite our previous reminder, the following invoice(s) remain unpaid. Your account
+        <p>Despite our previous reminder, {{ terms.text('the following invoice(s) remain unpaid.') }} Your account
         is now significantly past due.</p>
         <p>Please arrange payment immediately to avoid any interruption to your account or
         additional collection activity.</p>
@@ -73,7 +73,7 @@
     <div class="body-text urgency-90">
         <p>Dear {{ customer.name }},</p>
         <p><strong>This is our final notice before we escalate collection efforts.</strong></p>
-        <p>The following invoice(s) are seriously past due. If payment is not received within
+        <p>{{ terms.text('The following invoice(s) are seriously past due.') }} If payment is not received within
         10 business days, we may be forced to pursue additional collection measures,
         which may affect your credit standing.</p>
         <p>Please contact us immediately to arrange payment or discuss a payment plan.</p>
@@ -83,7 +83,7 @@
     <table>
         <thead>
             <tr>
-                <th>Invoice #</th>
+                <th>{{ terms('Invoice') }} #</th>
                 <th>Date</th>
                 <th>Due Date</th>
                 <th>Days Past Due</th>
