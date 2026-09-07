@@ -50,6 +50,26 @@ other desktop app. If something goes wrong before the app window can open, a
 small popup explains it, and full details are written to
 `%LOCALAPPDATA%\SlowBooksPro\data\launcher.log`.
 
+### Windows Defender "Controlled folder access"
+
+Off by default on Windows 11, but some people (and most managed PCs) turn it
+on. When it is on, Defender blocks any app it does not know from writing
+into Documents, Downloads and the other protected folders — including a
+OneDrive-redirected Documents — and a code signature earns no exception.
+SlowBooks writes there in two places: **Save PDF / Save CSV** on reports go
+to `Documents\SlowBooks Pro\Reports`, and **Save backup** copies the backup
+to `Downloads`. If the write is refused, the app does not fail silently: the
+PDF or CSV lands in `%LOCALAPPDATA%\SlowBooksPro\data\Reports` instead and
+the notice says so (with a *Show in folder* button), and the backup notice
+tells you it is still in the app's own `backups` folder. Defender's own toast
+may or may not appear.
+
+To let SlowBooks use your Documents and Downloads folders directly:
+**Windows Security → Virus & threat protection → Ransomware protection →
+Manage Controlled folder access → Allow an app through Controlled folder
+access → Add an allowed app → Recently blocked apps**, and pick
+`SlowBooksPro.exe` (or browse to `C:\Program Files\SlowBooks Pro 2026\`).
+
 ### Backups
 
 Backups created from the Settings UI are simply snapshots of the open
