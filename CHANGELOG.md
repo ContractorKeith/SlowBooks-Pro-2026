@@ -43,6 +43,8 @@ bank feed's access URL is longer than that; the column is now text
 (contributed by @kycrna). **Bank feeds can target a liability account**,
 so a credit card feed lands where the card lives (also @kycrna).
 
+### v2.9.1 — Post-release tidy from the 2.9.0 gate
+
 **A stored AI provider key can be removed.** `PUT /api/analytics/ai-config`
 with `"api_key": ""` clears it (omit the field to keep it; a value replaces
 it), the spec says so, and the Settings page has a Remove button beside the
