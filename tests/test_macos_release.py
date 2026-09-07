@@ -224,3 +224,38 @@ def test_notarize_rejects_log_with_errors(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError, match="did not pass inspection"):
         release._notarize(dmg, "slowbooks-notary", tmp_path, "dmg")
+
+
+def test_dmg_contents_check_uses_the_staged_bundle_name(monkeypatch, tmp_path):
+    """#100: the mounted-DMG stapler check must look for the bundle by the
+    name that was actually staged, not a hardcoded 'SlowBooks Pro.app'."""
+    calls = []
+
+    def fake_record_run(report_path, *args, check=True):
+        calls.append(args)
+        if args[:2] == ("hdiutil", "attach"):
+            (tmp_path / "final-dmg-mount" / "Renamed.app").mkdir(parents=True)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "_record_run", fake_record_run)
+    dmg = tmp_path / "SlowBooksPro.dmg"
+    dmg.write_bytes(b"dmg")
+    release._verify_dmg_contents_stapled(dmg, tmp_path / "ev.txt", tmp_path, "Renamed.app")
+    validated = [c for c in calls if c[1:3] == ("stapler", "validate")]
+    assert validated and validated[0][-1].endswith("/final-dmg-mount/Renamed.app")
+    assert calls[-1][:2] == ("hdiutil", "detach")
+
+
+def test_dmg_contents_check_fails_when_bundle_is_missing(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_record_run(report_path, *args, check=True):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(release, "_record_run", fake_record_run)
+    dmg = tmp_path / "SlowBooksPro.dmg"
+    dmg.write_bytes(b"dmg")
+    with pytest.raises(RuntimeError, match="is not inside"):
+        release._verify_dmg_contents_stapled(dmg, tmp_path / "ev.txt", tmp_path, "Missing.app")
+    assert calls[-1][:2] == ("hdiutil", "detach")

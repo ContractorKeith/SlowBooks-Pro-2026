@@ -415,10 +415,14 @@ def _staple(target: Path, report_dir: Path) -> None:
         )
 
 
-def _verify_dmg_contents_stapled(dmg: Path, evidence: Path, work_dir: Path) -> None:
+def _verify_dmg_contents_stapled(
+    dmg: Path, evidence: Path, work_dir: Path, bundle_name: str
+) -> None:
     """Mount the shipped DMG and run `stapler validate` on the .app inside
     it — the artifact a user actually drags out. Fails the release if the
-    ticket is missing there, whatever the DMG's own ticket says."""
+    ticket is missing there, whatever the DMG's own ticket says.
+    ``bundle_name`` is the staged bundle's own name so a renamed .app is
+    validated rather than reported missing (#100)."""
     mount = work_dir / "final-dmg-mount"
     mount.mkdir()
     _record_run(
@@ -433,7 +437,9 @@ def _verify_dmg_contents_stapled(dmg: Path, evidence: Path, work_dir: Path) -> N
         "-quiet",
     )
     try:
-        inner = mount / "SlowBooks Pro.app"
+        inner = mount / bundle_name
+        if not inner.is_dir():
+            raise RuntimeError(f"{bundle_name} is not inside {dmg.name}; see {evidence}")
         result = _record_run(
             evidence, "xcrun", "stapler", "validate", "-v", str(inner), check=False
         )
@@ -617,7 +623,7 @@ def build_release(
             "context:primary-signature",
             str(final_dmg),
         )
-        _verify_dmg_contents_stapled(final_dmg, final_evidence, work_dir)
+        _verify_dmg_contents_stapled(final_dmg, final_evidence, work_dir, app.name)
 
     with final_dmg.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
