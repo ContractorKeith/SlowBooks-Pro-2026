@@ -88,6 +88,7 @@ release that fixed them. Thank you to the reporters.
 | GHSA-rh75-6834-f66j | @hongshengy | 2.9.2 | bookkeeper could rewrite direct-deposit accounts and export NACHA |
 | GHSA-pwj7-6qq3-h4fj | @hongshengy | 2.9.2 | read-only could download pay stubs, W-2s and employee documents |
 | GHSA-rm5h-555g-vpjj | @furkan-arslan-sec | 2.9.2 | batch and bill payments took no row lock on the invoice or bill (PostgreSQL race) |
+| CodeQL alert 58 (py/full-ssrf), #104 | code scanning | 2.9.3 | SimpleFIN bridge request could be steered by DNS rebinding between the guard's lookup and the connection |
 
 ## Known considerations
 

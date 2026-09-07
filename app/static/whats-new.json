@@ -1,4 +1,10 @@
 {
+  "2.9.3": {
+    "title": "SimpleFIN request pinned to the checked address",
+    "items": [
+      "The bank-feed bridge request connects to the address the SSRF guard approved, closing a DNS-rebinding window; certificate checks stay on the hostname"
+    ]
+  },
   "2.9.2": {
     "title": "Security: HR and payroll are admin-only; Server Edition policy, SimpleFIN on PostgreSQL, credit-card feeds",
     "items": [

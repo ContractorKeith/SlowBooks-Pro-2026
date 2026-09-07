@@ -7,6 +7,17 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.9.3 — SimpleFIN request pinned to the address the guard approved
+
+**One security fix, right behind 2.9.2.** The SimpleFIN SSRF guard resolved
+the bridge hostname and refused private addresses, then the HTTP client
+resolved the name again to connect — a second DNS answer could steer the
+socket at a private service (DNS rebinding; CodeQL py/full-ssrf, #104,
+raised on the 2.9.2 pull request and wrongly dismissed as guarded). The
+request now connects to the address the guard checked, with the hostname
+kept for the Host header and TLS (the certificate is still verified against
+the hostname), and a response from a non-global peer is discarded.
+
 ### v2.9.2 — Security: HR and payroll are admin-only; payment row locks; Server Edition CSP; SimpleFIN on PostgreSQL
 
 **Security (Server Edition).** Four private reports arrived on the same
@@ -29,10 +40,6 @@ PostgreSQL cannot both pass the balance check and over-apply; an
 over-application that slips past the check is refused with 409 instead of a
 negative balance. Advisories GHSA-rh68-48w8-pj8r, GHSA-rh75-6834-f66j,
 GHSA-pwj7-6qq3-h4fj, GHSA-rm5h-555g-vpjj; fixed in 2.9.2.
-The SimpleFIN bridge request now connects to the address the SSRF guard
-approved (host header and SNI keep the hostname, the peer address is
-checked again after connect), closing the DNS-rebinding window between the
-guard's lookup and the connection's (CodeQL py/full-ssrf, #104).
 
 **Server Edition no longer serves the desktop's relaxed script policy to
 LAN browsers.** The launcher marks every server it starts as "desktop",
