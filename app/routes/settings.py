@@ -51,6 +51,14 @@ def _redact_secrets(settings: dict) -> dict:
     }
 
 
+# Settings whose value is one of a fixed set. The SPA renders a <select>;
+# this is the server-side twin so an API token cannot store "banana".
+ENUM_SETTINGS = {
+    "company_type": frozenset({"business", "nonprofit"}),
+    "ocr_engine": frozenset({"auto", "tesseract"}),
+}
+
+
 class SettingsUpdate(BaseModel):
     # Accept any subset of DEFAULT_SETTINGS keys. Unknown keys are silently
     # ignored by the handler (same as before). We keep this permissive because
@@ -63,6 +71,15 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 @router.get("")
 def get_settings(db: Session = Depends(get_db)):
+    """Every company setting, secrets redacted.
+
+    Units to know before copying a value onto a document:
+    `default_tax_rate` is a PERCENT string as the user types it ("8.9" =
+    8.9%); a document's `tax_rate` (invoices, bills, estimates, credit
+    memos, sales receipts, purchase orders, recurring templates) is a
+    FRACTION (0.089). Divide by 100 before posting; the API rejects a
+    document `tax_rate` above 1.
+    """
     return _redact_secrets(get_all_settings(db))
 
 
@@ -134,13 +151,42 @@ def update_settings(
         db,
         {k: v for k, v in data.model_dump().items() if k in DEFAULT_SETTINGS},
     )
+    incoming = data.model_dump()
+    if incoming.get("company_name"):
+        from app.services.company_service import (
+            _current_company_file,
+            company_name_taken_by,
+        )
+
+        other = company_name_taken_by(
+            incoming["company_name"], exclude_file=_current_company_file()
+        )
+        if other:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Another company file ({other}) is already named "
+                    f"'{incoming['company_name'].strip()}'. Choose a name that "
+                    "tells the two apart."
+                ),
+            )
     for key, value in data.model_dump().items():
         if key not in DEFAULT_SETTINGS:
             continue
+        allowed = ENUM_SETTINGS.get(key)
+        if allowed is not None and value not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{key} must be one of: {', '.join(sorted(allowed))}",
+            )
         if key in SECRET_KEYS and value == SECRET_PLACEHOLDER:
             continue
         set_setting(db, key, str(value) if value is not None else "")
     db.commit()
+    if "company_name" in incoming:
+        from app.services.company_service import sync_manifest_name
+
+        sync_manifest_name(incoming.get("company_name"))
     return _redact_secrets(get_all_settings(db))
 
 

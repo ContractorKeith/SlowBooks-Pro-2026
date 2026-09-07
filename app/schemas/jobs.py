@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
+from app.schemas.common import StrictModel
 
 from app.models.jobs import JOB_STATUSES
 
@@ -25,7 +26,7 @@ def _check_status(v):
     return v
 
 
-class JobCreate(BaseModel):
+class JobCreate(StrictModel):
     customer_id: int
     name: str
     job_number: Optional[str] = None
@@ -43,7 +44,7 @@ class JobCreate(BaseModel):
     _status = field_validator("status")(_check_status)
 
 
-class JobUpdate(BaseModel):
+class JobUpdate(StrictModel):
     customer_id: Optional[int] = None
     name: Optional[str] = None
     job_number: Optional[str] = None

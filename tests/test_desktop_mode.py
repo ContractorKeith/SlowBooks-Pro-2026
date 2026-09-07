@@ -211,6 +211,20 @@ def test_manifest_list_and_last_opened(data_dir):
     assert company_service.get_last_opened() == "second-co.db"
 
 
+def test_manifest_tolerates_a_utf8_bom(data_dir):
+    """A manifest saved by Notepad or PowerShell's Set-Content carries a
+    UTF-8 BOM; json.loads rejects it unless the file is read as utf-8-sig.
+    Seen on VonHolten308 while staging a company file: every launch logged
+    'Unexpected UTF-8 BOM' and the picker came up empty."""
+    company_service.manifest_create_company("First Co")
+    path = company_service.manifest_path()
+    path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
+    assert [c["name"] for c in company_service.manifest_list_companies()] == [
+        "First Co"
+    ]
+    assert company_service.get_last_opened() == "first-co.db"
+
+
 def test_companies_api_uses_manifest_in_sqlite_mode(client, data_dir):
     """Under a SQLite DATABASE_URL (the desktop mode), /api/companies lists
     and creates against the JSON manifest, not a Postgres companies table."""

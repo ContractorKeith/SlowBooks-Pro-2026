@@ -2,18 +2,20 @@ from typing import Optional as _Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.invoices import Invoice
 from app.services.pdf_service import generate_invoice_pdf
 from app.services.settings_service import get_all_settings as get_settings
+from app.services.terminology import terms_for
+from app.services.donor_documents import invoice_doc_kind, invoice_pdf_context
 
 from app.routes.invoices._router import router
 
 
-class _EmailInvoiceRequest(BaseModel):
+class _EmailInvoiceRequest(StrictModel):
     recipient: str
     subject: _Optional[str] = None
 
@@ -26,7 +28,7 @@ def invoice_pdf(invoice_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Invoice not found")
     company = get_settings(db)
     pdf_bytes = generate_invoice_pdf(inv, company)
-    doc_kind = "SalesReceipt" if inv.is_sales_receipt else "Invoice"
+    doc_kind = invoice_doc_kind(inv, terms_for(company))
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -56,7 +58,12 @@ def invoice_print_preview(invoice_id: int, db: Session = Depends(get_db)):
     # Add customer_name to invoice object for template
     if inv.customer and not hasattr(inv, "customer_name"):
         inv.customer_name = inv.customer.name
-    html_str = template.render(inv=inv, company=company)
+    html_str = template.render(
+        inv=inv,
+        company=company,
+        terms=terms_for(company),
+        **invoice_pdf_context(inv, company),
+    )
     # Wrap with auto-print script
     html_str = html_str.replace(
         "</body>", "<script>window.onload=function(){window.print();}</script></body>"
@@ -105,9 +112,7 @@ def email_invoice(
             html_body=html_body,
             attachment_bytes=pdf_bytes,
             attachment_name=(
-                f"SalesReceipt_{inv.invoice_number}.pdf"
-                if inv.is_sales_receipt
-                else f"Invoice_{inv.invoice_number}.pdf"
+                f"{invoice_doc_kind(inv, terms_for(company))}_{inv.invoice_number}.pdf"
             ),
             entity_type="invoice",
             entity_id=inv.id,

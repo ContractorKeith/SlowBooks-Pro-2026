@@ -71,6 +71,8 @@ def create_sales_receipt(data: SalesReceiptCreate, db: Session = Depends(get_db)
             job_id=data.job_id,
             currency=data.currency,
             exchange_rate=data.exchange_rate,
+            fair_value_amount=data.fair_value_amount,
+            fair_value_description=data.fair_value_description,
             lines=data.lines,
         ),
         db,

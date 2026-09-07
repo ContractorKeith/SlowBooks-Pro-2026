@@ -18,7 +18,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,7 +28,7 @@ from app.services.payments.recorder import record_provider_payment
 from app.services.rate_limit import limiter
 
 
-class CheckoutSessionRequest(BaseModel):
+class CheckoutSessionRequest(StrictModel):
     payment_token: str
 
 

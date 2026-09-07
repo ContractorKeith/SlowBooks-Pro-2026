@@ -9,18 +9,18 @@ const CustomersPage = {
         const customers = await API.get('/customers');
         let html = `
             <div class="page-header">
-                <h2>Customers</h2>
-                <button class="btn btn-primary" onclick="CustomersPage.showForm()">+ New Customer</button>
+                <h2>${T('Customers')}</h2>
+                <button class="btn btn-primary" onclick="CustomersPage.showForm()">+ ${T('New Customer')}</button>
             </div>
             <div class="toolbar">
-                <input type="text" placeholder="Search customers..." id="customer-search"
+                <input type="text" placeholder="${Terms.text('Search customers...')}" id="customer-search"
                     oninput="CustomersPage.filter(this.value)">
             </div>`;
 
         if (customers.length === 0) {
             html += `<div class="empty-state">
-                <p>No customers yet.</p>
-                <button class="btn btn-primary" onclick="CustomersPage.showForm()" style="margin-top:10px;">+ Create your first customer</button>
+                <p>${Terms.text('No customers yet.')}</p>
+                <button class="btn btn-primary" onclick="CustomersPage.showForm()" style="margin-top:10px;">+ ${Terms.text('Create your first customer')}</button>
             </div>`;
         } else {
             html += `<div class="table-container"><table>
@@ -129,10 +129,11 @@ const CustomersPage = {
                         ${formatCurrency(customer.balance)}
                     </div>
                     <div style="margin-top:8px">
-                        <button class="btn btn-sm btn-primary" onclick="closeModal();InvoicesPage.showForm(null,${id})">New Invoice</button>
+                        <button class="btn btn-sm btn-primary" onclick="closeModal();InvoicesPage.showForm(null,${id})">${T('New Invoice')}</button>
                         <button class="btn btn-sm btn-secondary" onclick="closeModal();PaymentsPage.showForm(null,${id})">Receive Payment</button>
-                        <button class="btn btn-sm btn-secondary" onclick="closeModal();JobsPage.showForm(null,${id})">New Job</button>
+                        <button class="btn btn-sm btn-secondary" onclick="closeModal();JobsPage.showForm(null,${id})">New ${T('Job')}</button>
                         <button class="btn btn-sm btn-secondary" onclick="CustomersPage.showForm(${id})">Edit</button>
+                        ${Terms.isNonprofit() ? `<button class="btn btn-sm btn-secondary" onclick="window.open('/api/donors/${id}/giving-statement/pdf?year=' + (new Date().getFullYear() - 1), '_blank')">Giving Statement (last year)</button>` : ''}
                     </div>
                 </div>
             </div>
@@ -181,7 +182,7 @@ const CustomersPage = {
                 <h4 style="font-size:11px;text-transform:uppercase;color:#888;margin:0 0 4px 0">Jobs (${jobs.length})</h4>
                 ${jobs.length === 0 ? '<p style="color:#888;font-size:13px;margin:0">No jobs. A job is a project for this customer — invoices, bills, expenses and time can be tagged to it.</p>' :
                     `<table class="data-table" style="font-size:12px">
-                        <thead><tr><th scope="col">Job</th><th scope="col">Status</th><th scope="col" class="amount">Contract</th><th scope="col"></th></tr></thead>
+                        <thead><tr><th scope="col">${T('Job')}</th><th scope="col">Status</th><th scope="col" class="amount">Contract</th><th scope="col"></th></tr></thead>
                         <tbody>${jobs.map(j => `<tr style="cursor:pointer" onclick="closeModal();JobsPage.showDetails(${j.id})">
                             <td>${escapeHtml(j.name)}${j.job_number ? ` <span style="color:#888">#${escapeHtml(j.job_number)}</span>` : ''}</td>
                             <td>${escapeHtml((window.JobsPage && JobsPage.STATUS_LABELS[j.status]) || j.status)}${j.is_active ? '' : ' <span style="color:#888">(inactive)</span>'}</td>
@@ -195,7 +196,7 @@ const CustomersPage = {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
                 <div>
                     <h4 style="font-size:11px;text-transform:uppercase;color:#888;margin:0 0 4px 0">Recent invoices (${invoices.length})</h4>
-                    ${invoices.length === 0 ? '<p style="color:#888;font-size:13px;margin:0">No invoices yet</p>' :
+                    ${invoices.length === 0 ? Terms.text('<p style="color:#888;font-size:13px;margin:0">No invoices yet</p>') :
                         `<table class="data-table" style="font-size:12px">
                             <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col" class="amount">Total</th><th scope="col">Status</th></tr></thead>
                             <tbody>${invRows}</tbody>
@@ -211,7 +212,7 @@ const CustomersPage = {
                 </div>
             </div>`;
 
-        openModal(`Customer — ${customer.name}`, html);
+        openModal(`${T('Customer')} — ${customer.name}`, html);
     },
 
     async _saveNotes(id, value) {
@@ -295,6 +296,16 @@ const CustomersPage = {
                         <input name="tax_id" value="${escapeHtml(c.tax_id || '')}"></div>
                     <div class="form-group"><label>Credit Limit</label>
                         <input name="credit_limit" type="number" step="0.01" value="${c.credit_limit || ''}"></div>
+                    ${Terms.isNonprofit() ? `
+                    <div class="form-group"><label>${T('Customer')} type</label>
+                        <select name="donor_type">
+                            <option value="" ${!c.donor_type ? 'selected' : ''}>—</option>
+                            <option value="individual" ${c.donor_type === 'individual' ? 'selected' : ''}>Individual</option>
+                            <option value="organization" ${c.donor_type === 'organization' ? 'selected' : ''}>Organization / foundation</option>
+                        </select></div>
+                    <div class="form-group"><label>Salutation (letters)</label>
+                        <input name="salutation" maxlength="100" placeholder="e.g. Dear Maria" value="${escapeHtml(c.salutation || '')}"></div>
+                    <div class="form-group full-width"><label style="font-weight:normal;"><input type="checkbox" name="send_year_end_statement" ${c.send_year_end_statement === false ? '' : 'checked'}> Send the year-end giving statement</label></div>` : ''}
                     <div class="form-group full-width"><label>Notes</label>
                         <textarea name="notes">${escapeHtml(c.notes || '')}</textarea></div>
                 </div>
@@ -311,6 +322,8 @@ const CustomersPage = {
         const data = Object.fromEntries(form.entries());
         if (data.credit_limit) data.credit_limit = parseFloat(data.credit_limit);
         else delete data.credit_limit;
+        if (e.target.send_year_end_statement) data.send_year_end_statement = e.target.send_year_end_statement.checked;
+        if ('donor_type' in data && !data.donor_type) data.donor_type = null;
 
         try {
             if (id) {
@@ -339,7 +352,7 @@ const CustomersPage = {
               <span style="color:var(--text-muted);font-size:11px">
               (${Math.round(d.similarity * 100)}% match)</span></li>`
         ).join('');
-        openModal('Possible Duplicate Customer', `
+        openModal(Terms.text('Possible Duplicate Customer'), `
             <div style="font-size:13px; line-height:1.5;">
               <p>A similar customer name already exists:</p>
               <ul style="margin:8px 0 12px 20px;">${list}</ul>

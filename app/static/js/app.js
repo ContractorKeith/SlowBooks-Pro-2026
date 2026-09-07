@@ -9,10 +9,13 @@ const App = {
         '/jobs':          { page: 'jobs',            label: 'Jobs',               render: () => JobsPage.render() },
         '/jobs/:id':      { page: 'jobs',            label: 'Job',                render: (id) => JobsPage.renderDetail(id) },
         '/job-costs':     { page: 'job-costs',       label: 'Job Cost Entries',   render: () => JobCostsPage.render() },
+        '/releases':      { page: 'releases',        label: 'Releases from Restriction', render: () => ReleasesPage.render() },
+        '/functional-allocations': { page: 'functional-allocations', label: 'Functional Allocations', render: () => AllocationsPage.render() },
         '/vendors':       { page: 'vendors',         label: 'Vendor Center',      render: () => VendorsPage.render() },
         '/items':         { page: 'items',           label: 'Item List',          render: () => ItemsPage.render() },
         '/invoices':      { page: 'invoices',        label: 'Create Invoices',    render: () => InvoicesPage.render() },
         '/sales-receipts': { page: 'sales-receipts', label: 'Enter Sales Receipts', render: () => SalesReceiptsPage.render() },
+        '/in-kind-gifts': { page: 'in-kind-gifts',   label: 'In-Kind Gifts',      render: () => InKindPage.render() },
         '/estimates':     { page: 'estimates',       label: 'Create Estimates',   render: () => EstimatesPage.render() },
         '/payments':      { page: 'payments',        label: 'Receive Payments',   render: () => PaymentsPage.render() },
         '/banking':       { page: 'banking',         label: 'Bank Accounts',      render: () => BankingPage.render() },
@@ -156,8 +159,8 @@ const App = {
         }
 
         const typeOrder = ['asset', 'liability', 'equity', 'income', 'cogs', 'expense'];
-        const typeNames = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity',
-            income: 'Income', cogs: 'Cost of Goods Sold', expense: 'Expenses' };
+        const typeNames = { asset: 'Assets', liability: 'Liabilities', equity: T('Equity'),
+            income: T('Income'), cogs: 'Cost of Goods Sold', expense: 'Expenses' };
 
         let html = `
             <div class="page-header">
@@ -275,15 +278,15 @@ const App = {
                     <h3>Export</h3>
                     <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Download data as CSV files.</p>
                     <div style="display:flex; flex-direction:column; gap:8px;">
-                        <a href="/api/csv/export/customers" class="btn btn-secondary" download>Export Customers</a>
+                        <a href="/api/csv/export/customers" class="btn btn-secondary" download>Export ${T('Customers')}</a>
                         <a href="/api/csv/export/vendors" class="btn btn-secondary" download>Export Vendors</a>
                         <a href="/api/csv/export/items" class="btn btn-secondary" download>Export Items</a>
-                        <a href="/api/csv/export/invoices" class="btn btn-secondary" download>Export Invoices</a>
+                        <a href="/api/csv/export/invoices" class="btn btn-secondary" download>Export ${T('Invoices')}</a>
                         <a href="/api/csv/export/bills" class="btn btn-secondary" download>Export Bills</a>
-                        <a href="/api/csv/export/sales-receipts" class="btn btn-secondary" download>Export Sales Receipts</a>
+                        <a href="/api/csv/export/sales-receipts" class="btn btn-secondary" download>Export ${T('Sales Receipts')}</a>
                         <a href="/api/csv/export/deposits" class="btn btn-secondary" download>Export Deposits</a>
-                        <a href="/api/csv/export/classes" class="btn btn-secondary" download>Export Classes</a>
-                        <a href="/api/csv/export/jobs" class="btn btn-secondary" download>Export Jobs</a>
+                        <a href="/api/csv/export/classes" class="btn btn-secondary" download>Export ${T('Classes')}</a>
+                        <a href="/api/csv/export/jobs" class="btn btn-secondary" download>Export ${T('Jobs')}</a>
                         <a href="/api/csv/export/accounts" class="btn btn-secondary" download>Export Chart of Accounts</a>
                     </div>
                 </div>
@@ -293,7 +296,7 @@ const App = {
                     <form id="csv-import-form" onsubmit="App.importCSV(event)">
                         <div class="form-group"><label>Entity Type</label>
                             <select name="entity_type" id="csv-entity">
-                                <option value="customers">Customers</option>
+                                <option value="customers">${T('Customers')}</option>
                                 <option value="vendors">Vendors</option>
                                 <option value="items">Items</option>
                             </select></div>
@@ -349,7 +352,7 @@ const App = {
             </div>
             <form id="qe-form" onsubmit="App.saveQuickEntry(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" id="qe-customer" required><option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>Date *</label>
                         <input name="date" id="qe-date" type="date" required value="${todayISO()}"></div>
@@ -474,10 +477,16 @@ const App = {
         } catch (err) { toast(err.message, 'error'); }
     },
 
-    // Load company name from settings for status bar
-    async loadCompanyName() {
+    settings: {},   // one cached copy of /api/settings for the shell (company name, company type)
+
+    // Load company settings: the status-bar name, and the vocabulary
+    // (Terms) that every page renders with. Never rejects — pre-login this
+    // 401s and auth.js reloads the page after login, same as before.
+    async loadCompanySettings() {
         try {
             const s = await API.get('/settings');
+            App.settings = s || {};
+            Terms.init(s);
             const companyEl = $('#status-company');
             if (companyEl && s.company_name && s.company_name !== 'My Company') {
                 companyEl.textContent = `Company: ${s.company_name}`;
@@ -486,7 +495,25 @@ const App = {
                 const brand = $('#topbar-company');
                 if (brand) brand.textContent = s.company_name;
             }
-        } catch (e) { /* ignore on load */ }
+        } catch (e) { Terms.init(null); /* business words until signed in */ }
+    },
+
+    // Rewrites the static shell into the company's words. index.html is
+    // served raw, so the sidebar and toolbar arrive as business-worded
+    // HTML; this runs once at boot, before the first page renders.
+    applyTerminology() {
+        for (const r of Object.values(App.routes)) r.label = T(r.label);
+        $$('#sidebar .nav-section').forEach(el => { el.textContent = T(el.textContent.trim()); });
+        $$('#sidebar .nav-link').forEach(a => {
+            const t = [...a.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+            if (t) t.textContent = ' ' + T(t.textContent.trim());
+        });
+        $$('#topbar .tb-btn[data-action]').forEach(b => { b.textContent = T(b.textContent.trim()); });
+        const search = $('#global-search');
+        if (search) search.placeholder = Terms.text(search.placeholder);
+        const np = Terms.isNonprofit();
+        $$('[data-nonprofit]').forEach(el => { el.hidden = !np; });
+        $$('[data-business-only]').forEach(el => { el.hidden = np; });
     },
 
     init() {
@@ -538,14 +565,16 @@ const App = {
         App.updateClock();
         setInterval(App.updateClock, 60000);
 
-        // Load company name into status bar
-        App.loadCompanyName();
-
         // Real version in the footer + update badge on desktop installs
         App.initSystemInfo();
 
-        // Navigate after splash closes
-        App.navigate(location.hash || '#/');
+        // Settings first: the vocabulary and the nonprofit nav items must
+        // be in place before the first page paints (no flash of "Customers"
+        // on a donor's screen). loadCompanySettings never rejects.
+        App.loadCompanySettings().then(() => {
+            App.applyTerminology();
+            App.navigate(location.hash || '#/');
+        });
     },
 
     /**

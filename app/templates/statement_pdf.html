@@ -76,7 +76,7 @@
             {% set ns.running = ns.running + (inv.total | float) %}
             <tr>
                 <td>{{ inv.date | fdate }}</td>
-                <td>Invoice</td>
+                <td>{{ terms('Invoice') }}</td>
                 <td>{{ inv.invoice_number }}</td>
                 <td>{{ inv.notes or '' }}</td>
                 <td class="r">{{ inv.total | currency }}</td>
@@ -99,7 +99,7 @@
 
     <div class="summary">
         <table>
-            <tr><td class="label">Total Invoiced</td><td class="r">{{ invoices | sum(attribute='total') | currency }}</td></tr>
+            <tr><td class="label">{{ terms('Total Invoiced') }}</td><td class="r">{{ invoices | sum(attribute='total') | currency }}</td></tr>
             <tr><td class="label">Total Payments</td><td class="r">{{ payments | sum(attribute='amount') | currency }}</td></tr>
             <tr><td class="label grand">Balance Due</td><td class="r grand">{{ ((invoices | sum(attribute='total')) - (payments | sum(attribute='amount'))) | currency }}</td></tr>
         </table>

@@ -9,16 +9,16 @@ const InvoicesPage = {
         // page, so keep them out of this list.
         const invoices = await API.get('/invoices?is_sales_receipt=false');
         return renderListPage({
-            title: 'Invoices',
-            headerHtml: `<button class="btn btn-primary" onclick="InvoicesPage.showForm()">+ New Invoice</button>`,
+            title: T('Invoices'),
+            headerHtml: `<button class="btn btn-primary" onclick="InvoicesPage.showForm()">+ ${T('New Invoice')}</button>`,
             filter: {
                 id: 'inv-status-filter',
                 rowSelector: '.inv-row',
                 options: [['draft', 'Draft'], ['sent', 'Sent'], ['partial', 'Partial'], ['paid', 'Paid'], ['void', 'Void']],
             },
-            empty: `<p>No invoices yet.</p>
-                <button class="btn btn-primary" onclick="InvoicesPage.showForm()" style="margin-top:10px;">+ Create your first invoice</button>`,
-            columns: ['#', 'Customer', 'Date', 'Due Date', 'Status',
+            empty: Terms.text(`<p>No invoices yet.</p>
+                <button class="btn btn-primary" onclick="InvoicesPage.showForm()" style="margin-top:10px;">+ Create your first invoice</button>`),
+            columns: ['#', T('Customer'), 'Date', 'Due Date', 'Status',
                 { label: 'Total', cls: 'amount' }, { label: 'Balance', cls: 'amount' }, 'Actions'],
             items: invoices,
             row: inv => `<tr class="inv-row" data-status="${inv.status}">
@@ -33,9 +33,41 @@ const InvoicesPage = {
                         <button class="btn btn-sm btn-secondary" onclick="InvoicesPage.view(${inv.id})">View</button>
                         <button class="btn btn-sm btn-secondary" onclick="InvoicesPage.showForm(${inv.id})">Edit</button>
                         ${inv.status === 'draft' ? `<button class="btn btn-sm btn-primary" onclick="InvoicesPage.markSent(${inv.id})">Mark Sent</button>` : ''}
+                        ${Terms.isNonprofit() && inv.status !== 'void' && parseFloat(inv.balance_due) > 0 ? `<button class="btn btn-sm btn-secondary" onclick="InvoicesPage.showWriteOff(${inv.id}, ${parseFloat(inv.balance_due)})">Write Off</button>` : ''}
                     </td>
                 </tr>`,
         });
+    },
+
+    // Nonprofit: forgive an open balance (a pledge that will never be paid)
+    // — a write-off credit memo to Bad Debt Expense, applied at once.
+    showWriteOff(id, balance) {
+        openModal('Write Off Balance', `
+            <form onsubmit="InvoicesPage.saveWriteOff(event, ${id})">
+                <div class="form-grid">
+                    <div class="form-group"><label>Date *</label><input name="date" type="date" required value="${todayISO()}"></div>
+                    <div class="form-group"><label>Amount *</label><input name="amount" type="number" step="0.01" min="0.01" max="${balance}" required value="${balance.toFixed(2)}"></div>
+                    <div class="form-group full-width"><label>Memo</label><input name="memo" placeholder="e.g. pledge withdrawn"></div>
+                </div>
+                <div style="font-size:11px;color:var(--gray-500);margin-top:6px">Posts a credit memo to Bad Debt Expense and applies it to this ${T('invoice')}. Void the credit memo to undo.</div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Write Off</button>
+                </div>
+            </form>`);
+    },
+
+    async saveWriteOff(e, id) {
+        e.preventDefault();
+        const form = e.target;
+        try {
+            const cm = await API.post(`/invoices/${id}/write-off`, {
+                date: form.date.value, amount: parseFloat(form.amount.value), memo: form.memo.value || null,
+            });
+            toast(`Written off as credit memo ${cm.memo_number}`);
+            closeModal();
+            App.navigate('#/invoices');
+        } catch (err) { toast(err.message, 'error'); }
     },
 
     async view(id) {
@@ -45,7 +77,7 @@ const InvoicesPage = {
              <td class="amount">${formatCurrency(l.rate)}</td><td class="amount">${formatCurrency(l.amount)}</td></tr>`
         ).join('');
 
-        openModal(`Invoice #${inv.invoice_number}`, `
+        openModal(`${T('Invoice')} #${inv.invoice_number}`, `
             <div style="margin-bottom:12px;">
                 <strong>Customer:</strong> ${escapeHtml(inv.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(inv.date)}<br>
@@ -143,7 +175,7 @@ const InvoicesPage = {
     async emailInvoice(id) {
         const inv = await API.get(`/invoices/${id}`);
         const email = inv.customer_email || '';
-        openModal('Email Invoice', `
+        openModal(Terms.text('Email Invoice'), `
             <form onsubmit="InvoicesPage.sendEmail(event, ${id})">
                 <div class="form-grid">
                     <div class="form-group full-width"><label>Recipient Email *</label>
@@ -197,6 +229,8 @@ const InvoicesPage = {
         if (id) inv = await API.get(`/invoices/${id}`);
         const classGroup = await classFormGroupHtml(inv.class_id);
         const jobGroup = await jobFormGroupHtml(inv.job_id, 'inv-customer-select');
+        // Nonprofit: a pledge prints as one; program fees and rentals stay invoices
+        const pledgeGroup = Terms.isNonprofit() ? `<div class="form-group"><label>Document</label><label style="font-weight:normal;"><input type="checkbox" name="is_pledge" ${(id ? inv.is_pledge : true) ? 'checked' : ''}> This is a pledge (prints as PLEDGE)</label></div>` : '';
         if (inv.lines.length === 0) inv.lines = [{ item_id: '', description: '', quantity: 1, rate: 0 }];
 
         InvoicesPage.lineCount = inv.lines.length;
@@ -205,13 +239,13 @@ const InvoicesPage = {
 
         const custOpts = customers.map(c => `<option value="${c.id}" ${inv.customer_id==c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
 
-        openModal(id ? 'Edit Invoice' : 'New Invoice', `
+        openModal(Terms.text(id ? 'Edit Invoice' : 'New Invoice'), `
             <form id="invoice-form" onsubmit="InvoicesPage.save(event, ${id})">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
-                        <select name="customer_id" id="inv-customer-select" required onchange="InvoicesPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ New Customer</option>${custOpts}</select>
+                    <div class="form-group"><label>${T('Customer')} *</label>
+                        <select name="customer_id" id="inv-customer-select" required onchange="InvoicesPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ ${T('New Customer')}</option>${custOpts}</select>
                         <div id="inv-new-customer-form" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--gray-300); border-radius:4px; background:var(--primary-light);">
-                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add Customer</div>
+                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add ${T('Customer')}</div>
                             <input id="inv-new-cust-name" placeholder="Name *" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="inv-new-cust-email" placeholder="Email" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="inv-new-cust-phone" placeholder="Phone" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
@@ -234,7 +268,7 @@ const InvoicesPage = {
                             title="Auto-calculated from Date + Terms. Edit to override."></div>
                     <div class="form-group"><label>PO #</label>
                         <input name="po_number" value="${escapeHtml(inv.po_number || '')}"></div>
-                    ${classGroup}${jobGroup}
+                    ${classGroup}${jobGroup}${pledgeGroup}
                     ${currencyFormGroupsHtml(inv.currency, inv.exchange_rate)}
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="${(inv.tax_rate * 100) || 0}"
@@ -418,6 +452,7 @@ const InvoicesPage = {
             due_date: form.due_date.value || null,
             terms: form.terms.value,
             po_number: form.po_number.value || null,
+            is_pledge: form.is_pledge ? form.is_pledge.checked : false,
             class_id: classIdFromForm(form),
             job_id: jobIdFromForm(form),
             ...currencyPayloadFromForm(form),
@@ -427,8 +462,8 @@ const InvoicesPage = {
         };
 
         try {
-            if (id) { await API.put(`/invoices/${id}`, data); toast('Invoice updated'); }
-            else { await API.post('/invoices', data); toast('Invoice created'); }
+            if (id) { await API.put(`/invoices/${id}`, data); toast(Terms.text('Invoice updated')); }
+            else { await API.post('/invoices', data); toast(Terms.text('Invoice created')); }
             closeModal();
             App.navigate(location.hash);
         } catch (err) { toast(err.message, 'error'); }

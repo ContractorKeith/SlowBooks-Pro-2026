@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.accounts import Account, AccountType
 from app.models.transactions import Transaction, TransactionLine
 from app.routes.reports._router import router
+from app.services.terminology import Terms, terms_from_db
 
 # Debit-normal account types. For these, natural balance = debit - credit.
 # For the rest (liability, equity, income), natural balance = credit - debit.
@@ -453,14 +454,15 @@ def profit_loss_by_class(
     end_date: date = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """P&L split by the class dimension on each posted transaction.
+    """P&L split by the class dimension on each posted line.
 
-    Untagged transactions (class_id NULL) group with the system-default
-    "Uncategorized" class so every posting is accounted for and the
-    column totals reconcile with the plain Profit & Loss.
+    A line's own class wins, then the transaction header's; untagged
+    activity groups with the system-default "Uncategorized" class so every
+    posting is accounted for and the column totals reconcile with the
+    plain Profit & Loss.
     """
     from app.models.classes import TxnClass
-    from app.services.classes_service import uncategorized_class_id
+    from app.services.classes_service import class_attribution, uncategorized_class_id
 
     if not start_date:
         start_date = date(date.today().year, 1, 1)
@@ -473,11 +475,12 @@ def profit_loss_by_class(
     pl_types = (AccountType.INCOME, AccountType.COGS, AccountType.EXPENSE)
     rows = (
         db.query(
-            sqlfunc.coalesce(Transaction.class_id, uncat_id).label("cls"),
+            class_attribution(uncat_id).label("cls"),
             Account.account_type,
             sqlfunc.coalesce(sqlfunc.sum(TransactionLine.debit), 0),
             sqlfunc.coalesce(sqlfunc.sum(TransactionLine.credit), 0),
         )
+        .select_from(Transaction)
         .join(TransactionLine, TransactionLine.transaction_id == Transaction.id)
         .join(Account, TransactionLine.account_id == Account.id)
         .filter(
@@ -580,10 +583,13 @@ def _money(value) -> str:
     return f"{sign}${abs(amount):,.2f}"
 
 
-def _pl_section(data: dict) -> dict:
+def _pl_section(data: dict, t=None) -> dict:
+    """P&L rows for the PDF; t (Terms) picks the company's words —
+    "Statement of Activities" / "Revenue & Support" for a nonprofit."""
+    t = t or Terms()
     rows = []
     for label, key, total_key in (
-        ("Income", "income", "total_income"),
+        (t("Income"), "income", "total_income"),
         ("Cost of Goods Sold", "cogs", "total_cogs"),
     ):
         rows.append({"cells": [label, ""], "style": "subtotal"})
@@ -607,22 +613,23 @@ def _pl_section(data: dict) -> dict:
         }
     )
     rows.append(
-        {"cells": ["Net Income", _money(data["net_income"])], "style": "grand-total"}
+        {"cells": [t("Net Income"), _money(data["net_income"])], "style": "grand-total"}
     )
     return {
-        "title": "Profit & Loss",
+        "title": t("Profit & Loss"),
         "period": f"{data['start_date']} — {data['end_date']}",
         "columns": ["", "Amount"],
         "rows": rows,
     }
 
 
-def _bs_section(data: dict) -> dict:
+def _bs_section(data: dict, t=None) -> dict:
+    t = t or Terms()
     rows = []
     for label, key, total_key in (
         ("Assets", "assets", "total_assets"),
         ("Liabilities", "liabilities", "total_liabilities"),
-        ("Equity", "equity", "total_equity"),
+        (t("Equity"), "equity", "total_equity"),
     ):
         rows.append({"cells": [label, ""], "style": "subtotal"})
         for item in data[key]:
@@ -635,14 +642,14 @@ def _bs_section(data: dict) -> dict:
     rows.append(
         {
             "cells": [
-                "Liabilities + Equity",
+                t("Liabilities + Equity"),
                 _money(data["total_liabilities"] + data["total_equity"]),
             ],
             "style": "grand-total",
         }
     )
     return {
-        "title": "Balance Sheet",
+        "title": t("Balance Sheet"),
         "period": f"As of {data['as_of_date']}",
         "columns": ["", "Amount"],
         "rows": rows,
@@ -698,7 +705,12 @@ def profit_loss_pdf(
     db: Session = Depends(get_db),
 ):
     data = profit_loss(start_date, end_date, db)
-    return _pdf_response([_pl_section(data)], db, "profit-loss.pdf")
+    t = terms_from_db(db)
+    return _pdf_response(
+        [_pl_section(data, t)],
+        db,
+        f"{t.slug('Profit & Loss')}_{data['start_date']}_{data['end_date']}.pdf",
+    )
 
 
 @router.get("/balance-sheet/pdf")
@@ -706,7 +718,12 @@ def balance_sheet_pdf(
     as_of_date: date = Query(default=None), db: Session = Depends(get_db)
 ):
     data = balance_sheet(as_of_date, db)
-    return _pdf_response([_bs_section(data)], db, "balance-sheet.pdf")
+    t = terms_from_db(db)
+    return _pdf_response(
+        [_bs_section(data, t)],
+        db,
+        f"{t.slug('Balance Sheet')}_{data['as_of_date']}.pdf",
+    )
 
 
 @router.get("/financial-statements/pdf")
@@ -722,8 +739,15 @@ def financial_statements_pdf(
     tb = trial_balance(
         date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"]), db
     )
+    t = terms_from_db(db)
+    if t.is_nonprofit:
+        from app.routes.reports.nonprofit import nonprofit_statement_sections
+
+        sections = nonprofit_statement_sections(
+            db, date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"])
+        ) + [_tb_section(tb)]
+    else:
+        sections = [_pl_section(pl, t), _bs_section(bs, t), _tb_section(tb)]
     return _pdf_response(
-        [_pl_section(pl), _bs_section(bs), _tb_section(tb)],
-        db,
-        "financial-statements.pdf",
+        sections, db, f"financial-statements_{pl['start_date']}_{pl['end_date']}.pdf"
     )

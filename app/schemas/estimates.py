@@ -5,10 +5,10 @@ from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.models.estimates import EstimateStatus
-from app.schemas.common import validate_non_negative_line
+from app.schemas.common import StrictModel, TaxRate, validate_non_negative_line
 
 
-class EstimateLineCreate(BaseModel):
+class EstimateLineCreate(StrictModel):
     item_id: Optional[int] = None
     description: Optional[str] = None
     quantity: Decimal = Decimal("1")
@@ -44,11 +44,11 @@ class EstimateLineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class EstimateCreate(BaseModel):
+class EstimateCreate(StrictModel):
     customer_id: int
     date: dt_date
     expiration_date: Optional[dt_date] = None
-    tax_rate: Decimal = Decimal("0")
+    tax_rate: TaxRate = Decimal("0")
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None
@@ -62,12 +62,12 @@ class EstimateCreate(BaseModel):
         return v
 
 
-class EstimateUpdate(BaseModel):
+class EstimateUpdate(StrictModel):
     customer_id: Optional[int] = None
     date: Optional[dt_date] = None
     expiration_date: Optional[dt_date] = None
     status: Optional[EstimateStatus] = None
-    tax_rate: Optional[Decimal] = None
+    tax_rate: Optional[TaxRate] = None
     notes: Optional[str] = None
     class_id: Optional[int] = None
     job_id: Optional[int] = None

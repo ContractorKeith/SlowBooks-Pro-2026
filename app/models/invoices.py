@@ -105,6 +105,17 @@ class Invoice(Base):
     currency = Column(String(3), nullable=True)
     exchange_rate = Column(Numeric(18, 8), nullable=True)
 
+    # Nonprofit: a pledge prints as one (a nonprofit still invoices program
+    # fees); a donation receipt states what the donor got back so the
+    # deductible portion prints (IRS Pub. 1771). recurring_invoice_id links
+    # a generated invoice to its template for the pledge report.
+    is_pledge = Column(Boolean, nullable=False, default=False, server_default=false())
+    fair_value_amount = Column(Numeric(12, 2), nullable=True)
+    fair_value_description = Column(String(200), nullable=True)
+    recurring_invoice_id = Column(
+        Integer, ForeignKey("recurring_invoices.id"), nullable=True, index=True
+    )
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

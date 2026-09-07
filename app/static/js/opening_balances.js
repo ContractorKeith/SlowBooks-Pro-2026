@@ -20,7 +20,7 @@ const OpeningBalancesPage = {
                 </div>`;
         }
         OpeningBalancesPage._accounts = status.accounts;
-        const groups = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity' };
+        const groups = { asset: 'Assets', liability: 'Liabilities', equity: T('Equity') };
         let rows = '';
         for (const [type, label] of Object.entries(groups)) {
             const accts = status.accounts.filter(a => a.account_type === type);

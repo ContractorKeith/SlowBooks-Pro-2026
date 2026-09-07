@@ -176,7 +176,7 @@ const AnalyticsPage = {
     return `
             <div class="table-container">
                 <table>
-                    <thead><tr><th scope="col">Customer</th><th scope="col" class="amount">Revenue</th></tr></thead>
+                    <thead><tr><th scope="col">${T('Customer')}</th><th scope="col" class="amount">Revenue</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>

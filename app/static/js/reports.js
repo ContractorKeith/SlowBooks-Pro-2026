@@ -15,6 +15,11 @@ const ReportsPage = {
         general_ledger:     (params) => ReportsPage.generalLedger(params),
         income_by_customer: (params) => ReportsPage.incomeByCustomer(params),
         cash_flow:          (params) => ReportsPage.cashFlow(params),
+        statement_of_financial_position: (params) => ReportsPage.statementOfFinancialPosition(params),
+        statement_of_activities:         (params) => ReportsPage.statementOfActivities(params),
+        fund_balances:                   (params) => ReportsPage.fundBalances(params),
+        functional_expenses:             (params) => ReportsPage.functionalExpenses(params),
+        pledges:                         (params) => ReportsPage.pledges(params),
     },
 
     async render() {
@@ -24,24 +29,35 @@ const ReportsPage = {
         try {
             const saved = await API.get('/saved-reports');
             if (saved && saved.length) {
-                const items = saved.map(s => `
-                    <div class="card" style="cursor:pointer; position:relative; border-left:3px solid var(--qb-blue,#0066cc);"
-                         onclick="ReportsPage.openSaved(${s.id})">
-                        <div class="card-header">${escapeHtml(s.name)}</div>
-                        <p style="font-size:11px; color:var(--text-muted);">
-                            ${escapeHtml(s.report_type.replace(/_/g, ' '))}
-                            ${s.parameters && s.parameters.start_date ? '· ' + escapeHtml(s.parameters.start_date) + ' → ' + escapeHtml(s.parameters.end_date || '') : ''}
-                        </p>
-                        <button aria-label="Delete saved report" class="btn btn-sm btn-secondary"
-                                style="position:absolute; top:8px; right:8px;"
-                                onclick="event.stopPropagation(); ReportsPage.deleteSaved(${s.id})"
-                                title="Delete saved report">×</button>
-                    </div>`).join('');
+                // A list, not a wall of cards: thirty saved reports must not
+                // push the Report Center off the screen. Collapsed by default
+                // once there are more than a handful; the choice sticks.
+                let collapsed = false;
+                try { collapsed = localStorage.getItem('sb_saved_reports_collapsed') === '1'; } catch (e) { /* ignore */ }
+                if (saved.length > 6 && localStorage.getItem('sb_saved_reports_collapsed') === null) collapsed = true;
+                const period = (p) => !p ? '' : (p.as_of_date ? `as of ${escapeHtml(p.as_of_date)}` : (p.start_date ? `${escapeHtml(p.start_date)} → ${escapeHtml(p.end_date || '')}` : (p.period ? escapeHtml(String(p.period).replace(/_/g, ' ')) : '')));
+                const rows = saved.slice().sort((a, b) => a.name.localeCompare(b.name)).map(s => `
+                    <tr class="saved-report-row">
+                        <td><a href="javascript:void(0)" onclick="ReportsPage.openSaved(${s.id})" style="font-weight:600;">${escapeHtml(s.name)}</a></td>
+                        <td>${escapeHtml(Terms.text(s.report_type.replace(/_/g, ' ')))}</td>
+                        <td style="color:var(--text-muted);">${period(s.parameters)}</td>
+                        <td class="actions">
+                            <button class="btn btn-sm btn-secondary" onclick="ReportsPage.openSaved(${s.id})">Open</button>
+                            <button class="btn btn-sm btn-secondary" aria-label="Delete saved report" onclick="ReportsPage.deleteSaved(${s.id})">Delete</button>
+                        </td>
+                    </tr>`).join('');
                 savedHtml = `
-                    <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:0 0 8px;">
-                        Saved Reports
-                    </h3>
-                    <div class="card-grid" style="margin-bottom:24px;">${items}</div>`;
+                    <div style="display:flex; align-items:center; gap:10px; margin:0 0 8px;">
+                        <button type="button" class="btn btn-sm btn-secondary" id="saved-reports-toggle" aria-expanded="${collapsed ? 'false' : 'true'}" aria-controls="saved-reports-list" onclick="ReportsPage.toggleSaved()">${collapsed ? '▸' : '▾'}</button>
+                        <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:0;">Saved Reports (${saved.length})</h3>
+                        ${saved.length > 8 ? `<input type="text" id="saved-reports-filter" placeholder="Filter…" style="width:160px;" oninput="ReportsPage.filterSaved(this.value)">` : ''}
+                    </div>
+                    <div id="saved-reports-list" ${collapsed ? 'hidden' : ''} style="margin-bottom:20px;">
+                        <div class="table-container"><table>
+                            <thead><tr><th scope="col">Name</th><th scope="col">Report</th><th scope="col">Period</th><th scope="col">Actions</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table></div>
+                    </div>`;
             }
         } catch (e) { /* render anyway */ }
 
@@ -49,36 +65,38 @@ const ReportsPage = {
             <div class="page-header"><h2>Reports</h2></div>
             ${savedHtml}
             <div class="card-grid">
+                ${Terms.isNonprofit() ? ReportsPage._nonprofitCards() : `
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.profitLoss()">
-                    <div class="card-header">Profit & Loss</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Income vs expenses for a period</p>
-                </div>
+                    <div class="card-header">${T('Profit & Loss')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Income vs expenses for a period')}</p>
+                </div>`}
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.profitLossByClass()">
-                    <div class="card-header">P&L by Class</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Income vs expenses split by class</p>
+                    <div class="card-header">${T('P&L by Class')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Income vs expenses split by class')}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.jobBudgetVsActual()">
-                    <div class="card-header">Job Budget vs Actual</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Budget, committed, actual, projected, variance per job</p>
+                    <div class="card-header">${T('Job Budget vs Actual')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Budget, committed, actual, projected, variance per job')}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.jobProfitability()">
-                    <div class="card-header">Job Profitability</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Income, costs and margin per job</p>
+                    <div class="card-header">${T('Job Profitability')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Income, costs and margin per job')}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.financialStatementsPdf()">
                     <div class="card-header">Financial Statements Pack (PDF)</div>
-                    <p style="font-size:13px; color:var(--gray-500);">P&L + Balance Sheet + Trial Balance, one audit-ready PDF</p>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Profit & Loss + Balance Sheet + Trial Balance, one audit-ready PDF')}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.fixedAssetReconciliation()">
                     <div class="card-header">Fixed Asset Reconciliation</div>
                     <p style="font-size:13px; color:var(--gray-500);">Register totals vs GL by asset type</p>
                 </div>
+                ${Terms.isNonprofit() ? '' : `
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.balanceSheet()">
-                    <div class="card-header">Balance Sheet</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Assets, liabilities, and equity</p>
-                </div>
+                    <div class="card-header">${T('Balance Sheet')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Assets, liabilities, and equity')}</p>
+                </div>`}
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.arAging()">
-                    <div class="card-header">A/R Aging</div>
+                    <div class="card-header">${T('A/R Aging')}</div>
                     <p style="font-size:13px; color:var(--gray-500);">Outstanding receivables by age</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.apAging()">
@@ -94,12 +112,12 @@ const ReportsPage = {
                     <p style="font-size:13px; color:var(--gray-500);">All journal entries by account</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.incomeByCustomer()">
-                    <div class="card-header">Income by Customer</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Sales totals per customer</p>
+                    <div class="card-header">${T('Income by Customer')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Sales totals per customer')}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.customerStatementPicker()">
-                    <div class="card-header">Customer Statement</div>
-                    <p style="font-size:13px; color:var(--gray-500);">Invoice/payment history PDF</p>
+                    <div class="card-header">${T('Customer Statement')}</div>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Invoice/payment history PDF')}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.trialBalance()">
                     <div class="card-header">Trial Balance</div>
@@ -121,6 +139,22 @@ const ReportsPage = {
     },
 
     // ----- Saved Reports (Phase 11) -----
+
+    toggleSaved() {
+        const list = $('#saved-reports-list');
+        const btn = $('#saved-reports-toggle');
+        if (!list || !btn) return;
+        const nowHidden = !list.hidden;
+        list.hidden = nowHidden;
+        btn.textContent = nowHidden ? '▸' : '▾';
+        btn.setAttribute('aria-expanded', nowHidden ? 'false' : 'true');
+        try { localStorage.setItem('sb_saved_reports_collapsed', nowHidden ? '1' : '0'); } catch (e) { /* ignore */ }
+    },
+
+    filterSaved(q) {
+        const needle = (q || '').trim().toLowerCase();
+        $$('.saved-report-row').forEach(tr => { tr.hidden = needle !== '' && !tr.textContent.toLowerCase().includes(needle); });
+    },
 
     async openSaved(id) {
         try {
@@ -145,7 +179,7 @@ const ReportsPage = {
                 report_type: reportType,
                 parameters: params || {},
             });
-            toast('Saved');
+            toast(`Saved as "${name.trim()}" — it is listed under Saved Reports at the top of the Report Center`);
             // Refresh the page so the new one shows in the Saved section
             App.navigate(location.hash);
         } catch (err) { toast(err.message || 'Save failed', 'error'); }
@@ -403,7 +437,7 @@ const ReportsPage = {
     },
 
     async profitLoss(prefill) {
-        await ReportsPage.openPeriodModal("Profit & Loss", "this_year_to_date", async (_period, range) => {
+        await ReportsPage.openPeriodModal(T("Profit & Loss"), "this_year_to_date", async (_period, range) => {
             const data = await API.get(`/reports/profit-loss?start_date=${range.start}&end_date=${range.end}`);
             const pdfBtn = `<div style="text-align:right; margin-bottom:6px;"><button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/profit-loss/pdf?start_date=${range.start}&end_date=${range.end}','_blank')">Save PDF</button></div>`;
             // Build the onclick payload outside the template so we can
@@ -426,23 +460,23 @@ const ReportsPage = {
                 <div class="table-container"><table>
                     <thead><tr><th scope="col">Account</th><th scope="col" class="amount">Amount</th></tr></thead>
                     <tbody>
-                        <tr><td><strong>Income</strong></td><td></td></tr>
+                        <tr><td><strong>${T('Income')}</strong></td><td></td></tr>
                         ${section(data.income)}
-                        <tr style="font-weight:600; background:var(--gray-50);"><td>Total Income</td><td class="amount">${formatCurrency(data.total_income)}</td></tr>
+                        <tr style="font-weight:600; background:var(--gray-50);"><td>${T('Total Income')}</td><td class="amount">${formatCurrency(data.total_income)}</td></tr>
                         <tr><td><strong>Cost of Goods Sold</strong></td><td></td></tr>
                         ${section(data.cogs)}
                         <tr style="font-weight:600; background:var(--gray-50);"><td>Gross Profit</td><td class="amount">${formatCurrency(data.gross_profit)}</td></tr>
                         <tr><td><strong>Expenses</strong></td><td></td></tr>
                         ${section(data.expenses)}
                         <tr style="font-weight:600; background:var(--gray-50);"><td>Total Expenses</td><td class="amount">${formatCurrency(data.total_expenses)}</td></tr>
-                        <tr style="font-weight:700; font-size:15px; background:var(--primary-light);"><td>Net Income</td><td class="amount">${formatCurrency(data.net_income)}</td></tr>
+                        <tr style="font-weight:700; font-size:15px; background:var(--primary-light);"><td>${T('Net Income')}</td><td class="amount">${formatCurrency(data.net_income)}</td></tr>
                     </tbody>
                 </table></div>`;
         }, "Dates", false, { reportType: 'profit_loss', prefill });
     },
 
     async balanceSheet(prefill) {
-        await ReportsPage.openPeriodModal("Balance Sheet", "this_year_to_date", async (_period, params) => {
+        await ReportsPage.openPeriodModal(T("Balance Sheet"), "this_year_to_date", async (_period, params) => {
             const data = await API.get(`/reports/balance-sheet?as_of_date=${params.as_of_date}`);
             const pdfBtn = `<div style="text-align:right; margin-bottom:6px;"><button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/balance-sheet/pdf?as_of_date=${params.as_of_date}','_blank')">Save PDF</button></div>`;
             const drillCall = (i) => escapeHtml(
@@ -465,9 +499,9 @@ const ReportsPage = {
                         <tr><td><strong>Liabilities</strong></td><td></td></tr>
                         ${section(data.liabilities)}
                         <tr style="font-weight:600; background:var(--gray-50);"><td>Total Liabilities</td><td class="amount">${formatCurrency(data.total_liabilities)}</td></tr>
-                        <tr><td><strong>Equity</strong></td><td></td></tr>
+                        <tr><td><strong>${T('Equity')}</strong></td><td></td></tr>
                         ${section(data.equity)}
-                        <tr style="font-weight:600; background:var(--gray-50);"><td>Total Equity</td><td class="amount">${formatCurrency(data.total_equity)}</td></tr>
+                        <tr style="font-weight:600; background:var(--gray-50);"><td>${T('Total Equity')}</td><td class="amount">${formatCurrency(data.total_equity)}</td></tr>
                     </tbody>
                 </table></div>`;
         }, "As Of", true, { reportType: 'balance_sheet', prefill });
@@ -489,7 +523,7 @@ const ReportsPage = {
             return `
                 <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(data.start_date)} &mdash; ${formatDate(data.end_date)}</p>
                 <div class="table-container"><table>
-                    <thead><tr><th scope="col">Date</th><th scope="col">Invoice</th><th scope="col">Customer</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Rate</th><th scope="col" class="amount">Tax</th></tr></thead>
+                    <thead><tr><th scope="col">Date</th><th scope="col">${T('Invoice')}</th><th scope="col">${T('Customer')}</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Rate</th><th scope="col" class="amount">Tax</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="6" style="text-align:center; color:var(--gray-400);">No taxable sales</td></tr>'}</tbody>
                 </table></div>
                 <div style="margin-top:12px; padding:8px; background:var(--gray-50); border:1px solid var(--gray-200);">
@@ -535,7 +569,7 @@ const ReportsPage = {
     },
 
     async incomeByCustomer(prefill) {
-        await ReportsPage.openPeriodModal("Income by Customer", "this_year_to_date", async (_period, range) => {
+        await ReportsPage.openPeriodModal(T("Income by Customer"), "this_year_to_date", async (_period, range) => {
             const data = await API.get(`/reports/income-by-customer?start_date=${range.start}&end_date=${range.end}`);
             let rows = data.items.map(i =>
                 `<tr>
@@ -556,7 +590,7 @@ const ReportsPage = {
             return `
                 <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(data.start_date)} &mdash; ${formatDate(data.end_date)}</p>
                 <div class="table-container"><table>
-                    <thead><tr><th scope="col">Customer</th><th scope="col" class="amount">Invoices</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Paid</th><th scope="col" class="amount">Balance</th></tr></thead>
+                    <thead><tr><th scope="col">${T('Customer')}</th><th scope="col" class="amount">${T('Invoices')}</th><th scope="col" class="amount">Sales</th><th scope="col" class="amount">Paid</th><th scope="col" class="amount">Balance</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="5" style="text-align:center; color:var(--gray-400);">No sales data</td></tr>'}</tbody>
                 </table></div>`;
         }, "Dates", false, { reportType: 'income_by_customer', prefill });
@@ -565,10 +599,10 @@ const ReportsPage = {
     async customerStatementPicker() {
         const customers = await API.get("/customers?active_only=true");
         const custOpts = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
-        openModal("Customer Statement", `
+        openModal(T("Customer Statement"), `
             <form onsubmit="ReportsPage.openStatement(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required><option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>As of Date</label>
                         <input name="as_of_date" type="date" value="${todayISO()}"></div>
@@ -590,7 +624,7 @@ const ReportsPage = {
     },
 
     async arAging(prefill) {
-        await ReportsPage.openPeriodModal("Accounts Receivable Aging", "this_year_to_date", async (_period, params) => {
+        await ReportsPage.openPeriodModal(T("Accounts Receivable Aging"), "this_year_to_date", async (_period, params) => {
             const data = await API.get(`/reports/ar-aging?as_of_date=${params.as_of_date}`);
             let rows = data.items.map(i =>
                 `<tr>
@@ -625,7 +659,7 @@ const ReportsPage = {
                 </div>
                 <div class="table-container"><table>
                     <thead><tr>
-                        <th scope="col">Customer</th><th scope="col" class="amount">Current</th><th scope="col" class="amount">1-30</th>
+                        <th scope="col">${T('Customer')}</th><th scope="col" class="amount">Current</th><th scope="col" class="amount">1-30</th>
                         <th scope="col" class="amount">31-60</th><th scope="col" class="amount">61-90+</th><th scope="col" class="amount">Total</th>
                     </tr></thead>
                     <tbody>${rows || '<tr><td colspan="6" style="text-align:center; color:var(--gray-400);">No outstanding receivables</td></tr>'}</tbody>
@@ -803,7 +837,7 @@ const ReportsPage = {
 
 // Class tracking: Profit & Loss split by the class dimension.
 ReportsPage.profitLossByClass = async function () {
-    await ReportsPage.openPeriodModal("P&L by Class", "this_year_to_date", async (_period, range) => {
+    await ReportsPage.openPeriodModal(T("P&L by Class"), "this_year_to_date", async (_period, range) => {
         const data = await API.get(`/reports/profit-loss-by-class?start_date=${range.start}&end_date=${range.end}`);
         const rows = data.classes.map(c => `<tr>
             <td>${escapeHtml(c.class_name)}</td>
@@ -818,8 +852,8 @@ ReportsPage.profitLossByClass = async function () {
                 ${escapeHtml(data.start_date)} — ${escapeHtml(data.end_date)}
             </div>
             <div class="table-container"><table>
-                <thead><tr><th scope="col">Class</th><th scope="col" class="amount">Income</th><th scope="col" class="amount">COGS</th>
-                <th scope="col" class="amount">Gross Profit</th><th scope="col" class="amount">Expenses</th><th scope="col" class="amount">Net Income</th></tr></thead>
+                <thead><tr><th scope="col">${T('Class')}</th><th scope="col" class="amount">${T('Income')}</th><th scope="col" class="amount">COGS</th>
+                <th scope="col" class="amount">Gross Profit</th><th scope="col" class="amount">Expenses</th><th scope="col" class="amount">${T('Net Income')}</th></tr></thead>
                 <tbody>${rows.length ? rows : '<tr><td colspan="6">No activity in this period</td></tr>'}</tbody>
                 <tfoot><tr style="font-weight:700; background:var(--gray-50);">
                     <td>Total</td>
@@ -872,7 +906,7 @@ ReportsPage.financialStatementsPdf = async function () {
 };
 
 ReportsPage.jobProfitability = async function () {
-    await ReportsPage.openPeriodModal("Job Profitability", "this_year_to_date", async (_period, range) => {
+    await ReportsPage.openPeriodModal(T("Job Profitability"), "this_year_to_date", async (_period, range) => {
         const data = await API.get(`/reports/job-profitability?start_date=${range.start}&end_date=${range.end}`);
         const pct = v => v === null || v === undefined ? '—' : `${v.toFixed(1)}%`;
         const rows = data.jobs.map(j => `<tr ${j.job_id ? `style="cursor:pointer" onclick="closeModal();App.navigate('#/jobs');JobsPage.showDetails(${j.job_id})"` : ''}>
@@ -889,7 +923,7 @@ ReportsPage.jobProfitability = async function () {
                 ${escapeHtml(data.start_date)} — ${escapeHtml(data.end_date)} · "No job" holds untagged activity <em>and</em> the applied-cost credits behind Job Cost Entries (labor, equipment, overhead applied to jobs), so its costs can be negative and the totals still match the P&L
             </div>
             <div class="table-container"><table>
-                <thead><tr><th scope="col">Customer</th><th scope="col">Job</th><th scope="col" class="amount">Contract</th><th scope="col" class="amount">Income</th>
+                <thead><tr><th scope="col">${T('Customer')}</th><th scope="col">${T('Job')}</th><th scope="col" class="amount">Contract</th><th scope="col" class="amount">${T('Income')}</th>
                 <th scope="col" class="amount">Costs</th><th scope="col" class="amount">Net</th><th scope="col" class="amount">Margin</th></tr></thead>
                 <tbody>${rows.length ? rows : '<tr><td colspan="7">No activity in this period</td></tr>'}</tbody>
                 <tfoot><tr style="font-weight:700; background:var(--gray-50);">
@@ -904,7 +938,7 @@ ReportsPage.jobProfitability = async function () {
 };
 
 ReportsPage.jobBudgetVsActual = async function () {
-    await ReportsPage.openPeriodModal("Job Budget vs Actual", "this_year_to_date", async (_period, range) => {
+    await ReportsPage.openPeriodModal(T("Job Budget vs Actual"), "this_year_to_date", async (_period, range) => {
         const data = await API.get(`/jobs/budget-vs-actual?start_date=${range.start}&end_date=${range.end}`);
         const pct = v => v === null || v === undefined ? '—' : `${v.toFixed(1)}%`;
         const t = { revised: 0, committed: 0, actual: 0, projected: 0, variance: 0, act_revenue: 0 };
@@ -926,7 +960,7 @@ ReportsPage.jobBudgetVsActual = async function () {
                 Actuals for ${escapeHtml(range.start)} — ${escapeHtml(range.end)}; budgets and committed cost are job-to-date. Click a job to drill down.
             </div>
             <div class="table-container"><table>
-                <thead><tr><th scope="col">Customer</th><th scope="col">Job</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th>
+                <thead><tr><th scope="col">${T('Customer')}</th><th scope="col">${T('Job')}</th><th scope="col" class="amount">Budget</th><th scope="col" class="amount">Committed</th>
                 <th scope="col" class="amount">Actual</th><th scope="col" class="amount">Projected</th><th scope="col" class="amount">Variance</th><th scope="col" class="amount">% Used</th><th scope="col" class="amount">Revenue</th></tr></thead>
                 <tbody>${rows.length ? rows : '<tr><td colspan="9">No jobs</td></tr>'}</tbody>
                 <tfoot><tr style="font-weight:700; background:var(--gray-50);">
@@ -939,3 +973,193 @@ ReportsPage.jobBudgetVsActual = async function () {
     });
 };
 
+
+
+// ---------------------------------------------------------------------------
+// Nonprofit statements — shown in place of the P&L and Balance Sheet cards
+// when Settings -> Company Type is nonprofit. Each reconciles to the plain
+// P&L / balance sheet (the server computes both from the same lines).
+// ---------------------------------------------------------------------------
+ReportsPage._nonprofitCards = function () {
+    return `
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.statementOfActivities()">
+            <div class="card-header">Statement of Activities</div>
+            <p style="font-size:13px; color:var(--gray-500);">Revenue, releases and expenses, with and without donor restrictions</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.statementOfFinancialPosition()">
+            <div class="card-header">Statement of Financial Position</div>
+            <p style="font-size:13px; color:var(--gray-500);">Assets, liabilities, and net assets by restriction</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.fundBalances()">
+            <div class="card-header">Fund Balances</div>
+            <p style="font-size:13px; color:var(--gray-500);">Each restricted fund: beginning, contributions, spent, released, ending</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.functionalExpenses()">
+            <div class="card-header">Statement of Functional Expenses</div>
+            <p style="font-size:13px; color:var(--gray-500);">Program / management / fundraising by expense account (Form 990 Part IX)</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.pledges()">
+            <div class="card-header">Pledge Report</div>
+            <p style="font-size:13px; color:var(--gray-500);">Promised, received, written off and outstanding by donor and campaign</p>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="ReportsPage.givingStatements()">
+            <div class="card-header">Year-End Giving Statements</div>
+            <p style="font-size:13px; color:var(--gray-500);">One statement per donor for the tax year — print the stack or email them all</p>
+        </div>`;
+};
+
+ReportsPage.givingStatements = function () {
+    const y = new Date().getFullYear();
+    const opts = [y, y - 1, y - 2].map(v => `<option value="${v}" ${v === y - 1 ? 'selected' : ''}>${v}</option>`).join('');
+    openModal('Year-End Giving Statements', `
+        <div class="form-grid">
+            <div class="form-group"><label>Tax year</label><select id="gs-year">${opts}</select></div>
+        </div>
+        <p style="font-size:12px;color:var(--gray-500);margin:8px 0;">Every ${T('customer')} with a gift in the year gets a statement: cash contributions with the deductible portion, non-cash gifts described without a value. ${T('Customers')} who opted out in their record are skipped when emailing.</p>
+        <div id="gs-result" style="font-size:12px;margin:8px 0;"></div>
+        <div class="form-actions">
+            <button class="btn btn-secondary" onclick="window.open('/api/donors/giving-statements/pdf?year=' + $('#gs-year').value, '_blank')">Download all (PDF)</button>
+            <button class="btn btn-primary" onclick="ReportsPage.emailGivingStatements()">Email all</button>
+            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>`);
+};
+
+ReportsPage.emailGivingStatements = async function () {
+    const year = parseInt($('#gs-year').value);
+    if (!confirm(`Email ${year} giving statements to every ${T('customer')} with a gift that year?`)) return;
+    const box = $('#gs-result');
+    box.textContent = 'Sending…';
+    try {
+        const r = await API.post('/donors/giving-statements/batch-email', { year });
+        box.innerHTML = `Sent ${r.sent}, failed ${r.failed}, skipped ${r.skipped}.` + (r.errors.length ? `<ul>${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : '');
+    } catch (err) { box.textContent = err.message; }
+};
+
+ReportsPage.pledges = async function (prefill) {
+    await ReportsPage.openPeriodModal("Pledge Report", "this_year_to_date", async (_period, range) => {
+        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const d = await API.get(`/reports/pledges?${qs}`);
+        const cols = ['pledged', 'invoiced', 'not_yet_invoiced', 'received', 'written_off', 'outstanding'];
+        const cells = (r) => cols.map(c => `<td class="amount">${formatCurrency(r[c])}</td>`).join('');
+        const donors = d.by_donor.map(g => `<tr style="font-weight:600; background:var(--gray-50);"><td>${escapeHtml(g.customer_name)}</td>${cells(g)}</tr>`
+            + g.pledges.map(p => `<tr><td style="padding-left:24px;">${escapeHtml(p.label)} <span style="color:var(--gray-500)">· ${escapeHtml(p.class_name)}</span></td>${cells(p)}</tr>`).join('')).join('');
+        const classes = d.by_class.map(g => `<tr><td>${escapeHtml(g.class_name)}</td>${cells(g)}</tr>`).join('');
+        const head = `<thead><tr><th scope="col"></th><th scope="col" class="amount">Pledged</th><th scope="col" class="amount">Invoiced</th><th scope="col" class="amount">Not yet invoiced</th><th scope="col" class="amount">Received</th><th scope="col" class="amount">Written off</th><th scope="col" class="amount">Outstanding</th></tr></thead>`;
+        const foot = `<tfoot><tr style="font-weight:700; background:var(--gray-50);"><td>Total</td>${cells(d.totals)}</tr></tfoot>`;
+        return `${ReportsPage._exportButtons('pledges', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}</p>
+            <h4 style="margin:8px 0 4px;font-size:12px;">By ${T('customer')}</h4>
+            <div class="table-container"><table>${head}<tbody>${donors || `<tr><td colspan="7" style="color:var(--gray-400);">No pledges in this period</td></tr>`}</tbody>${foot}</table></div>
+            <h4 style="margin:12px 0 4px;font-size:12px;">By campaign (${T('class')})</h4>
+            <div class="table-container"><table>${head}<tbody>${classes || `<tr><td colspan="7" style="color:var(--gray-400);">—</td></tr>`}</tbody></table></div>`;
+    }, "Dates", false, { reportType: 'pledges', prefill });
+};
+
+ReportsPage._exportButtons = function (path, qs) {
+    return `<div style="text-align:right; margin-bottom:6px; margin-left:auto;">
+        <button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/${path}/pdf?${qs}','_blank')">Save PDF</button>
+        <button class="btn btn-sm btn-secondary" onclick="window.open('/api/reports/${path}/csv?${qs}','_blank')">Save CSV</button>
+    </div>`;
+};
+
+// Prior-year comparison for the two statements a treasurer reads side by
+// side. The choice is remembered for the session and rides on the export
+// links, so the PDF and CSV carry the same columns as the screen.
+ReportsPage._compare = { statement_of_activities: false, functional_expenses: false };
+ReportsPage.compareToggleHtml = function (key) {
+    return `<label style="font-weight:normal; font-size:12px; margin-right:auto;"><input type="checkbox" ${ReportsPage._compare[key] ? 'checked' : ''} onchange="ReportsPage._compare['${key}']=this.checked; $('#report-period-select').dispatchEvent(new Event('change'))"> Compare to prior year</label>`;
+};
+
+ReportsPage.statementOfActivities = async function (prefill) {
+    await ReportsPage.openPeriodModal("Statement of Activities", "this_year_to_date", async (_period, range) => {
+        const cmp = ReportsPage._compare.statement_of_activities;
+        const qs = `start_date=${range.start}&end_date=${range.end}${cmp ? '&compare=prior_year' : ''}`;
+        const d = await API.get(`/reports/statement-of-activities?${qs}`);
+        const t = d.totals;
+        const pt = cmp && d.prior ? d.prior.totals : {};
+        const cols = cmp ? 6 : 4;
+        const line = (label, w, r, tot, prior, style = '') => `<tr style="${style}"><td>${label}</td><td class="amount">${formatCurrency(w)}</td><td class="amount">${formatCurrency(r)}</td><td class="amount">${formatCurrency(tot)}</td>${cmp ? `<td class="amount">${formatCurrency(prior || 0)}</td><td class="amount">${formatCurrency((tot || 0) - (prior || 0))}</td>` : ''}</tr>`;
+        const rows = (items) => items.length ? items.map(i => line(`<span style="padding-left:24px">${escapeHtml(i.account_name)}</span>`, i.without, i.with, i.total, i.prior_total)).join('') : `<tr><td colspan="${cols}" style="color:var(--gray-400);">None</td></tr>`;
+        const head = (label) => `<tr><td><strong>${label}</strong></td>${'<td></td>'.repeat(cols - 1)}</tr>`;
+        return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">${ReportsPage.compareToggleHtml('statement_of_activities')}${ReportsPage._exportButtons('statement-of-activities', qs)}</div>
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}${cmp && d.prior ? ` · prior year ${formatDate(d.prior.start_date)} &mdash; ${formatDate(d.prior.end_date)}` : ''}</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col"></th><th scope="col" class="amount">Without Donor Restrictions</th><th scope="col" class="amount">With Donor Restrictions</th><th scope="col" class="amount">Total</th>${cmp ? '<th scope="col" class="amount">Prior year</th><th scope="col" class="amount">Change</th>' : ''}</tr></thead>
+                <tbody>
+                    ${head('Revenue &amp; Support')}
+                    ${rows(d.revenue)}
+                    ${line('Total Revenue &amp; Support', t.revenue_without, t.revenue_with, t.revenue, pt.revenue, 'font-weight:600; background:var(--gray-50);')}
+                    ${line('Net assets released from restrictions', d.releases.without, d.releases.with, 0, 0)}
+                    ${head('Expenses')}
+                    ${rows(d.expenses)}
+                    ${line('Total Expenses', t.expenses, 0, t.expenses, pt.expenses, 'font-weight:600; background:var(--gray-50);')}
+                    ${line('Change in Net Assets', t.change_without, t.change_with, t.change_total, pt.change_total, 'font-weight:700; font-size:15px; background:var(--primary-light);')}
+                </tbody>
+            </table></div>`;
+    }, "Dates", false, { reportType: 'statement_of_activities', prefill });
+};
+
+ReportsPage.statementOfFinancialPosition = async function (prefill) {
+    await ReportsPage.openPeriodModal("Statement of Financial Position", "this_year_to_date", async (_period, params) => {
+        const qs = `as_of_date=${params.as_of_date}`;
+        const d = await API.get(`/reports/statement-of-financial-position?${qs}`);
+        const drillCall = (i) => escapeHtml(`ReportsPage.openDrillDown(${i.account_id},${JSON.stringify(i.account_name)},null,${JSON.stringify(params.as_of_date)})`);
+        const section = (items) => items.map(i => `<tr><td style="padding-left:24px;">
+                ${i.account_id ? `<a href="javascript:void(0)" style="color:var(--qb-blue,#0066cc); text-decoration:none;" onclick="${drillCall(i)}">${escapeHtml(i.account_name)}</a>` : escapeHtml(i.account_name)}
+                </td><td class="amount">${formatCurrency(i.amount)}</td></tr>`).join('') || `<tr><td colspan="2" style="color:var(--gray-400);">None</td></tr>`;
+        const sub = (label, v) => `<tr style="font-weight:600; background:var(--gray-50);"><td>${label}</td><td class="amount">${formatCurrency(v)}</td></tr>`;
+        return `${ReportsPage._exportButtons('statement-of-financial-position', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">As of ${formatDate(d.as_of_date)}</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col">Account</th><th scope="col" class="amount">Amount</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Assets</strong></td><td></td></tr>${section(d.assets)}${sub('Total Assets', d.total_assets)}
+                    <tr><td><strong>Liabilities</strong></td><td></td></tr>${section(d.liabilities)}${sub('Total Liabilities', d.total_liabilities)}
+                    <tr><td><strong>Net Assets</strong></td><td></td></tr>${section(d.net_assets)}
+                    ${sub('Net Assets Without Donor Restrictions', d.net_assets_without)}
+                    ${sub('Net Assets With Donor Restrictions', d.net_assets_with)}
+                    ${sub('Total Net Assets', d.total_net_assets)}
+                    <tr style="font-weight:700; font-size:15px; background:var(--primary-light);"><td>Liabilities + Net Assets</td><td class="amount">${formatCurrency(d.total_liabilities_and_net_assets)}</td></tr>
+                </tbody>
+            </table></div>`;
+    }, "As of", true, { reportType: 'statement_of_financial_position', prefill });
+};
+
+ReportsPage.fundBalances = async function (prefill) {
+    await ReportsPage.openPeriodModal("Fund Balances", "this_year_to_date", async (_period, range) => {
+        const qs = `start_date=${range.start}&end_date=${range.end}`;
+        const d = await API.get(`/reports/fund-balances?${qs}`);
+        const keys = ['beginning', 'contributions', 'expenses', 'releases', 'ending', 'unreleased'];
+        const row = (f, style = '') => `<tr style="${style}"><td>${escapeHtml(f.class_name)}${f.donor_name ? `<div style="font-size:10px;color:var(--gray-500)">${escapeHtml(f.donor_name)}</div>` : ''}</td>${keys.map(k => `<td class="amount">${formatCurrency(f[k])}</td>`).join('')}</tr>`;
+        const rows = d.funds.map(f => row(f)).join('') + (d.unassigned ? row(d.unassigned, 'font-style:italic') : '');
+        return `${ReportsPage._exportButtons('fund-balances', qs)}
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)} · restricted ${T('classes')} only</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col">${T('Class')}</th><th scope="col" class="amount">Beginning</th><th scope="col" class="amount">Contributions</th><th scope="col" class="amount">Spent</th><th scope="col" class="amount">Released</th><th scope="col" class="amount">Ending</th><th scope="col" class="amount" title="Spent but not yet released">Unreleased</th></tr></thead>
+                <tbody>${rows || `<tr><td colspan="7" style="color:var(--gray-400);">No restricted ${T('classes')} yet</td></tr>`}</tbody>
+                <tfoot>${row({ class_name: 'Total', ...d.totals }, 'font-weight:700; background:var(--gray-50);')}</tfoot>
+            </table></div>`;
+    }, "Dates", false, { reportType: 'fund_balances', prefill });
+};
+
+ReportsPage.functionalExpenses = async function (prefill) {
+    await ReportsPage.openPeriodModal("Statement of Functional Expenses", "this_year_to_date", async (_period, range) => {
+        const cmp = ReportsPage._compare.functional_expenses;
+        const qs = `start_date=${range.start}&end_date=${range.end}${cmp ? '&compare=prior_year' : ''}`;
+        const d = await API.get(`/reports/functional-expenses?${qs}`);
+        const keys = ['total', 'program', 'management', 'fundraising', 'unassigned'];
+        const pt = cmp && d.prior ? d.prior.totals : {};
+        const row = (label, r, style = '', prior = null) => { const pv = prior != null ? prior : (r.prior_total || 0); return `<tr style="${style}"><td>${label}</td>${keys.map(k => `<td class="amount">${formatCurrency(r[k])}</td>`).join('')}${cmp ? `<td class="amount">${formatCurrency(pv)}</td><td class="amount">${formatCurrency(r.total - pv)}</td>` : ''}</tr>`; };
+        const rows = d.rows.map(r => row(escapeHtml(`${r.account_number || ''} ${r.account_name}`.trim()), r)).join('');
+        const programs = d.programs.length ? `<h4 style="margin:12px 0 4px;font-size:12px;">Program services by program</h4>
+            <div class="table-container"><table><thead><tr><th scope="col">Program</th><th scope="col" class="amount">Amount</th></tr></thead>
+            <tbody>${d.programs.map(p => `<tr><td>${escapeHtml(p.class_name)}</td><td class="amount">${formatCurrency(p.amount)}</td></tr>`).join('')}</tbody></table></div>` : '';
+        return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">${ReportsPage.compareToggleHtml('functional_expenses')}${ReportsPage._exportButtons('functional-expenses', qs)}</div>
+            <p style="margin-bottom:12px; color:var(--gray-500);">${formatDate(d.start_date)} &mdash; ${formatDate(d.end_date)}${cmp && d.prior ? ` · prior year ${formatDate(d.prior.start_date)} &mdash; ${formatDate(d.prior.end_date)}` : ''}${d.totals.unassigned ? ` · <span style="color:var(--danger)">${formatCurrency(d.totals.unassigned)} still unassigned — run an allocation rule</span>` : ''}</p>
+            <div class="table-container"><table>
+                <thead><tr><th scope="col">Expense</th><th scope="col" class="amount">Total</th><th scope="col" class="amount">Program</th><th scope="col" class="amount">Management</th><th scope="col" class="amount">Fundraising</th><th scope="col" class="amount">Unassigned</th>${cmp ? '<th scope="col" class="amount">Prior year</th><th scope="col" class="amount">Change</th>' : ''}</tr></thead>
+                <tbody>${rows || `<tr><td colspan="${cmp ? 8 : 6}" style="color:var(--gray-400);">No expenses in this period</td></tr>`}</tbody>
+                <tfoot>${row('Total', d.totals, 'font-weight:700; background:var(--gray-50);', pt.total || 0)}</tfoot>
+            </table></div>${programs}`;
+    }, "Dates", false, { reportType: 'functional_expenses', prefill });
+};

@@ -163,7 +163,6 @@ def test_recurring_template_keeps_flags_on_generated_invoices(
             "customer_id": seed_customer.id,
             "frequency": "monthly",
             "start_date": "2026-07-01",
-            "next_date": "2026-07-01",
             "tax_rate": 0.10,
             "lines": [
                 {"item_id": labor["id"], "quantity": 1, "rate": 500},

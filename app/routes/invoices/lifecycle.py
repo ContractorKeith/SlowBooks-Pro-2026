@@ -4,6 +4,11 @@ from decimal import Decimal
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.schemas.common import StrictModel
+from typing import Optional
+from sqlalchemy.exc import IntegrityError
+from app.schemas.credit_memos import CreditMemoResponse
+from datetime import date as dt_date
 from app.database import get_db
 from app.models.accounts import Account
 from app.models.invoices import Invoice, InvoiceLine, InvoiceStatus
@@ -232,6 +237,129 @@ def apply_late_fees(db: Session = Depends(get_db)):
     return {"applied": applied, "total_overdue": len(overdue)}
 
 
+class WriteOffRequest(StrictModel):
+    date: dt_date
+    amount: Optional[Decimal] = None  # default: the whole open balance
+    memo: Optional[str] = None
+
+
+@router.post(
+    "/{invoice_id}/write-off", response_model=CreditMemoResponse, status_code=201
+)
+def write_off_invoice(
+    invoice_id: int, data: WriteOffRequest, db: Session = Depends(get_db)
+):
+    """Forgive an open balance (a pledge that will never be paid): a credit
+    memo flagged as a write-off, posting DR Bad Debt Expense / CR A/R and
+    applied to the invoice at once, so the A/R subledger, the donor
+    statement and the pledge report all agree. Undo it by voiding the
+    credit memo."""
+    from app.models.credit_memos import (
+        CreditApplication,
+        CreditMemo,
+        CreditMemoLine,
+        CreditMemoStatus,
+    )
+    from app.services.accounting import get_bad_debt_account_id
+    from app.services.numbering import next_credit_memo_number
+
+    check_closing_date(db, data.date)
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv.status == InvoiceStatus.VOID:
+        raise HTTPException(status_code=400, detail="Invoice is void")
+    balance = Decimal(str(inv.balance_due or 0))
+    if balance <= 0:
+        raise HTTPException(
+            status_code=400, detail="Nothing to write off — no open balance"
+        )
+    amount = _q(Decimal(str(data.amount))) if data.amount is not None else balance
+    if amount <= 0 or amount > balance:
+        raise HTTPException(
+            status_code=400, detail="Write-off must be between 0 and the open balance"
+        )
+
+    ar_id = get_ar_account_id(db)
+    bad_debt_id = get_bad_debt_account_id(db)
+    memo = data.memo or f"Write-off: Invoice #{inv.invoice_number}"
+    cm = None
+    for _ in range(10):
+        cm = CreditMemo(
+            memo_number=next_credit_memo_number(db),
+            customer_id=inv.customer_id,
+            date=data.date,
+            original_invoice_id=inv.id,
+            subtotal=amount,
+            tax_rate=Decimal("0"),
+            tax_amount=Decimal("0"),
+            total=amount,
+            amount_applied=amount,
+            balance_remaining=Decimal("0"),
+            notes=memo,
+            class_id=inv.class_id,
+            job_id=inv.job_id,
+            status=CreditMemoStatus.APPLIED,
+            is_write_off=True,
+        )
+        db.add(cm)
+        try:
+            db.flush()
+            break
+        except IntegrityError as e:
+            if "memo_number" not in str(e.orig).lower():
+                raise
+            db.rollback()
+            cm = None
+    if cm is None:
+        raise HTTPException(
+            status_code=503, detail="Could not assign a credit memo number"
+        )
+    db.add(
+        CreditMemoLine(
+            credit_memo_id=cm.id,
+            description=memo,
+            quantity=1,
+            rate=amount,
+            amount=amount,
+            line_order=0,
+        )
+    )
+    txn = create_journal_entry(
+        db,
+        data.date,
+        f"Credit Memo {cm.memo_number} - write-off of Invoice #{inv.invoice_number}",
+        [
+            {
+                "account_id": bad_debt_id,
+                "debit": amount,
+                "credit": Decimal("0"),
+                "description": memo,
+            },
+            {
+                "account_id": ar_id,
+                "debit": Decimal("0"),
+                "credit": amount,
+                "description": memo,
+            },
+        ],
+        source_type="credit_memo",
+        source_id=cm.id,
+        class_id=inv.class_id,
+        job_id=inv.job_id,
+    )
+    cm.transaction_id = txn.id
+    db.add(CreditApplication(credit_memo_id=cm.id, invoice_id=inv.id, amount=amount))
+    inv.amount_paid = Decimal(str(inv.amount_paid or 0)) + amount
+    inv.balance_due = balance - amount
+    inv.status = InvoiceStatus.PAID if inv.balance_due == 0 else InvoiceStatus.PARTIAL
+    db.commit()
+    db.refresh(cm)
+    resp = CreditMemoResponse.model_validate(cm)
+    resp.customer_name = inv.customer.name if inv.customer else None
+    return resp
+
+
 @router.post("/{invoice_id}/duplicate", response_model=InvoiceResponse, status_code=201)
 def duplicate_invoice(invoice_id: int, db: Session = Depends(get_db)):
     """Duplicate — copy the invoice under a new number."""
@@ -273,6 +401,9 @@ def duplicate_invoice(invoice_id: int, db: Session = Depends(get_db)):
         tax_amount=original.tax_amount,
         total=original.total,
         balance_due=original.total,
+        is_pledge=original.is_pledge,
+        fair_value_amount=original.fair_value_amount,
+        fair_value_description=original.fair_value_description,
         notes=original.notes,
         class_id=original.class_id,
     )

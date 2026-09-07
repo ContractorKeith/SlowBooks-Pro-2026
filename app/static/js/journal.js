@@ -72,6 +72,7 @@ const JournalPage = {
         const classGroup = await classFormGroupHtml();
         const jobGroup = await jobFormGroupHtml(null);
         await CostCodes.load();
+        await Nonprofit.loadFunds();
         JournalPage._accounts = accounts;
         JournalPage._lineCount = 2;
 
@@ -92,12 +93,12 @@ const JournalPage = {
                 </div>
                 <h3 style="margin:12px 0 8px; font-size:14px;">Lines</h3>
                 <table class="line-items-table">
-                    <thead><tr><th scope="col">Account</th><th scope="col">Description</th><th scope="col" class="col-rate">Debit</th><th scope="col" class="col-rate">Credit</th><th scope="col" class="col-actions"></th></tr></thead>
+                    <thead><tr><th scope="col">Account</th><th scope="col">Description</th>${CostCodes.headHtml()}${Nonprofit.headHtml()}<th scope="col" class="col-rate">Debit</th><th scope="col" class="col-rate">Credit</th><th scope="col" class="col-actions"></th></tr></thead>
                     <tbody id="je-lines">
                         <tr data-jeline="0">
                             <td><select class="je-account"><option value="">--</option>${acctOpts}</select></td>
                             <td><input class="je-desc"></td>
-                            ${CostCodes.cellHtml('je-cost-code')}
+                            ${CostCodes.cellHtml('je-cost-code')}${Nonprofit.cellHtml('je-function')}
                             <td><input class="je-debit" type="number" step="0.01" value="0" oninput="JournalPage.recalc()"></td>
                             <td><input class="je-credit" type="number" step="0.01" value="0" oninput="JournalPage.recalc()"></td>
                             <td><button type="button" class="btn btn-sm btn-danger" aria-label="Remove line" onclick="this.closest('tr').remove();JournalPage.recalc()">X</button></td>
@@ -105,7 +106,7 @@ const JournalPage = {
                         <tr data-jeline="1">
                             <td><select class="je-account"><option value="">--</option>${acctOpts}</select></td>
                             <td><input class="je-desc"></td>
-                            ${CostCodes.cellHtml('je-cost-code')}
+                            ${CostCodes.cellHtml('je-cost-code')}${Nonprofit.cellHtml('je-function')}
                             <td><input class="je-debit" type="number" step="0.01" value="0" oninput="JournalPage.recalc()"></td>
                             <td><input class="je-credit" type="number" step="0.01" value="0" oninput="JournalPage.recalc()"></td>
                             <td><button type="button" class="btn btn-sm btn-danger" aria-label="Remove line" onclick="this.closest('tr').remove();JournalPage.recalc()">X</button></td>
@@ -135,11 +136,38 @@ const JournalPage = {
             <tr data-jeline="${idx}">
                 <td><select class="je-account"><option value="">--</option>${acctOpts}</select></td>
                 <td><input class="je-desc"></td>
-                            ${CostCodes.cellHtml('je-cost-code')}
+                            ${CostCodes.cellHtml('je-cost-code')}${Nonprofit.cellHtml('je-function')}
                 <td><input class="je-debit" type="number" step="0.01" value="0" oninput="JournalPage.recalc()"></td>
                 <td><input class="je-credit" type="number" step="0.01" value="0" oninput="JournalPage.recalc()"></td>
                 <td><button type="button" class="btn btn-sm btn-danger" aria-label="Remove line" onclick="this.closest('tr').remove();JournalPage.recalc()">X</button></td>
             </tr>`);
+    },
+
+    // Split support (nonprofit): the line's amount, and the expansion of
+    // one row into the rule's shares — same account, the debit/credit
+    // side preserved, fund and function set per share.
+    lineAmount(row) {
+        return (parseFloat(row.querySelector('.je-debit')?.value) || 0) || (parseFloat(row.querySelector('.je-credit')?.value) || 0);
+    },
+    splitApply(row, res) {
+        const isDebit = (parseFloat(row.querySelector('.je-debit')?.value) || 0) > 0;
+        const baseDesc = row.querySelector('.je-desc')?.value || '';
+        let anchor = row;
+        res.lines.forEach((ln, i) => {
+            const clone = row.cloneNode(true);
+            clone.dataset.jeline = JournalPage._lineCount++;
+            // cloneNode drops <select> state; copy it by hand
+            row.querySelectorAll('select').forEach((sel, k) => { clone.querySelectorAll('select')[k].value = sel.value; });
+            clone.querySelector('.je-desc').value = `${baseDesc} (${res.rule_name}: ${Nonprofit.label(ln.function) || ln.class_name || 'share'})`;
+            clone.querySelector(isDebit ? '.je-debit' : '.je-credit').value = Number(ln.amount).toFixed(2);
+            clone.querySelector(isDebit ? '.je-credit' : '.je-debit').value = 0;
+            const fund = clone.querySelector('.je-function-fund'); if (fund) fund.value = ln.class_id || '';
+            const fn = clone.querySelector('.je-function'); if (fn) fn.value = ln.function || '';
+            anchor.insertAdjacentElement('afterend', clone);
+            anchor = clone;
+        });
+        row.remove();
+        JournalPage.recalc();
     },
 
     recalc() {
@@ -177,6 +205,8 @@ const JournalPage = {
                     debit, credit,
                     description: row.querySelector('.je-desc')?.value || '',
                     cost_code_id: CostCodes.fromRow(row, 'je-cost-code'),
+                    class_id: Nonprofit.fundFromRow(row, 'je-function'),
+                    ...Nonprofit.linePayload(row, 'je-function'),
                 });
             }
         });

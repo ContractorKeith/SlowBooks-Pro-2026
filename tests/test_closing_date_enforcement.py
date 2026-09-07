@@ -97,12 +97,12 @@ def test_payroll_process_respects_closing_date(client, db_session):
         json={
             "first_name": "T",
             "last_name": "E",
-            "ssn": "111-11-1111",
+            "ssn_last_four": "1111",
             "filing_status": "single",
             "pay_rate": 25,
             "pay_frequency": "biweekly",
             "state": "WA",
-            "date_of_hire": "2026-01-01",
+            "hire_date": "2026-01-01",
         },
     ).json()
 

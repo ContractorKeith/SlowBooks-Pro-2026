@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,7 +22,7 @@ from app.routes.reports._router import router
 logger = logging.getLogger(__name__)
 
 
-class CollectionLetterRequest(BaseModel):
+class CollectionLetterRequest(StrictModel):
     letter_type: str = "30"
     customer_ids: Optional[list[int]] = None
     send_email: bool = False

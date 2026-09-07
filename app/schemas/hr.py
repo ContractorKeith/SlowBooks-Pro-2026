@@ -1,16 +1,17 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
 # --- Onboarding tasks ------------------------------------------------------
-class OnboardingTaskCreate(BaseModel):
+class OnboardingTaskCreate(StrictModel):
     employee_id: int
     task_type: str
     notes: Optional[str] = None
 
 
-class OnboardingTaskUpdate(BaseModel):
+class OnboardingTaskUpdate(StrictModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     completed_by: Optional[str] = None

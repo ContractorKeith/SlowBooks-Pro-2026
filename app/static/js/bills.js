@@ -108,6 +108,7 @@ const BillsPage = {
         const classGroup = await classFormGroupHtml();
         const jobGroup = await jobFormGroupHtml(null);
         await CostCodes.load();
+        await Nonprofit.loadFunds();
 
         BillsPage._vendors = vendors;
         const itemOpts = items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
@@ -132,12 +133,12 @@ const BillsPage = {
                 </div>
                 <h3 style="margin:12px 0 8px;font-size:14px;">Line Items</h3>
                 <table class="line-items-table">
-                    <thead><tr><th scope="col">Item</th><th scope="col">Description</th>${CostCodes.headHtml()}<th scope="col" title="Billable to the job's customer">Bill?</th><th scope="col" class="col-qty">Qty</th><th scope="col" class="col-rate">Rate</th><th scope="col" class="col-amount">Amount</th></tr></thead>
+                    <thead><tr><th scope="col">Item</th><th scope="col">Description</th>${CostCodes.headHtml()}${Nonprofit.headHtml()}<th scope="col" title="Billable to the job's customer">Bill?</th><th scope="col" class="col-qty">Qty</th><th scope="col" class="col-rate">Rate</th><th scope="col" class="col-amount">Amount</th></tr></thead>
                     <tbody id="bill-lines">
                         <tr data-billline="0">
                             <td><select class="line-item"><option value="">--</option>${itemOpts}</select></td>
                             <td><input class="line-desc"></td>
-                            ${CostCodes.cellHtml('line-cost-code')}
+                            ${CostCodes.cellHtml('line-cost-code')}${Nonprofit.cellHtml('line-function')}
                             <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"></td>
                             <td><input class="line-qty" type="number" step="0.01" value="1" oninput="BillsPage.recalc()"></td>
                             <td><input class="line-rate" type="number" step="0.01" value="0" oninput="BillsPage.recalc()"></td>
@@ -256,6 +257,30 @@ const BillsPage = {
         });
     },
 
+    // Split support (nonprofit): one line becomes the rule's shares, each
+    // with quantity 1 and the share as its rate.
+    lineAmount(row) {
+        return (parseFloat(row.querySelector('.line-qty')?.value) || 0) * (parseFloat(row.querySelector('.line-rate')?.value) || 0);
+    },
+    splitApply(row, res) {
+        const baseDesc = row.querySelector('.line-desc')?.value || '';
+        let anchor = row;
+        res.lines.forEach(ln => {
+            const clone = row.cloneNode(true);
+            clone.dataset.billline = BillsPage.lineCount++;
+            row.querySelectorAll('select').forEach((sel, k) => { clone.querySelectorAll('select')[k].value = sel.value; });
+            clone.querySelector('.line-desc').value = `${baseDesc} (${res.rule_name}: ${Nonprofit.label(ln.function) || ln.class_name || 'share'})`;
+            clone.querySelector('.line-qty').value = 1;
+            clone.querySelector('.line-rate').value = Number(ln.amount).toFixed(2);
+            const fund = clone.querySelector('.line-function-fund'); if (fund) fund.value = ln.class_id || '';
+            const fn = clone.querySelector('.line-function'); if (fn) fn.value = ln.function || '';
+            anchor.insertAdjacentElement('afterend', clone);
+            anchor = clone;
+        });
+        row.remove();
+        BillsPage.recalc();
+    },
+
     addLine() {
         const idx = BillsPage.lineCount++;
         const itemOpts = BillsPage._items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
@@ -263,7 +288,7 @@ const BillsPage = {
             <tr data-billline="${idx}">
                 <td><select class="line-item"><option value="">--</option>${itemOpts}</select></td>
                 <td><input class="line-desc"></td>
-                ${CostCodes.cellHtml('line-cost-code')}
+                ${CostCodes.cellHtml('line-cost-code')}${Nonprofit.cellHtml('line-function')}
                 <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"></td>
                 <td><input class="line-qty" type="number" step="0.01" value="1" oninput="BillsPage.recalc()"></td>
                 <td><input class="line-rate" type="number" step="0.01" value="0" oninput="BillsPage.recalc()"></td>
@@ -282,6 +307,8 @@ const BillsPage = {
                 quantity: parseFloat(row.querySelector('.line-qty')?.value) || 1,
                 rate: parseFloat(row.querySelector('.line-rate')?.value) || 0,
                 cost_code_id: CostCodes.fromRow(row, 'line-cost-code'),
+                class_id: Nonprofit.fundFromRow(row, 'line-function'),
+                ...Nonprofit.linePayload(row, 'line-function'),
                 is_billable: !!row.querySelector('.line-billable')?.checked,
                 line_order: i,
             });

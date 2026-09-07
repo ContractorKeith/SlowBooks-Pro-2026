@@ -9,7 +9,7 @@ const CreditMemosPage = {
             title: 'Credit Memos',
             headerHtml: `<button class="btn btn-primary" onclick="CreditMemosPage.showForm()">+ New Credit Memo</button>`,
             empty: '<p>No credit memos yet</p>',
-            columns: ['#', 'Customer', 'Date', 'Status',
+            columns: ['#', T('Customer'), 'Date', 'Status',
                 { label: 'Total', cls: 'amount' }, { label: 'Remaining', cls: 'amount' }, 'Actions'],
             items: memos,
             row: m => `<tr>
@@ -21,9 +21,19 @@ const CreditMemosPage = {
                     <td class="amount">${formatCurrency(m.balance_remaining)}</td>
                     <td class="actions">
                         ${m.status === 'issued' ? `<button class="btn btn-sm btn-primary" onclick="CreditMemosPage.showApply(${m.id})">Apply</button>` : ''}
+                        ${m.status !== 'void' ? `<button class="btn btn-sm btn-secondary" onclick="CreditMemosPage.void(${m.id})">Void</button>` : ''}
                     </td>
                 </tr>`,
         });
+    },
+
+    async void(id) {
+        if (!confirm('Void this credit memo? Any applied credit goes back onto the invoice and a reversing entry is posted.')) return;
+        try {
+            await API.post(`/credit-memos/${id}/void`, {});
+            toast('Credit memo voided');
+            App.navigate('#/credit-memos');
+        } catch (err) { toast(err.message, 'error'); }
     },
 
     _items: [],
@@ -44,7 +54,7 @@ const CreditMemosPage = {
         openModal('New Credit Memo', `
             <form onsubmit="CreditMemosPage.save(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required><option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>Date *</label>
                         <input name="date" type="date" required value="${todayISO()}"></div>
@@ -130,7 +140,7 @@ const CreditMemosPage = {
         openModal(`Apply Credit ${cm.memo_number}`, `
             <p style="margin-bottom:8px;">Credit remaining: <strong>${formatCurrency(cm.balance_remaining)}</strong></p>
             <div class="table-container"><table>
-                <thead><tr><th scope="col">Invoice</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th></tr></thead>
+                <thead><tr><th scope="col">${T('Invoice')}</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table></div>
             <div class="form-actions">

@@ -365,6 +365,8 @@ def test_vendor_create_accepts_blank_email_from_form_payload(client):
     for key in list(payload):
         if key.startswith(("bill_", "ship_")):
             del payload[key]
+    # vendors.js has no mobile field; the API now rejects unknown keys
+    del payload["mobile"]
     r = client.post("/api/vendors", json=payload)
     assert r.status_code == 201, r.text
     assert r.json()["email"] is None

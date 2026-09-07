@@ -19,7 +19,7 @@ const PaymentsPage = {
         } else {
             html += `<div class="table-container"><table>
                 <thead><tr>
-                    <th scope="col">Date</th><th scope="col">Customer</th><th scope="col">Method</th><th scope="col">Reference</th>
+                    <th scope="col">Date</th><th scope="col">${T('Customer')}</th><th scope="col">Method</th><th scope="col">Reference</th>
                     <th scope="col" class="amount">Amount</th><th scope="col">Actions</th>
                 </tr></thead><tbody>`;
             for (const p of payments) {
@@ -41,11 +41,17 @@ const PaymentsPage = {
 
     async view(id) {
         const p = await API.get(`/payments/${id}`);
+        // Nonprofit: a pledge payment or an unapplied gift gets a letter; a
+        // receipt's own payment does not (the receipt is acknowledged).
+        let ack = null;
+        if (Terms.isNonprofit() && !p.is_voided) {
+            try { ack = await API.get(`/donors/gifts/payment/${id}/acknowledgment/preview`); } catch (e) { ack = null; }
+        }
         let allocHtml = '';
         if (p.allocations.length) {
             allocHtml = `<h4 style="margin:12px 0 8px;">Applied to Invoices</h4>
                 <div class="table-container"><table><thead><tr>
-                <th scope="col">Invoice</th><th scope="col" class="amount">Amount</th></tr></thead><tbody>`;
+                <th scope="col">${T('Invoice')}</th><th scope="col" class="amount">Amount</th></tr></thead><tbody>`;
             for (const a of p.allocations) {
                 allocHtml += `<tr><td>#${a.invoice_id}</td><td class="amount">${formatCurrency(a.amount)}</td></tr>`;
             }
@@ -65,6 +71,8 @@ const PaymentsPage = {
             ${allocHtml}
             ${p.is_voided ? '<div style="color:var(--danger);font-weight:700;margin:12px 0;">This payment has been voided.</div>' : ''}
             <div class="form-actions">
+                ${ack && ack.eligible ? `<button class="btn btn-secondary" onclick="window.open('/api/donors/gifts/payment/${p.id}/acknowledgment/pdf','_blank')">Acknowledgment (PDF)</button>
+                <button class="btn btn-secondary" onclick="Donors.emailAcknowledgment('payment', ${p.id})">Email Acknowledgment</button>` : ''}
                 ${!p.is_voided ? `<button class="btn btn-danger" onclick="PaymentsPage.void(${p.id})">Void Payment</button>` : ''}
                 ${p.method === 'Check' && p.check_number && !p.is_voided ? `<button class="btn btn-secondary" onclick="window.open('/api/checks/print?payment_id=${p.id}','_blank')">Print Check</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
@@ -96,7 +104,7 @@ const PaymentsPage = {
         openModal('Record Payment', `
             <form id="payment-form" onsubmit="PaymentsPage.save(event)">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required onchange="PaymentsPage.loadInvoices(this.value)">
                             <option value="">Select...</option>${custOpts}</select></div>
                     <div class="form-group"><label>Date *</label>
@@ -144,7 +152,7 @@ const PaymentsPage = {
 
         let html = `<h4 style="margin-bottom:8px;">Apply to Invoices</h4>
             <div class="table-container"><table><thead><tr>
-            <th scope="col">Invoice</th><th scope="col">Date</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th>
+            <th scope="col">${T('Invoice')}</th><th scope="col">Date</th><th scope="col" class="amount">Balance</th><th scope="col" class="amount">Apply</th>
             </tr></thead><tbody>`;
         for (const inv of PaymentsPage._invoices) {
             html += `<tr>

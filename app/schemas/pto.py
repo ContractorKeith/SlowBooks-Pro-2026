@@ -2,12 +2,15 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel
 
+from app.models.pto import AccrualMethod, PTOType
+from app.schemas.common import StrictModel
+
 
 # --- Policies --------------------------------------------------------------
-class PTOPolicyCreate(BaseModel):
+class PTOPolicyCreate(StrictModel):
     name: str
-    pto_type: str = "vacation"
-    accrual_method: str = "per_pay_period"
+    pto_type: PTOType = PTOType.VACATION
+    accrual_method: AccrualMethod = AccrualMethod.PER_PAY_PERIOD
     accrual_rate: float = 0
     max_carryover: Optional[float] = None
     max_balance: Optional[float] = None
@@ -37,7 +40,7 @@ class PTOPolicyResponse(BaseModel):
 
 
 # --- Accruals --------------------------------------------------------------
-class PTOAccrualCreate(BaseModel):
+class PTOAccrualCreate(StrictModel):
     employee_id: int
     policy_id: int
     balance: float = 0
@@ -55,16 +58,16 @@ class PTOAccrualResponse(BaseModel):
 
 
 # --- Requests --------------------------------------------------------------
-class PTORequestCreate(BaseModel):
+class PTORequestCreate(StrictModel):
     employee_id: int
     start_date: date
     end_date: date
     hours: float = 0
-    pto_type: str = "vacation"
+    pto_type: PTOType = PTOType.VACATION
     notes: Optional[str] = None
 
 
-class PTORequestDecision(BaseModel):
+class PTORequestDecision(StrictModel):
     status: str  # "approved" or "denied"
     approver_id: Optional[int] = None
 

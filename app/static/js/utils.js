@@ -33,6 +33,29 @@ function toast(message, type = 'success') {
     setTimeout(() => el.remove(), 3000);
 }
 
+// A toast that carries one action (e.g. "Saved to … [Show in folder]").
+// Stays longer than a plain toast because the user has to read a path.
+function toastAction(message, actionLabel, onClick, ms = 8000) {
+    const container = $('#toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast toast-success';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.gap = '10px';
+    const text = document.createElement('span');
+    text.textContent = message;
+    text.style.wordBreak = 'break-all';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-secondary';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', () => { try { onClick(); } finally { el.remove(); } });
+    el.appendChild(text);
+    el.appendChild(btn);
+    container.appendChild(el);
+    setTimeout(() => el.remove(), ms);
+}
+
 // Modal accessibility: the dialog takes focus when it opens, Tab and
 // Shift+Tab cycle inside it, Escape closes it, and focus returns to
 // whatever opened it. (Audit finding 3: role/aria-modal live on #modal in
@@ -289,9 +312,95 @@ async function classFormGroupHtml(selectedId) {
     const opts = classes.map(c =>
         `<option value="${c.id}" ${selectedId ? (c.id === selectedId ? 'selected' : '') : (c.is_system_default ? 'selected' : '')}>${escapeHtml(c.name)}</option>`
     ).join('');
-    return `<div class="form-group"><label>Class</label>
+    return `<div class="form-group"><label>${T('Class')}</label>
         <select name="class_id">${opts}</select></div>`;
 }
+
+// ---------------------------------------------------------------------------
+// Nonprofit function dimension — program / management / fundraising (the
+// Form 990 Part IX columns). Only rendered in nonprofit mode; a blank
+// value means "default from the fund" (the server fills it at posting).
+// ---------------------------------------------------------------------------
+const Nonprofit = {
+    FUNCTIONS: [['program', 'Program services'], ['management', 'Management & general'], ['fundraising', 'Fundraising']],
+    enabled() { return Terms.isNonprofit(); },
+    NONE: '__none__',
+    optionsHtml(selected, blank = 'From fund') {
+        return `<option value="">${blank}</option>` + Nonprofit.FUNCTIONS.map(([v, l]) =>
+            `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('')
+            + `<option value="${Nonprofit.NONE}" ${selected === null ? '' : ''}>Unassigned (allocate later)</option>`;
+    },
+    // The API distinction: no key = take the fund's default function;
+    // an explicit null = leave the line unassigned for a period-end rule.
+    _payload(v) {
+        if (!v) return {};
+        if (v === Nonprofit.NONE) return { function: null };
+        return { function: v };
+    },
+    linePayload(row, cls) { return Nonprofit._payload(row.querySelector(`.${cls}`)?.value); },
+    formPayload(form) { return Nonprofit._payload(form.function ? form.function.value : ''); },
+    // Header-level picker for one-line documents (expense, CC charge)
+    functionFormGroupHtml(selected) {
+        if (!Nonprofit.enabled()) return '';
+        return `<div class="form-group"><label>Function</label>
+            <select name="function">${Nonprofit.optionsHtml(selected)}</select></div>`;
+    },
+    label(fn) { const f = Nonprofit.FUNCTIONS.find(([v]) => v === fn); return f ? f[1] : (fn || ''); },
+    // Per-line cells + header for multi-line documents (journal, bill):
+    // a fund, a function, and the Split button that expands the line by a
+    // saved allocation rule. Call loadFunds() before rendering rows.
+    _funds: null,
+    _rules: null,
+    async loadFunds() {
+        if (!Nonprofit.enabled()) return;
+        try {
+            [Nonprofit._funds, Nonprofit._rules] = await Promise.all([API.get('/classes'), API.get('/nonprofit/allocation-rules')]);
+        } catch (e) { Nonprofit._funds = Nonprofit._funds || []; Nonprofit._rules = Nonprofit._rules || []; }
+    },
+    headHtml() { return Nonprofit.enabled() ? `<th scope="col">${T('Class')}</th><th scope="col">Function</th>` : ''; },
+    cellHtml(cls, selected, fundSelected) {
+        if (!Nonprofit.enabled()) return '';
+        const funds = (Nonprofit._funds || []).map(f => `<option value="${f.id}" ${fundSelected === f.id ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('');
+        const split = (Nonprofit._rules || []).length ? ` <button type="button" class="btn btn-sm btn-secondary np-split" title="Split this line by an allocation rule" onclick="Nonprofit.splitRow(this)">Split</button>` : '';
+        return `<td><select class="${cls}-fund"><option value="">header</option>${funds}</select></td>` +
+            `<td style="white-space:nowrap"><select class="${cls}">${Nonprofit.optionsHtml(selected, '—')}</select>${split}</td>`;
+    },
+    fromRow(row, cls) { return row.querySelector(`.${cls}`)?.value || null; },
+    fundFromRow(row, cls) { const v = row.querySelector(`.${cls}-fund`)?.value; return v ? parseInt(v) : null; },
+    fromForm(form) { return form.function ? (form.function.value || null) : null; },
+
+    // Split: an inline chooser under the row; on Apply the page's
+    // splitApply(row, lines) clones the row into one line per share.
+    splitRow(btn) {
+        const row = btn.closest('tr');
+        const next = row.nextElementSibling;
+        if (next && next.classList.contains('np-split-row')) { next.remove(); return; }
+        const rules = (Nonprofit._rules || []).map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+        row.insertAdjacentHTML('afterend', `<tr class="np-split-row"><td colspan="12" style="background:var(--gray-50);font-size:11px;">
+            Split this line by <select class="np-split-rule">${rules}</select>
+            <button type="button" class="btn btn-sm btn-primary" onclick="Nonprofit.splitApply(this)">Apply</button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="this.closest('tr').remove()">Cancel</button>
+            <span class="np-split-msg" style="margin-left:8px;color:var(--gray-500)"></span></td></tr>`);
+    },
+    async splitApply(btn) {
+        const chooser = btn.closest('tr');
+        const row = chooser.previousElementSibling;
+        const page = row.dataset.jeline !== undefined ? JournalPage : (row.dataset.billline !== undefined ? BillsPage : null);
+        if (!page || !page.splitApply) return;
+        const amount = page.lineAmount(row);
+        const msg = chooser.querySelector('.np-split-msg');
+        if (!(amount > 0)) { msg.textContent = 'Enter an amount first'; return; }
+        const ruleId = chooser.querySelector('.np-split-rule').value;
+        const form = row.closest('form');
+        const headerFund = form && form.class_id && form.class_id.value ? `&class_id=${form.class_id.value}` : '';
+        const rowFund = row.querySelector('select[class$="-fund"]')?.value;
+        try {
+            const res = await API.get(`/nonprofit/allocation-rules/${ruleId}/split?amount=${amount}${rowFund ? `&class_id=${rowFund}` : headerFund}`);
+            chooser.remove();
+            page.splitApply(row, res);
+        } catch (err) { msg.textContent = err.message; }
+    },
+};
 
 // Normalize a form's class_id string to int-or-null for the API payload.
 function classIdFromForm(form) {
@@ -314,7 +423,7 @@ async function jobFormGroupHtml(selectedId, customerSelectId) {
         `<option value="${j.id}" data-customer="${j.customer_id}" ${selectedId === j.id ? 'selected' : ''}>${escapeHtml(j.full_name || j.name)}</option>`
     ).join('');
     const bind = customerSelectId ? `data-customer-select="${customerSelectId}" onfocus="JobPicker.sync(this)"` : '';
-    return `<div class="form-group"><label>Job</label>
+    return `<div class="form-group"><label>${T('Job')}</label>
         <select name="job_id" ${bind}><option value="">— No job —</option>${opts}</select></div>`;
 }
 

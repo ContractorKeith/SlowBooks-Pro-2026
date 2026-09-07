@@ -7,7 +7,141 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
-_Nothing yet._
+### v2.9.0 — Nonprofit mode
+
+**A nonprofit sees its own words in the first minute.** Settings → Company
+Type → Nonprofit swaps the vocabulary everywhere it shows: Customer → Donor,
+Invoice → Pledge, Sales Receipt → Donation, Class → Fund, Job → Grant, Profit
+& Loss → Statement of Activities, Balance Sheet → Statement of Financial
+Position, Equity → Net Assets. One dictionary, applied at render, on screens,
+in report titles, in PDF filenames and on the dashboard; nothing in the API
+or the database changes name, and a business file renders exactly what it
+did before. Printed documents are literal, not vocabulary: a donation prints
+as DONATION RECEIPT, a pledge as PLEDGE, a program fee still as INVOICE.
+
+**Net assets by restriction, without a closing entry.** A class is a fund
+with a restriction (without / with donor restrictions, purpose or permanent)
+and a default function. When a restricted fund spends for its purpose, a
+**Release from Restriction** moves that much to net assets without donor
+restrictions — one document, DR 3400 / CR 3300 tagged to the fund, with the
+amount suggested from the fund's unreleased spending. The **Statement of
+Financial Position** splits the change in net assets by restriction at
+report time, the way the balance sheet already synthesizes net income, so
+the two net-asset lines always add up to the balance sheet's equity; the
+**Statement of Activities** shows revenue and expenses in two columns with
+releases between them and its change in net assets is the P&L net income;
+**Fund Balances** shows each restricted fund's beginning, contributions,
+spending, releases, ending and unreleased. P&L by Class now groups on the
+line's class first (a bill with three line classes and a blank header used
+to land whole in Uncategorized), and every void reverses with job, class,
+cost code and function carried.
+
+**Every expense knows its function.** Posted lines carry program /
+management / fundraising, defaulted from the fund. Shared costs — rent, the
+office manager's wages — are posted unassigned and divided by a saved
+**allocation rule** (percent, square feet, or hours on grants), either with
+**Split** on the entry line or as a month-end **Functional Allocation** that
+reclasses whatever is still unassigned on the rule's source account without
+moving the P&L by a cent; running a month twice finds nothing to move. The
+**Statement of Functional Expenses** puts every expense account in Form 990
+Part IX columns, with the program-by-program breakout, as PDF and CSV.
+
+**Donor documents.** A donation receipt prints the IRS Publication 1771
+acknowledgment — the date, the amount, and either "no goods or services were
+provided" or the fair value of the gala dinner with the deductible portion.
+Every gift gets an **acknowledgment letter** (PDF and email) worded by the
+editable `donation_acknowledgment` template with `{{ irs.text }}` supplied.
+**In-kind gifts** are their own two-sided document (the piano to Musical
+Instruments, the credit to In-Kind Contributions) acknowledged without a
+stated value. **Year-end giving statements** list every cash gift with the
+deductible portion and non-cash gifts without amounts — one donor, every
+donor in one PDF with a page break each, or emailed to everyone who has not
+opted out. The **pledge report** reads promised, invoiced, received, written
+off and outstanding off recurring pledges and their installments (generated
+invoices now remember their template and carry its grant), and a pledge that
+will never be paid is **written off** through a credit memo to Bad Debt
+Expense — credit memos gained the void they never had, which is also the
+undo.
+
+**Reports you can find and compare.** In the desktop app, Save PDF now
+writes the report to Documents → SlowBooks Pro → Reports (period-stamped, never
+overwritten), opens it, and says where it went with a Show-in-folder button —
+it used to land in a temp folder. Saved report definitions are a collapsible
+list at the top of the Report Center instead of a growing wall of cards. The
+Statement of Activities and the Statement of Functional Expenses gained
+"Compare to prior year": the same dates a year earlier as two more columns,
+on screen, in the PDF and in the CSV.
+
+**Riverbend Community Arts.** The stage's acceptance test is a seeded
+nonprofit year — a grant, an endowment, a gala, pledgers, a piano, rent
+split 70/20/10, a June release — driven entirely through the API with scoped
+tokens the way a bring-your-own-AI agent would, checking that every
+statement reconciles to the cent and that a readonly agent cannot write.
+Design notes: [docs/design/nonprofit.md](docs/design/nonprofit.md); user
+guide: [docs/nonprofit-module.md](docs/nonprofit-module.md).
+
+**A custom AI provider** (contributed by @jarvis4openclaw): an eighth AI
+Insights provider that points at any OpenAI-compatible chat endpoint on the
+public internet, HTTPS-only and behind the same address guard as the Worker
+gateway, with the model ID yours to type. Along the way it fixed the
+self-hosted Cloudflare Worker gateway, whose replies had been parsed to an
+empty string.
+
+**From the release gate (SlowBooks-Pro-Testing, 2.9.0).** The macOS app is
+now notarized and stapled *before* the disk image is built, so the copy a
+user drags to Applications carries its own ticket and launches offline;
+the bundle declares why it writes to Documents and Downloads, and a refused
+folder is explained (the file goes to the app's data folder and the notice
+says so) instead of failing like a crash. For agents driving the API: an
+unknown request field is a 422 naming the field, never silently dropped;
+`tax_rate` is documented as a fraction and a percent-looking value is
+rejected with the unit in the message; `pto_type` and `accrual_method` are
+enums in the spec; an empty pay run is refused with the roster named;
+`DELETE` on a posted document names the `/void` route; a fresh company has
+6810 Depreciation Expense and a default Equipment asset type so depreciation
+runs first time; a missing `companies.json` is logged with the data
+directory that was searched.
+
+**Round 3 of the gate found the macOS desktop bridge dead — since v2.1.0.**
+Save PDF, print preview, Save backup, Show in folder and the company picker
+all rely on pywebview's `window.pywebview.api`, which pywebview builds with
+`new Function`; the app's Content-Security-Policy had no `'unsafe-eval'`,
+WebKit enforces that inside the page, and the bridge stayed empty on every
+Mac while Chromium on Windows let it through. The policy now allows eval
+only under the desktop launcher (a browser install keeps the strict one).
+The shell also stops failing in silence: a missing bridge is reported on the
+first click and checked at startup, Save CSV goes through the bridge to the
+same Reports folder as Save PDF, and every export a desktop fetch receives
+is served inline so neither webview swallows it as a download. Two more
+from the same round: first-run setup on a file that already holds books now
+says whose books they are and prefills the name, and the company name in
+Settings keeps the manifest (the picker's name) in step so the two can no
+longer diverge; the Windows installer clears `_internal` before an upgrade
+so stale package metadata from earlier builds no longer ships.
+Round 4 closed the loop on the name reconciliation itself: two company files
+can never end up with one name — renaming a company (in Settings or in
+first-run setup) to a name another file already carries is refused with the
+file named, the same rule creating a company has always applied.
+The Linux gate then found that `docker compose up` had been broken since
+v2.8.0: no migration ever created the `users` table (the app made it at
+startup), and the v2.8.0 preferences migration referenced it, which SQLite
+tolerates and PostgreSQL refuses. A migration now creates `users` ahead of
+that reference, a test walks the migrated schema for any foreign key whose
+target no migration creates, and under PostgreSQL the company list flags
+the database the server is connected to as current so an agent can tell
+which books it reached.
+Behind that lay an older one: the production guards that demand a TLS
+database connection and an HTTPS redirect refused the compose stack's own
+plaintext bridge-network URL, so the documented one-command install had not
+started since those guards landed in v2.1. The compose file now declares
+`SLOWBOOKS_PRIVATE_NETWORK=1`, which relaxes exactly those two transport
+checks with a logged warning and nothing else; the encryption-key guards are
+never relaxed, and the install guide says what to change before exposing
+the stack beyond the host.
+And a third, once the stack ran: with two uvicorn workers, both raced to
+create the tables the migrations do not cover, one lost on a Postgres enum
+type, and the container crashed and restarted on every first boot. Table
+creation now takes a Postgres advisory lock so the second worker waits.
 
 ### v2.8.0 — Benefits, all-state payroll, and an overview you can arrange
 

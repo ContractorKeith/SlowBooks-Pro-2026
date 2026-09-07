@@ -9,6 +9,8 @@
 # want to print invoices.
 # ============================================================================
 
+import logging
+import os
 import re as _re
 import time as _time
 from contextlib import asynccontextmanager
@@ -23,6 +25,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler
 
 from app.services import storage
 from app.services.rate_limit import limiter
@@ -65,6 +69,9 @@ from app.routes import jobs as jobs_routes
 from app.routes import preferences as preferences_routes
 from app.routes import cost_codes as cost_codes_routes
 from app.routes import job_costing as job_costing_routes
+from app.routes import nonprofit as nonprofit_routes
+from app.routes import donors as donors_routes
+from app.routes import in_kind as in_kind_routes
 from app.routes import fx as fx_routes
 from app.routes import fixed_assets as fixed_assets_routes
 from app.routes import migration as migration_routes
@@ -159,6 +166,25 @@ def _run_startup_security_checks():
                 "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
             )
 
+        # The single-host install: `docker compose up` puts Postgres on the
+        # compose-internal bridge and serves the app on http://localhost.
+        # Both transport guards below are about traffic leaving the host,
+        # which that traffic never does — but the guards fired anyway, and
+        # the documented Docker path has refused to start since they landed
+        # (2.9.0 Linux gate). docker-compose.yml sets this flag and says so;
+        # anyone exposing the stack beyond the host puts a TLS proxy in
+        # front (docs/tls-proxy-setup.md), sets FORCE_HTTPS=true and drops
+        # the flag. The encryption-key guards above are never relaxed.
+        if os.environ.get("SLOWBOOKS_PRIVATE_NETWORK") == "1":
+            logging.getLogger("app.main").warning(
+                "SLOWBOOKS_PRIVATE_NETWORK=1: serving plain HTTP and a "
+                "non-TLS database connection on the assumption that neither "
+                "leaves this host. Do not expose this instance beyond the "
+                "host without a TLS proxy (docs/tls-proxy-setup.md)."
+            )
+            _create_missing_tables()
+            return
+
         if not DATABASE_URL.startswith("sqlite"):
             if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():
                 raise RuntimeError(
@@ -178,6 +204,29 @@ def _run_startup_security_checks():
             )
 
     # Only after the cheap checks pass do we open a DB connection.
+    _create_missing_tables()
+
+
+def _create_missing_tables() -> None:
+    """create_all for whatever the migrations do not cover — serialized.
+
+    Under Docker the entrypoint starts uvicorn with two workers, and each
+    worker runs this lifespan. Two concurrent create_all() calls on a
+    fresh Postgres race on CREATE TYPE for the enums (`duplicate key
+    value violates unique constraint "pg_type_typname_nsp_index"`): one
+    worker dies, uvicorn stops the parent, the container restarts, and
+    any client mid-request sees the connection dropped (2.9.0 Linux
+    gate). A transaction-scoped advisory lock makes the second worker
+    wait for the first; checkfirst then finds everything present.
+    SQLite has one process and no enum types, so it takes the plain path.
+    """
+    if engine.dialect.name == "postgresql":
+        from sqlalchemy import text
+
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(7264013)"))
+            Base.metadata.create_all(bind=conn)
+        return
     Base.metadata.create_all(bind=engine)
 
 
@@ -188,6 +237,12 @@ async def lifespan(app: FastAPI):
     fail-hard production guard — keep them on the startup side of the yield
     so a misconfigured deploy never serves a single request."""
     _run_startup_security_checks()
+    try:
+        from app.services.company_service import warn_if_manifest_missing
+
+        warn_if_manifest_missing()
+    except Exception:
+        pass  # a diagnostic, never a reason not to boot
     # At-rest upgrade: encrypt any legacy plaintext credential rows (SMTP,
     # payment, QBO, SimpleFIN secrets) on first boot after upgrading.
     try:
@@ -214,6 +269,21 @@ app = FastAPI(
     title="Slowbooks Pro 2026",
     version=__version__,
     lifespan=lifespan,
+    description=(
+        "Local bookkeeping API. Conventions an agent needs before writing:\n\n"
+        "- **Unknown fields are rejected** (422 naming the field); nothing is "
+        "silently dropped.\n"
+        "- **Posted documents are voided, not deleted**: `POST /api/<resource>/"
+        "{id}/void` (invoices, bills, payments, bill payments, credit memos, "
+        "expenses, journal entries, in-kind gifts, job costs). `DELETE` on one "
+        "answers 405 and names the void route. A pledge that will not be paid "
+        "is written off (`POST /api/invoices/{id}/write-off`), not voided.\n"
+        "- **`tax_rate` on a document is a fraction** (0.089 = 8.9%); "
+        '`default_tax_rate` in settings is a percent string ("8.9"). '
+        "Divide by 100.\n"
+        "- Enumerated fields are enums in this spec; read the allowed values "
+        "here rather than guessing."
+    ),
 )
 
 
@@ -223,6 +293,36 @@ app = FastAPI(
 # env var (tests use 0 to avoid per-process counter bleed).
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def _method_not_allowed_handler(request: Request, exc: StarletteHTTPException):
+    """A bare 405 on DELETE /api/<doc>/<id> names nothing. Posted documents
+    are never deleted — they are voided, which keeps the audit trail and
+    reverses the ledger — and the void route exists one segment further
+    down. Say so in the body (2.9.0 gate: an agent rebuilt a whole fixture
+    to work around a 405 that could have pointed at POST .../void)."""
+    if exc.status_code == 405 and request.method == "DELETE":
+        candidate = request.url.path.rstrip("/") + "/void"
+        # The spec is the flat, cached view of every mounted router.
+        for template, ops in request.app.openapi().get("paths", {}).items():
+            if "post" not in ops or not template.endswith("/void"):
+                continue
+            pattern = "^" + _re.sub(r"\{[^}]+\}", r"[^/]+", template) + "$"
+            if _re.match(pattern, candidate):
+                return JSONResponse(
+                    status_code=405,
+                    headers=exc.headers,
+                    content={
+                        "detail": (
+                            "Posted documents are voided, not deleted: "
+                            f"use POST {candidate}"
+                        )
+                    },
+                )
+    return await http_exception_handler(request, exc)
+
+
+app.add_exception_handler(StarletteHTTPException, _method_not_allowed_handler)
 
 # ---- CORS (Phase 9.7: locked down) ----
 # Wildcard origins with credentials is a CSRF amplifier. Default to just
@@ -245,19 +345,38 @@ app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 # misses a sink. 'self' for scripts/styles + 'unsafe-inline' for the inline
 # bootstrap script in index.html. Tighten to a nonce-based CSP once the SPA
 # is migrated off inline scripts.
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://js.stripe.com; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: blob:; "
-    "font-src 'self' data:; "
-    "connect-src 'self' https://api.stripe.com; "
-    "frame-src https://js.stripe.com https://hooks.stripe.com; "
-    "frame-ancestors 'none'; "
-    "form-action 'self'; "
-    "base-uri 'self'; "
-    "object-src 'none'"
-)
+# 'unsafe-eval' is added ONLY under the desktop launcher. pywebview builds
+# every window.pywebview.api method with `new Function(...)` (its js/api.js),
+# and WebKit enforces the page's CSP on that call even though pywebview
+# injects the script itself: under the strict policy WKWebView threw
+# "Refused to evaluate a string as JavaScript because 'unsafe-eval' ... is
+# not an allowed source" and the bridge stayed permanently empty — Save PDF,
+# print preview, Save backup, Show in folder, the company picker: all dead
+# on macOS, silently (2.9.0 gate, round 3; the policy dates from v2.1.0, so
+# every macOS build since then). Chromium lets injected scripts bypass CSP,
+# which is why Windows never showed it. Measured on macbase1 with a
+# three-way probe: strict CSP → EvalError; + 'unsafe-eval' → api populated;
+# no CSP → api populated. A browser install (Server Edition / Docker) has
+# no bridge and keeps the strict policy.
+def _build_csp(desktop: bool) -> str:
+    script_src = "script-src 'self' 'unsafe-inline'"
+    if desktop:
+        script_src += " 'unsafe-eval'"
+    script_src += " https://js.stripe.com; "
+    return (
+        "default-src 'self'; " + script_src + "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://api.stripe.com; "
+        "frame-src https://js.stripe.com https://hooks.stripe.com; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "base-uri 'self'; "
+        "object-src 'none'"
+    )
+
+
+_CSP = _build_csp(desktop=os.environ.get("SLOWBOOKS_DESKTOP") == "1")
 
 
 def _set_if_unset(headers, name: str, value: str) -> None:
@@ -271,6 +390,18 @@ def _set_if_unset(headers, name: str, value: str) -> None:
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    # The desktop shell fetches documents from page JS and saves them
+    # through its native bridge. Both WebView2 and WKWebView intercept a
+    # Content-Disposition: attachment response at the network layer as a
+    # download — the fetch() promise never resolves ("Failed to fetch" /
+    # "Load failed"). app/routes/csv.py already served inline for these
+    # requests; every other CSV and PDF producer had to remember to, and
+    # the nonprofit report CSVs did not (2.9.0 gate: Save CSV → "Could not
+    # load the document: Load failed" on macOS). Done once here instead.
+    if request.headers.get("X-Slowbooks-Desktop"):
+        disposition = response.headers.get("Content-Disposition", "")
+        if disposition.lower().startswith("attachment"):
+            response.headers["Content-Disposition"] = "inline" + disposition[10:]
     _set_if_unset(response.headers, "X-Content-Type-Options", "nosniff")
     _set_if_unset(response.headers, "X-Frame-Options", "DENY")
     _set_if_unset(
@@ -510,6 +641,9 @@ app.include_router(cost_codes_routes.router)
 app.include_router(job_costing_routes.cost_types_router)
 app.include_router(job_costing_routes.equipment_router)
 app.include_router(job_costing_routes.job_costs_router)
+app.include_router(nonprofit_routes.router)
+app.include_router(donors_routes.router)
+app.include_router(in_kind_routes.router)
 app.include_router(fx_routes.router)
 app.include_router(fixed_assets_routes.router)
 app.include_router(migration_routes.router)
@@ -667,6 +801,7 @@ def _custom_openapi():
     schema = get_openapi(
         title=app.title,
         version=app.version,
+        description=app.description,
         routes=app.routes,
     )
     schema.setdefault("components", {})["securitySchemes"] = {

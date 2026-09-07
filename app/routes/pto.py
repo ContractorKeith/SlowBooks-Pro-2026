@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -154,7 +154,7 @@ def create_accrual(data: PTOAccrualCreate, db: Session = Depends(get_db)):
     return accrual
 
 
-class AccrueRequest(BaseModel):
+class AccrueRequest(StrictModel):
     hours_worked: float = 0  # required for per-hour-worked policies (e.g. WA sick)
     as_of: Optional[date] = None  # posting date for the liability entry
 
@@ -200,7 +200,7 @@ def run_accrual(accrual_id: int, data: AccrueRequest, db: Session = Depends(get_
     return accrual
 
 
-class RevalueRequest(BaseModel):
+class RevalueRequest(StrictModel):
     as_of: Optional[date] = None
 
 

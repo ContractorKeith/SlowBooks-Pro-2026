@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
-class BankRuleCreate(BaseModel):
+class BankRuleCreate(StrictModel):
     name: str
     pattern: str
     account_id: Optional[int] = None
@@ -14,7 +15,7 @@ class BankRuleCreate(BaseModel):
     is_active: bool = True
 
 
-class BankRuleUpdate(BaseModel):
+class BankRuleUpdate(StrictModel):
     name: Optional[str] = None
     pattern: Optional[str] = None
     account_id: Optional[int] = None

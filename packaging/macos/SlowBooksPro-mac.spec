@@ -138,5 +138,18 @@ app = BUNDLE(
         "NSLocalNetworkUsageDescription": (
             "SlowBooks Pro runs a loopback server for its desktop interface."
         ),
+        # TCC usage strings. macOS shows these in the consent prompt the
+        # first time the app writes to a protected folder; without them
+        # the prompt has no explanation and looks like malware asking.
+        # Save PDF writes under Documents; Download Backup writes to
+        # Downloads. Keep them in step with desktop_launcher._reports_dir
+        # and save_backup_file.
+        "NSDocumentsFolderUsageDescription": (
+            "SlowBooks Pro saves the reports you export to "
+            "Documents/SlowBooks Pro/Reports."
+        ),
+        "NSDownloadsFolderUsageDescription": (
+            "SlowBooks Pro saves company backups to your Downloads folder."
+        ),
     },
 )

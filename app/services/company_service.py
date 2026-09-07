@@ -116,12 +116,45 @@ def company_db_path(filename: str) -> Path | None:
     return companies_dir() / safe
 
 
+_warned_missing_manifest = False
+
+
+def warn_if_manifest_missing() -> str | None:
+    """Log (once) when the desktop manifest is absent.
+
+    The launcher writes companies.json under data_dir(); a wrong
+    SLOWBOOKS_DATA_DIR (a typo, a stale value from another install) makes
+    GET /api/companies answer `[]` while every ledger endpoint keeps
+    serving the file DATABASE_URL points at, so the symptom is "my
+    companies vanished" with nothing in the log. Called at startup and on
+    the company list. Returns the message it logged, for the caller."""
+    global _warned_missing_manifest
+    if not _is_sqlite():
+        return None
+    path = manifest_path()
+    if path.exists():
+        return None
+    override = os.environ.get("SLOWBOOKS_DATA_DIR")
+    message = (
+        f"Company manifest not found at {path}"
+        + (f" (SLOWBOOKS_DATA_DIR={override})" if override else "")
+        + "; the company list will be empty until a company is created or "
+        "the data directory points at the existing one"
+    )
+    if not _warned_missing_manifest:
+        _warned_missing_manifest = True
+        logger.warning(message)
+    return message
+
+
 def _read_manifest() -> dict:
     path = manifest_path()
     if not path.exists():
+        warn_if_manifest_missing()
         return {"companies": [], "last_opened": None}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig: a manifest saved by Notepad or PowerShell carries a BOM
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         logger.exception("Could not read company manifest %s", path)
         return {"companies": [], "last_opened": None}
@@ -157,6 +190,70 @@ def manifest_list_companies() -> list[dict]:
         }
         for c in _read_manifest()["companies"]
     ]
+
+
+def sync_manifest_name(company_name: str | None) -> bool:
+    """Make the manifest entry for the running company file carry the
+    company_name the books display.
+
+    A company has two names: the manifest's (what the picker and
+    GET /api/companies show, and what a client's is_current safety check
+    reads) and settings.company_name (what every screen and every printed
+    document shows). They were independently writable, so first-run setup
+    typed into a populated file renamed the books to another company while
+    the manifest — and the harness guard reading it — still said the old
+    name (2.9.0 gate, skytech). Settings is authoritative for display;
+    this keeps the manifest equal to it. Returns True when it changed."""
+    if not _is_sqlite():
+        return False
+    name = (company_name or "").strip()
+    current = _current_company_file()
+    if not name or not current:
+        return False
+    other = company_name_taken_by(name, exclude_file=current)
+    if other:
+        # Never emit a duplicate: two files with one name make is_current —
+        # the only signal a client has for which company it reached —
+        # ambiguous, and a harness guard matching on the name passed
+        # against the wrong file (2.9.0 gate, round 4). Creation already
+        # refuses the collision; reconciliation must not sneak past it.
+        logger.warning(
+            "Not renaming manifest entry %s to %r: %s already uses that name",
+            current,
+            name,
+            other,
+        )
+        return False
+    manifest = _read_manifest()
+    changed = False
+    for entry in manifest["companies"]:
+        if entry.get("file") == current and entry.get("name") != name:
+            entry["name"] = name
+            changed = True
+    if changed:
+        _write_manifest(manifest)
+    return changed
+
+
+def company_name_taken_by(name: str, exclude_file: str | None = None) -> str | None:
+    """The manifest file (other than ``exclude_file``) that already carries
+    ``name`` — by the same rule creation uses (the derived filename) or a
+    case-insensitive name match — or None. SQLite mode only."""
+    if not _is_sqlite():
+        return None
+    name = (name or "").strip()
+    if not name:
+        return None
+    wanted_file = company_filename_for(name)
+    for entry in _read_manifest()["companies"]:
+        file = entry.get("file") or ""
+        if exclude_file and file == exclude_file:
+            continue
+        if (entry.get("name") or "").strip().lower() == name.lower():
+            return file
+        if wanted_file and file == wanted_file:
+            return file
+    return None
 
 
 def get_last_opened() -> str | None:
@@ -216,6 +313,10 @@ def _init_company_db(url: str) -> None:
                             is_system=True,
                         )
                     )
+                session.flush()
+                from app.seed.fixed_assets import ensure_default_asset_type
+
+                ensure_default_asset_type(session)
                 session.commit()
     finally:
         engine.dispose()
@@ -285,21 +386,65 @@ def _base_url():
 
 def list_companies(db: Session) -> list[dict]:
     if _is_sqlite():
+        # Reconcile before answering: a file staged by hand (or renamed by
+        # an older build) can carry a manifest name the books no longer use.
+        try:
+            from app.services.settings_service import get_setting_raw
+
+            sync_manifest_name(get_setting_raw(db, "company_name"))
+        except Exception:
+            logger.exception("Could not reconcile the manifest name")
         return manifest_list_companies()
 
     from app.models.companies import Company
 
-    companies = db.query(Company).filter(Company.is_active).order_by(Company.name).all()
-    return [
-        {
-            "id": c.id,
-            "name": c.name,
-            "database_name": c.database_name,
-            "description": c.description,
-            "last_accessed": c.last_accessed.isoformat() if c.last_accessed else None,
-        }
-        for c in companies
-    ]
+    # Postgres: the server serves exactly one database — the one DATABASE_URL
+    # names — and the companies table describes the OTHERS it can create.
+    # A client still needs is_current to know which books it reached (the
+    # fixture's write guard refuses without it, and a Docker install has no
+    # Company row for its own database), so the served database is always
+    # listed, flagged, and named from settings.company_name.
+    current_db = _current_database_name()
+    rows = []
+    found_current = False
+    for c in db.query(Company).filter(Company.is_active).order_by(Company.name).all():
+        is_current = bool(current_db) and c.database_name == current_db
+        found_current = found_current or is_current
+        rows.append(
+            {
+                "id": c.id,
+                "name": c.name,
+                "database_name": c.database_name,
+                "description": c.description,
+                "last_accessed": (
+                    c.last_accessed.isoformat() if c.last_accessed else None
+                ),
+                "is_current": is_current,
+            }
+        )
+    if current_db and not found_current:
+        from app.services.settings_service import get_setting_raw
+
+        rows.insert(
+            0,
+            {
+                "id": None,
+                "name": get_setting_raw(db, "company_name") or current_db,
+                "database_name": current_db,
+                "description": "the database this server is connected to",
+                "last_accessed": None,
+                "is_current": True,
+            },
+        )
+    return rows
+
+
+def _current_database_name() -> str | None:
+    """The database name in a Postgres DATABASE_URL (query string dropped)."""
+    if _is_sqlite() or "/" not in DATABASE_URL:
+        return None
+    tail = DATABASE_URL.rsplit("/", 1)[1]
+    return tail.split("?", 1)[0] or None
 
 
 def create_company(

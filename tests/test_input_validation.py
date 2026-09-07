@@ -305,12 +305,12 @@ def _employee(client):
         json={
             "first_name": "Test",
             "last_name": "E",
-            "ssn": "123-45-6789",
+            "ssn_last_four": "6789",
             "filing_status": "single",
             "pay_rate": 25,
             "pay_frequency": "biweekly",
             "state": "WA",
-            "date_of_hire": "2026-01-01",
+            "hire_date": "2026-01-01",
         },
     )
     assert r.status_code == 201, r.text

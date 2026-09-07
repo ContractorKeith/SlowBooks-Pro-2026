@@ -22,7 +22,7 @@ def _make_unapplied_payment(client, customer_id, amount):
             "customer_id": customer_id,
             "amount": amount,
             "date": "2026-08-14",
-            "payment_method": "check",
+            "method": "check",
             "allocations": [],
         },
     )

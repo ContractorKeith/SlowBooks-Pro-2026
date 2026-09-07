@@ -10,7 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.orm import Session
 
 from app.models.transactions import Transaction, TransactionLine
-from app.models.accounts import Account
+from app.models.accounts import Account, AccountType
 
 CENT = Decimal("0.01")
 
@@ -103,6 +103,28 @@ def _cost_type_of(db: Session, cost_code_id) -> str | None:
     return code.cost_type if code else None
 
 
+def reversing_lines(lines) -> list[dict]:
+    """Mirror-image line dicts for a void: debit and credit swapped, the
+    description prefixed VOID:, and every dimension (job, class, cost code,
+    cost type, function) carried over so the by-class, by-job and
+    functional reports net to zero for the voided document instead of
+    leaving the tag on one side."""
+    return [
+        {
+            "account_id": ol.account_id,
+            "debit": ol.credit,
+            "credit": ol.debit,
+            "description": f"VOID: {ol.description or ''}",
+            "job_id": ol.job_id,
+            "class_id": ol.class_id,
+            "cost_code_id": ol.cost_code_id,
+            "cost_type": ol.cost_type,
+            "function": ol.function,
+        }
+        for ol in lines
+    ]
+
+
 def create_journal_entry(
     db: Session,
     txn_date: date,
@@ -120,7 +142,10 @@ def create_journal_entry(
     lines: [{"account_id": int, "debit": Decimal, "credit": Decimal}, ...]
     Each line must have debit > 0 OR credit > 0, not both. A line may carry
     its own "job_id" / "class_id"; otherwise it inherits the header values,
-    so job and class reports can always group on the line.
+    so job and class reports can always group on the line. A line's
+    "function" (nonprofit: program / management / fundraising) is taken as
+    given when the key is present — including an explicit None — and
+    otherwise defaulted from the class it lands in.
     Total debits must equal total credits.
 
     Closing-date enforcement runs here so every JE-posting path inherits it
@@ -165,11 +190,20 @@ def create_journal_entry(
     db.add(txn)
     db.flush()
 
+    from app.services.classes_service import default_function_of
+
+    fn_cache: dict = {}
     for line_data in lines:
         debit = Decimal(str(line_data.get("debit", 0)))
         credit = Decimal(str(line_data.get("credit", 0)))
         if debit == 0 and credit == 0:
             continue
+
+        line_class_id = line_data.get("class_id") or class_id
+        if "function" in line_data:
+            function = line_data["function"]
+        else:
+            function = default_function_of(db, line_class_id, fn_cache)
 
         txn_line = TransactionLine(
             transaction_id=txn.id,
@@ -178,7 +212,8 @@ def create_journal_entry(
             credit=credit,
             description=line_data.get("description", ""),
             job_id=line_data.get("job_id") or job_id,
-            class_id=line_data.get("class_id") or class_id,
+            class_id=line_class_id,
+            function=function,
             cost_code_id=line_data.get("cost_code_id"),
             cost_type=line_data.get("cost_type")
             or _cost_type_of(db, line_data.get("cost_code_id")),
@@ -233,3 +268,62 @@ def get_cc_account_id(db: Session) -> int:
     """Get Credit Card Payable account ID (2100)."""
     acct = db.query(Account).filter(Account.account_number == "2100").first()
     return acct.id if acct else None
+
+
+def ensure_account(
+    db: Session, number: str, name: str, account_type: AccountType
+) -> Account:
+    """Find-or-create a system account by name, keeping the suggested
+    number only if the chart hasn't used it (account_number is unique and
+    an imported chart may already own 3300 or 6960). Flushes; the caller
+    commits. Pattern shared with the job-costing offset accounts."""
+    acct = db.query(Account).filter(Account.name == name).first()
+    if acct:
+        return acct
+    taken = db.query(Account.id).filter(Account.account_number == number).first()
+    acct = Account(
+        name=name,
+        account_type=account_type,
+        account_number=None if taken else number,
+        is_system=True,
+        balance=Decimal("0"),
+    )
+    db.add(acct)
+    db.flush()
+    return acct
+
+
+# Nonprofit accounts, created on demand (Settings -> Company Type, or the
+# first document that needs them). Numbers follow the seed chart's blocks;
+# 4300 is already Labor Income, so in-kind income sits at 4400.
+NONPROFIT_ACCOUNTS = (
+    ("3300", "Net Assets Without Donor Restrictions", AccountType.EQUITY),
+    ("3400", "Net Assets With Donor Restrictions", AccountType.EQUITY),
+    ("4400", "In-Kind Contributions", AccountType.INCOME),
+    ("6960", "Bad Debt Expense", AccountType.EXPENSE),
+)
+
+
+def ensure_nonprofit_accounts(db: Session) -> dict[str, Account]:
+    """Create every nonprofit account that is missing; returns them keyed by
+    their suggested number. Idempotent."""
+    return {
+        number: ensure_account(db, number, name, atype)
+        for number, name, atype in NONPROFIT_ACCOUNTS
+    }
+
+
+def get_net_assets_without_restriction_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["3300"].id
+
+
+def get_net_assets_with_restriction_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["3400"].id
+
+
+def get_in_kind_income_account_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["4400"].id
+
+
+def get_bad_debt_account_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["6960"].id

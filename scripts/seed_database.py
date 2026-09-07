@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.database import SessionLocal
 from app.models.accounts import Account, AccountType
 from app.seed.chart_of_accounts import CHART_OF_ACCOUNTS
+from app.seed.fixed_assets import ensure_default_asset_type
 
 
 def seed():
@@ -27,6 +28,8 @@ def seed():
             )
             db.add(account)
 
+        db.flush()
+        ensure_default_asset_type(db)
         db.commit()
         print(f"Seeded {len(CHART_OF_ACCOUNTS)} accounts.")
     finally:

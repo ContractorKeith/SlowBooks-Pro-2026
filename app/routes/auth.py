@@ -13,7 +13,8 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import Field
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -48,13 +49,13 @@ def _record_login_attempt(db: Session, request: Request, success: bool) -> None:
         db.rollback()
 
 
-class PasswordPayload(BaseModel):
+class PasswordPayload(StrictModel):
     password: str = Field(..., min_length=1, max_length=512)
     # Server Edition: required only when more than one user exists.
     username: Optional[str] = Field(None, max_length=100)
 
 
-class SetupPayload(BaseModel):
+class SetupPayload(StrictModel):
     """First-run setup. Password is required; everything else is optional and
     falls back to the DEFAULT_SETTINGS values if blank."""
 
@@ -105,12 +106,24 @@ def auth_status(request: Request, db: Session = Depends(get_db)):
     """Tell the SPA whether first-run setup is needed and whether the
     current session is authenticated."""
     authenticated = request.session.get("authenticated") is True
+    setup_needed = not password_is_set(db)
     out = {
-        "setup_needed": not password_is_set(db),
+        "setup_needed": setup_needed,
         "authenticated": authenticated,
         # Login UI shows a username field only when this is true.
         "multi_user": is_multi_user(db),
     }
+    if setup_needed:
+        # First-run setup can be reached on a file that already holds a
+        # company's books (a file copied in, or seeded through the API
+        # before anyone set a password). The form prefills the name the
+        # books already carry and warns, so setup does not silently rename
+        # another company's ledger (2.9.0 gate).
+        from app.models.transactions import Transaction
+        from app.services.settings_service import get_setting_raw
+
+        out["company_name"] = get_setting_raw(db, "company_name") or ""
+        out["has_data"] = db.query(Transaction.id).first() is not None
     if authenticated and request.session.get("username"):
         out["user"] = {
             "username": request.session.get("username"),
@@ -135,6 +148,25 @@ def setup(
             detail="Password already set — use /login",
         )
 
+    if payload.company_name:
+        from app.services.company_service import (
+            _current_company_file,
+            company_name_taken_by,
+        )
+
+        other = company_name_taken_by(
+            payload.company_name, exclude_file=_current_company_file()
+        )
+        if other:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Another company file ({other}) is already named "
+                    f"'{payload.company_name.strip()}'. Choose a name that "
+                    "tells the two apart."
+                ),
+            )
+
     # Persist any non-blank settings the user provided. set_password() will
     # commit at the end, so all writes land in a single transaction.
     payload_dict = payload.model_dump()
@@ -147,6 +179,10 @@ def setup(
     # Materialize the operator as the admin user row right away (Server
     # Edition principal model) — same password, zero extra questions.
     admin = ensure_admin_user(db)
+    if payload.company_name:
+        from app.services.company_service import sync_manifest_name
+
+        sync_manifest_name(payload.company_name)
     # Rotate session before issuing — clears anything an attacker might have
     # planted via a fixation attempt. Starlette's signed-cookie session is
     # already fixation-resistant (signature changes with payload) but this

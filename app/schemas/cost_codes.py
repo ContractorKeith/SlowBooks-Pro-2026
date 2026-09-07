@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
+from app.schemas.common import StrictModel
 
 
 def _clean_code(v):
@@ -31,7 +32,7 @@ def _check_type(v):
     return v
 
 
-class CostCodeCreate(BaseModel):
+class CostCodeCreate(StrictModel):
     code: str
     name: str
     cost_type: str = "other"
@@ -44,7 +45,7 @@ class CostCodeCreate(BaseModel):
     _type = field_validator("cost_type")(_check_type)
 
 
-class CostCodeUpdate(BaseModel):
+class CostCodeUpdate(StrictModel):
     code: Optional[str] = None
     name: Optional[str] = None
     cost_type: Optional[str] = None

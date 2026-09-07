@@ -334,10 +334,11 @@ PROVIDERS: Dict[str, ProviderSpec] = {
         wire_format="openai",
         docs_url="",
         free_tier_hint=(
-            "Point Slowbooks at any OpenAI-compatible chat endpoint. "
-            "Paste the base URL (e.g. https://api.example.com/v1) — "
-            "/chat/completions is appended automatically. HTTPS only, "
-            "private/LAN addresses blocked (SSRF guard)."
+            "Point Slowbooks at any OpenAI-compatible chat endpoint on the "
+            "public internet. Paste the base URL (e.g. https://api.example.com/v1) — "
+            "/chat/completions is appended automatically. HTTPS only; "
+            "localhost, LAN and other private addresses are refused (SSRF guard), "
+            "so a model running on this machine needs a public HTTPS front."
         ),
         needs_endpoint_url=True,
         model_choices=(),

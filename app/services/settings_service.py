@@ -99,3 +99,9 @@ def upgrade_plaintext_secrets(db: Session) -> int:
     except Exception:
         db.rollback()
     return upgraded
+
+
+def is_nonprofit(db: Session) -> bool:
+    """True when the company file is set to nonprofit mode (Settings ->
+    company_type). Gates the nonprofit documents, reports and vocabulary."""
+    return get_setting_raw(db, "company_type") == "nonprofit"

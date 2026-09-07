@@ -112,11 +112,35 @@ def _format_date(value):
 _jinja_env.filters["currency"] = _format_currency
 _jinja_env.filters["fdate"] = _format_date
 
+# Templates may call terms('Invoice'); a direct render without company
+# settings gets the business words. _render() overrides this per call.
+from app.services.terminology import Terms as _Terms  # noqa: E402
+
+_jinja_env.globals["terms"] = _Terms()
+
+
+def _render(template_name: str, company_settings: dict, **context) -> str:
+    """Render a template with the company settings and its vocabulary
+    (``terms('Invoice')`` in a template reads Pledge for a nonprofit)."""
+    from app.services.terminology import terms_for
+
+    template = _jinja_env.get_template(template_name)
+    return template.render(
+        company=company_settings, terms=terms_for(company_settings), **context
+    )
+
 
 def generate_invoice_pdf(invoice, company_settings: dict) -> bytes:
-    template = _jinja_env.get_template("invoice_pdf.html")
-    html_str = template.render(inv=invoice, company=company_settings)
-    return render_pdf(html_str)
+    from app.services.donor_documents import invoice_pdf_context
+
+    return render_pdf(
+        _render(
+            "invoice_pdf.html",
+            company_settings,
+            inv=invoice,
+            **invoice_pdf_context(invoice, company_settings),
+        )
+    )
 
 
 def generate_estimate_pdf(estimate, company_settings: dict) -> bytes:
@@ -128,12 +152,12 @@ def generate_estimate_pdf(estimate, company_settings: dict) -> bytes:
 def generate_statement_pdf(
     customer, invoices, payments, company_settings: dict, as_of_date=None
 ) -> bytes:
-    template = _jinja_env.get_template("statement_pdf.html")
-    html_str = template.render(
+    html_str = _render(
+        "statement_pdf.html",
+        company_settings,
         customer=customer,
         invoices=invoices,
         payments=payments,
-        company=company_settings,
         as_of_date=as_of_date,
     )
     return render_pdf(html_str)
@@ -235,6 +259,41 @@ def generate_collection_letter_pdf(
         today=_date.today(),
     )
     return render_pdf(html_str)
+
+
+def generate_acknowledgment_letter_pdf(
+    customer, gift: dict, irs: dict, company_settings: dict, body_html: str, today=None
+) -> bytes:
+    """A donor acknowledgment letter: letterhead, the rendered (sandboxed,
+    autoescaped) body from the editable template, and the gift box with
+    the IRS figures."""
+    from datetime import date as _date
+
+    html_str = _render(
+        "acknowledgment_letter.html",
+        company_settings,
+        customer=customer,
+        gift=gift,
+        irs=irs,
+        body_html=body_html,
+        today=today or _date.today(),
+    )
+    return render_pdf(html_str)
+
+
+def generate_giving_statement_pdf(
+    statements: list, company_settings: dict, year: int
+) -> bytes:
+    """Year-end giving statements, one per donor, a page break between
+    them — one PDF prints as the January mailing."""
+    return render_pdf(
+        _render(
+            "giving_statement_pdf.html",
+            company_settings,
+            statements=statements,
+            year=year,
+        )
+    )
 
 
 def generate_check_pdf(check_data: dict, company_settings: dict) -> bytes:

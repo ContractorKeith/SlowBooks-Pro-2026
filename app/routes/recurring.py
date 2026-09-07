@@ -3,7 +3,8 @@
 # Feature 2: Schedule automatic invoice generation
 # ============================================================================
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -136,7 +137,9 @@ def delete_recurring(rec_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/generate")
-def generate_now(db: Session = Depends(get_db)):
-    """Manually trigger generation of all due recurring invoices."""
-    created_ids = generate_due_invoices(db)
+def generate_now(as_of: date = Query(default=None), db: Session = Depends(get_db)):
+    """Manually trigger generation of all due recurring invoices — one
+    installment per template per call. `as_of` (default today) lets a
+    catch-up or a test run generate a past installment deterministically."""
+    created_ids = generate_due_invoices(db, as_of)
     return {"invoices_created": len(created_ids), "invoice_ids": created_ids}

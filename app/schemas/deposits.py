@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
 class PendingDepositResponse(BaseModel):
@@ -15,7 +16,7 @@ class PendingDepositResponse(BaseModel):
     amount: float
 
 
-class DepositCreate(BaseModel):
+class DepositCreate(StrictModel):
     deposit_to_account_id: int
     date: dt_date
     total: Decimal

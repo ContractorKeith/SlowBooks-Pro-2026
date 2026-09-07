@@ -6,6 +6,7 @@
 import enum
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Integer,
     String,
@@ -53,6 +54,8 @@ class CreditMemo(Base):
 
     # Class tracking dimension (QB-style); NULL groups with Uncategorized
     class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
+    # A write-off: the credit posts to Bad Debt Expense instead of income
+    is_write_off = Column(Boolean, nullable=False, default=False)
     # Job-costing dimension (QB "Customer:Job"); NULL = no job
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
 

@@ -8,16 +8,16 @@ const SalesReceiptsPage = {
     async render() {
         const receipts = await API.get('/sales-receipts');
         return renderListPage({
-            title: 'Sales Receipts',
-            headerHtml: `<button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()">+ New Sales Receipt</button>`,
+            title: T('Sales Receipts'),
+            headerHtml: `<button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()">+ New ${T('Sales Receipt')}</button>`,
             filter: {
                 id: 'sr-status-filter',
                 rowSelector: '.sr-row',
                 options: [['paid', 'Paid'], ['void', 'Void']],
             },
-            empty: `<p>No sales receipts yet. Use them for point-of-sale style sales where the customer pays on the spot.</p>
-                <button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()" style="margin-top:10px;">+ Enter your first sales receipt</button>`,
-            columns: ['Sale #', 'Customer', 'Date', 'Status',
+            empty: Terms.text(`<p>No sales receipts yet. Use them for point-of-sale style sales where the customer pays on the spot.</p>
+                <button class="btn btn-primary" onclick="SalesReceiptsPage.showForm()" style="margin-top:10px;">+ Enter your first sales receipt</button>`),
+            columns: ['Sale #', T('Customer'), 'Date', 'Status',
                 { label: 'Total', cls: 'amount' }, 'Actions'],
             items: receipts,
             row: sr => `<tr class="sr-row" data-status="${sr.status}">
@@ -42,7 +42,7 @@ const SalesReceiptsPage = {
 
         const payment = await SalesReceiptsPage._findPayment(sr);
 
-        openModal(`Sales Receipt #${sr.invoice_number}`, `
+        openModal(`${T('Sales Receipt')} #${sr.invoice_number}`, `
             <div style="margin-bottom:12px;">
                 <strong>Customer:</strong> ${escapeHtml(sr.customer_name || '')}<br>
                 <strong>Date:</strong> ${formatDate(sr.date)}<br>
@@ -59,11 +59,15 @@ const SalesReceiptsPage = {
                 <div class="total-row"><span class="label">Subtotal</span><span class="value">${formatCurrency(sr.subtotal)}</span></div>
                 <div class="total-row"><span class="label">Tax</span><span class="value">${formatCurrency(sr.tax_amount)}</span></div>
                 <div class="total-row grand-total"><span class="label">Total</span><span class="value">${formatCurrency(sr.total)}</span></div>
+                ${sr.fair_value_amount ? `<div class="total-row"><span class="label">Fair value of goods/services${sr.fair_value_description ? ` (${escapeHtml(sr.fair_value_description)})` : ''}</span><span class="value">${formatCurrency(sr.fair_value_amount)}</span></div>
+                <div class="total-row"><span class="label">Deductible portion</span><span class="value">${formatCurrency(sr.total - sr.fair_value_amount)}</span></div>` : ''}
             </div>
             ${sr.notes ? `<p style="margin-top:12px;color:var(--gray-500);">${escapeHtml(sr.notes)}</p>` : ''}
             <div class="form-actions">
                 <button class="btn btn-secondary" onclick="window.open('/api/invoices/${sr.id}/pdf','_blank')">Save PDF</button>
                 <button class="btn btn-secondary" onclick="window.open('/api/invoices/${sr.id}/print-preview','_blank')">Print</button>
+                ${Terms.isNonprofit() && sr.status !== 'void' ? `<button class="btn btn-secondary" onclick="window.open('/api/donors/gifts/invoice/${sr.id}/acknowledgment/pdf','_blank')">Acknowledgment (PDF)</button>
+                <button class="btn btn-secondary" onclick="Donors.emailAcknowledgment('invoice', ${sr.id})">Email Acknowledgment</button>` : ''}
                 ${sr.status !== 'void' ? `<button class="btn btn-danger" onclick="SalesReceiptsPage.void(${sr.id})">Void Receipt</button>` : ''}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>`);
@@ -123,14 +127,14 @@ const SalesReceiptsPage = {
         const custOpts = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
         const bankOpts = bankAccts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
-        openModal('Enter Sales Receipt', `
+        openModal(Terms.text('Enter Sales Receipt'), `
             <form id="sales-receipt-form" onsubmit="SalesReceiptsPage.save(event)">
                 ${ScanHelper.scanRowHtml()}
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
-                        <select name="customer_id" id="sr-customer-select" required onchange="SalesReceiptsPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ New Customer</option>${custOpts}</select>
+                    <div class="form-group"><label>${T('Customer')} *</label>
+                        <select name="customer_id" id="sr-customer-select" required onchange="SalesReceiptsPage.customerSelected(this.value)"><option value="">Select...</option><option value="__new__">+ ${T('New Customer')}</option>${custOpts}</select>
                         <div id="sr-new-customer-form" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--gray-300); border-radius:4px; background:var(--primary-light);">
-                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add Customer</div>
+                            <div style="font-weight:700; font-size:11px; margin-bottom:6px;">Quick Add ${T('Customer')}</div>
                             <input id="sr-new-cust-name" placeholder="Name *" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="sr-new-cust-email" placeholder="Email" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
                             <input id="sr-new-cust-phone" placeholder="Phone" style="width:100%; margin-bottom:4px; padding:4px 8px; border:1px solid var(--gray-300); border-radius:4px;">
@@ -159,6 +163,15 @@ const SalesReceiptsPage = {
                     <div class="form-group"><label>Tax Rate (%)</label>
                         <input name="tax_rate" type="number" step="0.01" value="${(sr.tax_rate * 100) || 0}"
                             oninput="SalesReceiptsPage.recalc()"></div>
+                    ${Terms.isNonprofit() ? `
+                    <div class="form-group full-width" style="border-top:1px solid var(--gray-200); padding-top:8px; margin-top:4px;">
+                        <label>Goods or services provided in exchange?</label>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <input name="fair_value_amount" type="number" step="0.01" min="0" placeholder="Fair value ($)" style="width:140px;">
+                            <input name="fair_value_description" maxlength="200" placeholder="e.g. gala dinner" style="flex:1; min-width:180px;">
+                        </div>
+                        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Leave blank for a pure gift. The receipt states the deductible portion (IRS Pub. 1771).</div>
+                    </div>` : ''}
                 </div>
                 <h3 style="margin:16px 0 8px; font-size:14px; color:var(--gray-600);">Line Items</h3>
                 <table class="line-items-table">
@@ -398,13 +411,15 @@ const SalesReceiptsPage = {
             ...currencyPayloadFromForm(form),
             tax_rate: (parseFloat(form.tax_rate.value) || 0) / 100,
             notes: form.notes.value || null,
+            fair_value_amount: form.fair_value_amount && form.fair_value_amount.value ? parseFloat(form.fair_value_amount.value) : null,
+            fair_value_description: form.fair_value_description ? (form.fair_value_description.value || null) : null,
             lines,
         };
 
         try {
             const result = await API.post('/sales-receipts', data);
             await ScanHelper.attachAfterSave('invoice', result.invoice.id);
-            toast(`Sales Receipt #${result.invoice.invoice_number} recorded`);
+            toast(`${T('Sales Receipt')} #${result.invoice.invoice_number} recorded`);
             closeModal();
             App.navigate(location.hash);
         } catch (err) { toast(err.message, 'error'); }

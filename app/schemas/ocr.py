@@ -6,6 +6,7 @@
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 
 class OcrStatusResponse(BaseModel):
@@ -79,7 +80,7 @@ class OcrReceiptResponse(BaseModel):
     template_fields: list[str] = []
 
 
-class OcrAttachRequest(BaseModel):
+class OcrAttachRequest(StrictModel):
     """POST /api/ocr/intake/{intake_id}/attach — link the scan to a document.
 
     A sales receipt is stored as an invoice (is_sales_receipt=true), so the
@@ -91,7 +92,7 @@ class OcrAttachRequest(BaseModel):
     entity_id: int
 
 
-class OcrRegionRequest(BaseModel):
+class OcrRegionRequest(StrictModel):
     """POST /api/ocr/intake/{intake_id}/region — OCR one typed rectangle of
     a stored scan (the v2 box-to-fix canvas). Pixel coordinates in the
     intake image's space (the same space /intake/{id}/image serves)."""

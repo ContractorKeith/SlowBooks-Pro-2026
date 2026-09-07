@@ -57,16 +57,16 @@ const JobsPage = {
 
         return `
             <div class="page-header">
-                <h2>Jobs</h2>
+                <h2>${T('Jobs')}</h2>
                 <div>
-                    <button class="btn btn-secondary" onclick="App.navigate('#/job-costs')">Job Cost Entries</button>
-                    <button class="btn btn-primary" onclick="JobsPage.showForm()">+ New Job</button>
+                    <button class="btn btn-secondary" onclick="App.navigate('#/job-costs')">${T('Job Cost Entries')}</button>
+                    <button class="btn btn-primary" onclick="JobsPage.showForm()">+ New ${T('Job')}</button>
                 </div>
             </div>
             <div class="toolbar" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="text" placeholder="Search jobs..." id="job-search" oninput="JobsPage.setFilter('q', this.value)">
+                <input type="text" placeholder="${Terms.text('Search jobs...')}" id="job-search" oninput="JobsPage.setFilter('q', this.value)">
                 <select id="job-filter-customer" onchange="JobsPage.setFilter('customer_id', this.value)">
-                    <option value="">All customers</option>${custOpts}</select>
+                    <option value="">${Terms.text('All customers')}</option>${custOpts}</select>
                 <select id="job-filter-status" onchange="JobsPage.setFilter('status', this.value)">
                     <option value="">Active jobs</option>${statusOpts}<option value="__inactive__">Inactive</option></select>
                 <span style="font-size:11px; color:var(--gray-500);">Job-to-date figures from posted lines. Click a job to drill down.</span>
@@ -99,8 +99,8 @@ const JobsPage = {
         const jobs = JobsPage._visible();
         if (jobs.length === 0) {
             return `<div class="empty-state">
-                <p>${JobsPage._jobs.length ? 'No jobs match.' : 'No jobs yet. A job is a customer\'s project — every invoice, bill, expense, time entry and job cost can be tagged to one.'}</p>
-                ${JobsPage._jobs.length ? '' : '<button class="btn btn-primary" onclick="JobsPage.showForm()" style="margin-top:10px;">+ Create your first job</button>'}
+                <p>${Terms.text(JobsPage._jobs.length ? 'No jobs match.' : 'No jobs yet. A job is a customer\'s project — every invoice, bill, expense, time entry and job cost can be tagged to one.')}</p>
+                ${JobsPage._jobs.length ? '' : '<button class="btn btn-primary" onclick="JobsPage.showForm()" style="margin-top:10px;">+ ' + Terms.text('Create your first job') + '</button>'}
             </div>`;
         }
         const t = { revised: 0, committed: 0, actual: 0, projected: 0, variance: 0, act_revenue: 0 };
@@ -122,7 +122,7 @@ const JobsPage = {
             </tr>`;
         }).join('');
         return `<div class="table-container"><table>
-            <thead><tr><th scope="col">Customer</th><th scope="col">Job</th><th scope="col">Status</th>
+            <thead><tr><th scope="col">${T('Customer')}</th><th scope="col">${T('Job')}</th><th scope="col">Status</th>
             <th scope="col" class="amount" title="Original budget + changes">Budget</th>
             <th scope="col" class="amount" title="Open purchase orders not yet billed">Committed</th>
             <th scope="col" class="amount" title="Posted job-to-date cost">Actual</th>
@@ -176,7 +176,7 @@ const JobsPage = {
                     </h2>
                 </div>
                 <div>
-                    <button class="btn btn-secondary" onclick="InvoicesPage.showForm(null,${job.customer_id})">New Invoice</button>
+                    <button class="btn btn-secondary" onclick="InvoicesPage.showForm(null,${job.customer_id})">${T('New Invoice')}</button>
                     <button class="btn btn-secondary" onclick="JobCostsPage.showForm(null, ${job.id})">Job Cost Entry</button>
                     <button class="btn btn-secondary" onclick="JobsPage.showForm(${job.id})">Edit</button>
                 </div>
@@ -576,15 +576,15 @@ const JobsPage = {
         const html = `
             <form id="job-form" onsubmit="JobsPage.save(event, ${id})">
                 <div class="form-grid">
-                    <div class="form-group"><label>Customer *</label>
+                    <div class="form-group"><label>${T('Customer')} *</label>
                         <select name="customer_id" required><option value="">Select...</option>${custOpts}</select></div>
-                    <div class="form-group"><label>Job name *</label>
+                    <div class="form-group"><label>${T('Job name')} *</label>
                         <input name="name" required maxlength="200" value="${escapeHtml(job.name)}" placeholder="Kitchen remodel"></div>
-                    <div class="form-group"><label>Job #</label>
+                    <div class="form-group"><label>${T('Job #')}</label>
                         <input name="job_number" maxlength="50" value="${escapeHtml(job.job_number || '')}"></div>
                     <div class="form-group"><label>Status</label>
                         <select name="status">${statusOpts}</select></div>
-                    <div class="form-group"><label>Job type</label>
+                    <div class="form-group"><label>${T('Job type')}</label>
                         <input name="job_type" maxlength="100" value="${escapeHtml(job.job_type || '')}" placeholder="Remodel, New build, Service…"></div>
                     <div class="form-group"><label>Contract amount</label>
                         <input name="contract_amount" type="number" step="0.01" min="0" value="${job.contract_amount ?? ''}"></div>

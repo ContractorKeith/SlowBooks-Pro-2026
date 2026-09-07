@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, field_validator, model_validator
+from app.schemas.common import StrictModel
 
 from app.models.job_costing import ALLOCATION_METHODS
 
@@ -20,7 +21,7 @@ def _strip_required(label):
 # ── Cost types ───────────────────────────────────────────────────────────
 
 
-class CostTypeCreate(BaseModel):
+class CostTypeCreate(StrictModel):
     code: str
     name: str
     is_labor: bool = False
@@ -42,7 +43,7 @@ class CostTypeCreate(BaseModel):
     _name = field_validator("name")(_strip_required("Cost type name"))
 
 
-class CostTypeUpdate(BaseModel):
+class CostTypeUpdate(StrictModel):
     name: Optional[str] = None
     is_labor: Optional[bool] = None
     burden_pct: Optional[Decimal] = None
@@ -76,7 +77,7 @@ class CostTypeResponse(BaseModel):
 # ── Equipment ────────────────────────────────────────────────────────────
 
 
-class EquipmentCreate(BaseModel):
+class EquipmentCreate(StrictModel):
     name: str
     code: Optional[str] = None
     hourly_rate: Decimal = Decimal("0")
@@ -87,7 +88,7 @@ class EquipmentCreate(BaseModel):
     _name = field_validator("name")(_strip_required("Equipment name"))
 
 
-class EquipmentUpdate(BaseModel):
+class EquipmentUpdate(StrictModel):
     name: Optional[str] = None
     code: Optional[str] = None
     hourly_rate: Optional[Decimal] = None
@@ -114,7 +115,7 @@ class EquipmentResponse(BaseModel):
 # ── Job Cost Entry ───────────────────────────────────────────────────────
 
 
-class JobCostLineCreate(BaseModel):
+class JobCostLineCreate(StrictModel):
     job_id: Optional[int] = None
     cost_code_id: Optional[int] = None
     cost_type: Optional[str] = None
@@ -140,7 +141,7 @@ class JobCostLineCreate(BaseModel):
         return self
 
 
-class JobCostCreate(BaseModel):
+class JobCostCreate(StrictModel):
     date: dt_date
     job_id: Optional[int] = None
     memo: Optional[str] = None
@@ -196,12 +197,12 @@ class JobCostResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AllocationTarget(BaseModel):
+class AllocationTarget(StrictModel):
     job_id: int
     weight: Decimal = Decimal("1")
 
 
-class AllocationCreate(BaseModel):
+class AllocationCreate(StrictModel):
     date: dt_date
     amount: Decimal
     method: str = "equal"
@@ -226,7 +227,7 @@ class AllocationCreate(BaseModel):
 # ── Budgets ──────────────────────────────────────────────────────────────
 
 
-class JobBudgetRow(BaseModel):
+class JobBudgetRow(StrictModel):
     cost_code_id: Optional[int] = None
     cost_type: Optional[str] = None
     amount: Decimal = Decimal("0")
@@ -240,7 +241,7 @@ class JobBudgetRow(BaseModel):
         return self
 
 
-class JobBudgetSave(BaseModel):
+class JobBudgetSave(StrictModel):
     rows: list[JobBudgetRow]
 
 

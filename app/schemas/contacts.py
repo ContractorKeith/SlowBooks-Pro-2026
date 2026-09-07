@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import BlankableEmail, NonBlankName
+from app.schemas.common import BlankableEmail, NonBlankName, StrictModel
 
 
 # Field lengths below mirror the VARCHAR(n) widths on the Customer model.
@@ -14,7 +14,7 @@ from app.schemas.common import BlankableEmail, NonBlankName
 # SQLite ignores VARCHAR(n) and stores the oversized value, so a desktop
 # company file can hold data that cannot be imported into a Postgres/Server
 # Edition deployment. Validating here makes both backends return one 422.
-class CustomerCreate(BaseModel):
+class CustomerCreate(StrictModel):
     name: NonBlankName
     company: Optional[str] = Field(None, max_length=200)
     email: BlankableEmail = None
@@ -39,9 +39,13 @@ class CustomerCreate(BaseModel):
     tax_id: Optional[str] = Field(None, max_length=50)
     is_taxable: bool = True
     notes: Optional[str] = None
+    # Nonprofit donor record
+    donor_type: Optional[str] = Field(None, max_length=20)
+    salutation: Optional[str] = Field(None, max_length=100)
+    send_year_end_statement: bool = True
 
 
-class CustomerUpdate(BaseModel):
+class CustomerUpdate(StrictModel):
     name: Optional[NonBlankName] = None
     company: Optional[str] = Field(None, max_length=200)
     email: BlankableEmail = None
@@ -66,6 +70,10 @@ class CustomerUpdate(BaseModel):
     tax_id: Optional[str] = Field(None, max_length=50)
     is_taxable: Optional[bool] = None
     notes: Optional[str] = None
+    # Nonprofit donor record
+    donor_type: Optional[str] = Field(None, max_length=20)
+    salutation: Optional[str] = Field(None, max_length=100)
+    send_year_end_statement: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
@@ -100,10 +108,14 @@ class CustomerResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    donor_type: Optional[str] = None
+    salutation: Optional[str] = None
+    send_year_end_statement: bool = True
+
     model_config = {"from_attributes": True}
 
 
-class VendorCreate(BaseModel):
+class VendorCreate(StrictModel):
     name: NonBlankName
     company: Optional[str] = Field(None, max_length=200)
     email: BlankableEmail = None
@@ -125,7 +137,7 @@ class VendorCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class VendorUpdate(BaseModel):
+class VendorUpdate(StrictModel):
     name: Optional[NonBlankName] = None
     company: Optional[str] = Field(None, max_length=200)
     email: BlankableEmail = None

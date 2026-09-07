@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel
+from app.schemas.common import StrictModel
 
 from app.models.banking import ReconciliationStatus
 
 
-class BankAccountCreate(BaseModel):
+class BankAccountCreate(StrictModel):
     name: str
     account_id: Optional[int] = None
     bank_name: Optional[str] = None
@@ -15,7 +16,7 @@ class BankAccountCreate(BaseModel):
     balance: Decimal = Decimal("0")
 
 
-class BankAccountUpdate(BaseModel):
+class BankAccountUpdate(StrictModel):
     name: Optional[str] = None
     account_id: Optional[int] = None
     bank_name: Optional[str] = None
@@ -37,7 +38,7 @@ class BankAccountResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class BankTransactionCreate(BaseModel):
+class BankTransactionCreate(StrictModel):
     bank_account_id: int
     date: dt_date
     amount: Decimal
@@ -62,7 +63,7 @@ class BankTransactionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ReconciliationCreate(BaseModel):
+class ReconciliationCreate(StrictModel):
     bank_account_id: int
     statement_date: dt_date
     statement_balance: Decimal

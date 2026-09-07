@@ -10,7 +10,8 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import Field
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -39,12 +40,12 @@ def _out(t: ApiToken) -> dict:
     }
 
 
-class TokenCreate(BaseModel):
+class TokenCreate(StrictModel):
     label: str = Field(..., min_length=1, max_length=100)
     role: str = Field(...)
 
 
-class TokenUpdate(BaseModel):
+class TokenUpdate(StrictModel):
     is_active: Optional[bool] = None
     label: Optional[str] = Field(None, min_length=1, max_length=100)
 

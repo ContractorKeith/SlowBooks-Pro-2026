@@ -4,18 +4,20 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
+from app.schemas.common import StrictModel, TaxRate
+
 from app.schemas.invoices import InvoiceLineCreate, InvoiceResponse
 from app.schemas.payments import PaymentResponse
 
 
-class SalesReceiptCreate(BaseModel):
+class SalesReceiptCreate(StrictModel):
     """One-screen sales receipt: an invoice and its full payment entered
     together (QB's "Enter Sales Receipts"). No terms/due date — payment is
     at the time of sale."""
 
     customer_id: int
     date: dt_date
-    tax_rate: Decimal = Decimal("0")
+    tax_rate: TaxRate = Decimal("0")
     method: Optional[str] = None
     check_number: Optional[str] = None
     reference: Optional[str] = None
@@ -25,6 +27,9 @@ class SalesReceiptCreate(BaseModel):
     job_id: Optional[int] = None
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
+    # Nonprofit donation receipt: what the donor got back, if anything
+    fair_value_amount: Optional[Decimal] = None
+    fair_value_description: Optional[str] = None
     lines: list[InvoiceLineCreate] = []
 
     @field_validator("lines")

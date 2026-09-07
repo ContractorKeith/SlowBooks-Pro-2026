@@ -58,6 +58,7 @@ they set in their portal, and the screen only exposes what the role allows.
    refunds / voids, end-of-day Z report) on top of the existing sales receipts
    + Square / Stripe providers; card terminals and cash drawer hardware after.
 
+
 Parked with a reason: kiosk login by last-4 SSN + name — weak auth; the PIN
 above replaces it.
 

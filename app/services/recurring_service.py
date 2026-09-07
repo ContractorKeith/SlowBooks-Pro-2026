@@ -39,6 +39,10 @@ def _advance_next_due(current: date, frequency: str) -> date:
 def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
     """Generate all invoices that are due on or before as_of date.
     Returns list of created invoice IDs."""
+    from app.services.settings_service import is_nonprofit
+
+    # A nonprofit's recurring invoices are pledges (printed as such)
+    nonprofit = is_nonprofit(db)
     if as_of is None:
         as_of = date.today()
 
@@ -100,6 +104,9 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
                 balance_due=total,
                 notes=rec.notes,
                 class_id=rec.class_id,
+                job_id=rec.job_id,
+                recurring_invoice_id=rec.id,
+                is_pledge=nonprofit,
             )
             nested = db.begin_nested()
             db.add(candidate)
@@ -176,6 +183,7 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
                 source_id=invoice.id,
                 reference=invoice_number,
                 class_id=invoice.class_id,
+                job_id=invoice.job_id,
             )
             invoice.transaction_id = txn.id
 

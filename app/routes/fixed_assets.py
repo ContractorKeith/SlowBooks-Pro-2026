@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 # ── Schemas ──────────────────────────────────────────────────────────────
 
 
-class AssetTypeCreate(BaseModel):
+class AssetTypeCreate(StrictModel):
     name: str
     description: Optional[str] = None
     asset_account_id: Optional[int] = None
@@ -50,7 +50,7 @@ class AssetTypeUpdate(AssetTypeCreate):
     depreciation_method: Optional[DepreciationMethod] = None
 
 
-class AssetCreate(BaseModel):
+class AssetCreate(StrictModel):
     name: str
     asset_type_id: int
     purchase_date: date
@@ -59,7 +59,7 @@ class AssetCreate(BaseModel):
     description: Optional[str] = None
 
 
-class AssetUpdate(BaseModel):
+class AssetUpdate(StrictModel):
     name: Optional[str] = None
     asset_type_id: Optional[int] = None
     purchase_date: Optional[date] = None
@@ -68,11 +68,11 @@ class AssetUpdate(BaseModel):
     description: Optional[str] = None
 
 
-class DepreciationRunRequest(BaseModel):
+class DepreciationRunRequest(StrictModel):
     run_date: date
 
 
-class DisposalRequest(BaseModel):
+class DisposalRequest(StrictModel):
     disposal_date: date
     proceeds: Decimal = Decimal("0")
     deposit_account_id: int
@@ -124,6 +124,13 @@ def _asset_payload(a: FixedAsset) -> dict:
 
 @router.get("/types")
 def list_types(include_inactive: bool = False, db: Session = Depends(get_db)):
+    # Companies created before 2.9.0 have no types at all; give them the
+    # same default a new company gets, the first time the page asks.
+    if db.query(FixedAssetType.id).first() is None:
+        from app.seed.fixed_assets import ensure_default_asset_type
+
+        if ensure_default_asset_type(db) is not None:
+            db.commit()
     q = db.query(FixedAssetType)
     if not include_inactive:
         q = q.filter(FixedAssetType.is_active.is_(True))

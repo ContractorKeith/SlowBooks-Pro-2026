@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -52,7 +52,7 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 # ---------------------------------------------------------------------------
 
 
-class AIConfigUpdate(BaseModel):
+class AIConfigUpdate(StrictModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
