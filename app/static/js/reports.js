@@ -171,7 +171,7 @@ const ReportsPage = {
     },
 
     async saveCurrent(reportType, params) {
-        const name = prompt('Save report as:');
+        const name = prompt('Name for this saved report:');
         if (!name || !name.trim()) return;
         try {
             await API.post('/saved-reports', {
@@ -363,7 +363,7 @@ const ReportsPage = {
     },
 
     async openPeriodModal(title, initialPeriod, loadContent, label = "Dates", useAsOfOnly = false, opts = {}) {
-        // opts.reportType (string) — when set, adds a "Save Report" button
+        // opts.reportType (string) — when set, adds an "Add to Saved Reports" button
         // that captures the current period/range as parameters.
         // opts.prefill ({period?, start_date?, end_date?, as_of_date?}) —
         // used when reopening a saved report; overrides initialPeriod and
@@ -377,7 +377,7 @@ const ReportsPage = {
         const startingPeriod = prefill.period || initialPeriod;
 
         const saveBtn = reportType
-            ? `<button class="btn btn-secondary" id="report-save-btn">Save Report…</button>`
+            ? `<button class="btn btn-secondary" id="report-save-btn">Add to Saved Reports…</button>`
             : '';
 
         openModal(title, `
