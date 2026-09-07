@@ -240,7 +240,9 @@ def test_dmg_contents_check_uses_the_staged_bundle_name(monkeypatch, tmp_path):
     monkeypatch.setattr(release, "_record_run", fake_record_run)
     dmg = tmp_path / "SlowBooksPro.dmg"
     dmg.write_bytes(b"dmg")
-    release._verify_dmg_contents_stapled(dmg, tmp_path / "ev.txt", tmp_path, "Renamed.app")
+    release._verify_dmg_contents_stapled(
+        dmg, tmp_path / "ev.txt", tmp_path, "Renamed.app"
+    )
     validated = [c for c in calls if c[1:3] == ("stapler", "validate")]
     assert validated and validated[0][-1].endswith("/final-dmg-mount/Renamed.app")
     assert calls[-1][:2] == ("hdiutil", "detach")
@@ -257,5 +259,7 @@ def test_dmg_contents_check_fails_when_bundle_is_missing(monkeypatch, tmp_path):
     dmg = tmp_path / "SlowBooksPro.dmg"
     dmg.write_bytes(b"dmg")
     with pytest.raises(RuntimeError, match="is not inside"):
-        release._verify_dmg_contents_stapled(dmg, tmp_path / "ev.txt", tmp_path, "Missing.app")
+        release._verify_dmg_contents_stapled(
+            dmg, tmp_path / "ev.txt", tmp_path, "Missing.app"
+        )
     assert calls[-1][:2] == ("hdiutil", "detach")

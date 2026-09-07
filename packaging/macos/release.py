@@ -439,7 +439,9 @@ def _verify_dmg_contents_stapled(
     try:
         inner = mount / bundle_name
         if not inner.is_dir():
-            raise RuntimeError(f"{bundle_name} is not inside {dmg.name}; see {evidence}")
+            raise RuntimeError(
+                f"{bundle_name} is not inside {dmg.name}; see {evidence}"
+            )
         result = _record_run(
             evidence, "xcrun", "stapler", "validate", "-v", str(inner), check=False
         )
