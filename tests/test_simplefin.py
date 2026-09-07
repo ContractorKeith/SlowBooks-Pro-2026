@@ -421,3 +421,78 @@ def test_send_refuses_when_the_socket_landed_on_a_private_peer(monkeypatch):
 def test_guard_returns_the_address_it_checked(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
     assert sf._assert_public_https("https://bridge.example.com/x") == "93.184.216.34"
+
+
+class _ClosedStream:
+    """What the real stream looks like once the client has closed: the
+    2.9.3 gate found send() calling getpeername() on a dead socket."""
+
+    def get_extra_info(self, name):
+        raise OSError(9, "Bad file descriptor")
+
+
+def test_send_survives_a_stream_that_cannot_report_its_peer(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, m, u, **kw: httpx.Response(
+            200, text="ok", extensions={"network_stream": _ClosedStream()}
+        ),
+    )
+    assert (
+        sf.send({"method": "GET", "url": "https://bridge.example.com/x"}).status_code
+        == 200
+    )
+
+
+def test_peer_is_read_before_the_client_closes(monkeypatch):
+    """The peer check must run inside the client's context: a stream that
+    only answers while the client is open must be enough."""
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+    state = {"open": False}
+
+    class _LiveStream:
+        def get_extra_info(self, name):
+            if not state["open"]:
+                raise OSError(9, "Bad file descriptor")
+            return ("93.184.216.34", 443)
+
+    real_enter, real_exit = httpx.Client.__enter__, httpx.Client.__exit__
+
+    def enter(self):
+        state["open"] = True
+        return real_enter(self)
+
+    def exit_(self, *a):
+        state["open"] = False
+        return real_exit(self, *a)
+
+    monkeypatch.setattr(httpx.Client, "__enter__", enter)
+    monkeypatch.setattr(httpx.Client, "__exit__", exit_)
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, m, u, **kw: httpx.Response(
+            200, text="ok", extensions={"network_stream": _LiveStream()}
+        ),
+    )
+    assert (
+        sf.send({"method": "GET", "url": "https://bridge.example.com/x"}).status_code
+        == 200
+    )
+
+    # and a private peer seen while open is still refused
+    class _PrivateStream:
+        def get_extra_info(self, name):
+            return ("10.0.0.5", 443) if state["open"] else None
+
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, m, u, **kw: httpx.Response(
+            200, text="secret", extensions={"network_stream": _PrivateStream()}
+        ),
+    )
+    with pytest.raises(sf.SimpleFINError):
+        sf.send({"method": "GET", "url": "https://bridge.example.com/x"})

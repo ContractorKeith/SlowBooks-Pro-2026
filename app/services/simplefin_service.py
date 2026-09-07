@@ -101,6 +101,8 @@ def send(request: dict, timeout: float = DEFAULT_TIMEOUT) -> httpx.Response:
     address = _assert_public_https(request["url"])
     pinned_url, names = _pin(request["url"], address)
     try:
+        # follow_redirects=False is load-bearing: a redirect would resolve a
+        # new hostname and step straight around the pin. Keep it off.
         with httpx.Client(
             verify=True,
             follow_redirects=False,
@@ -116,16 +118,36 @@ def send(request: dict, timeout: float = DEFAULT_TIMEOUT) -> httpx.Response:
                 content=request.get("content"),
                 extensions={"sni_hostname": names["sni"]},
             )
+            # Peer check while the socket is still open (after the client
+            # closes, getpeername() is EBADF on Linux / WSAENOTSOCK on
+            # Windows — the 2.9.3 gate found exactly that). A stream that
+            # cannot report its peer is not evidence either way.
+            peer = _peer_address(response)
     except httpx.RequestError:
         logger.warning("SimpleFIN bridge request failed", exc_info=True)
         raise SimpleFINError("Could not reach the SimpleFIN bridge right now")
-    stream = response.extensions.get("network_stream")
-    peer = stream.get_extra_info("server_addr") if stream is not None else None
-    if peer and not ipaddress.ip_address(peer[0]).is_global:
+    if peer and not ipaddress.ip_address(peer).is_global:
         raise SimpleFINError(
             "Bridge host resolves to a private or local address — refusing"
         )
     return response
+
+
+def _peer_address(response: httpx.Response) -> str | None:
+    stream = response.extensions.get("network_stream")
+    if stream is None:
+        return None
+    try:
+        info = stream.get_extra_info("server_addr")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not info:
+        return None
+    try:
+        ipaddress.ip_address(info[0])
+    except (ValueError, IndexError, TypeError):
+        return None
+    return info[0]
 
 
 def decode_setup_token(setup_token: str) -> str:
