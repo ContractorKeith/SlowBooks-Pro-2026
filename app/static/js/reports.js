@@ -113,7 +113,7 @@ const ReportsPage = {
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.incomeByCustomer()">
                     <div class="card-header">${T('Income by Customer')}</div>
-                    <p style="font-size:13px; color:var(--gray-500);">${Terms.text('Sales totals per customer')}</p>
+                    <p style="font-size:13px; color:var(--gray-500);">${Terms.isNonprofit() ? 'Contribution totals per donor' : 'Sales totals per customer'}</p>
                 </div>
                 <div class="card" style="cursor:pointer" onclick="ReportsPage.customerStatementPicker()">
                     <div class="card-header">${T('Customer Statement')}</div>

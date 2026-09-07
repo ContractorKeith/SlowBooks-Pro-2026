@@ -35,9 +35,12 @@ Developer ID signing and notarization on the maintainer's Mac:
    and build metadata for seven days. It never creates or changes a GitHub
    Release.
 3. `release.py` verifies the artifact and source SHA, replaces every ad-hoc
-   signature from the inside out, signs the final DMG, submits that DMG to
-   Apple, retrieves the notarization log, staples the ticket, and runs final
-   command-line gates.
+   signature from the inside out, notarizes the bare `.app` and **staples it
+   first**, builds and signs the DMG from that stapled bundle, notarizes and
+   staples the DMG, then mounts the shipped DMG and runs `stapler validate`
+   on the bundle inside it. Both tickets are required: the one on the `.app`
+   is what a user who drags it to Applications launches offline with
+   (v2.9.0 gate). Evidence files are `notary-app-*` and `notary-dmg-*`.
 4. Installed-app acceptance and public-release verification remain separate
    human gates.
 

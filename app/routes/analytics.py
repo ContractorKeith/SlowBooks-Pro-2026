@@ -20,6 +20,8 @@ from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from pydantic import Field
+
 from app.schemas.common import StrictModel
 from sqlalchemy.orm import Session
 
@@ -55,7 +57,13 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 class AIConfigUpdate(StrictModel):
     provider: Optional[str] = None
     model: Optional[str] = None
-    api_key: Optional[str] = None
+    api_key: Optional[str] = Field(
+        None,
+        description=(
+            "Omit to keep the stored key. A non-empty value replaces it "
+            "(stored encrypted, never returned). An empty string removes it."
+        ),
+    )
     cloudflare_account_id: Optional[str] = None
     worker_url: Optional[str] = None
     endpoint_url: Optional[str] = None
@@ -497,8 +505,13 @@ def put_ai_config(
         endpoint_url = ""
 
     new_api_key = payload.api_key
-    # Distinguish "absent" from "empty string" — treat both as "don't change".
+    # Absent (None) means "don't change". An explicit empty string means
+    # "remove the stored key": a credential that cannot be cleared through
+    # the API is a poor property for a credential (2.9.0 gate, skytech).
+    # The Settings page only sends api_key when the field was typed into,
+    # or when the user clicked Remove — never a blank round-trip.
     should_update_key = isinstance(new_api_key, str) and new_api_key.strip() != ""
+    should_clear_key = isinstance(new_api_key, str) and new_api_key.strip() == ""
 
     set_setting(db, _AI_PROVIDER_KEY, provider)
     set_setting(db, _AI_MODEL_KEY, model)
@@ -508,6 +521,8 @@ def put_ai_config(
     if should_update_key:
         encrypted = encrypt_value(new_api_key.strip())
         set_setting(db, _AI_API_KEY, encrypted)
+    elif should_clear_key:
+        set_setting(db, _AI_API_KEY, "")
 
     db.commit()
     _clear_ai_cache()

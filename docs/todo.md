@@ -119,7 +119,7 @@ and the **January verification pass** on `app/services/state_tax/tables.py`.
      duplicate-detection engine already at `/api/customers/check-duplicate`
      extends to invoice-number + PO-number lookup).
   3. **Classify + sentiment** — pass the body through the AI layer (the
-     existing 7-provider BYOK config in `app/services/ai_service.py`) to
+     existing 8-provider BYOK config in `app/services/ai_service.py`) to
      tag intent (payment confirmation / dispute / inquiry / quote /
      unrelated) plus sentiment (positive / neutral / negative). Tag goes
      into the staged record; AI never auto-acts.

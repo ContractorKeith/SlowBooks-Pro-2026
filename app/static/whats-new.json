@@ -1,4 +1,13 @@
 {
+  "2.9.1": {
+    "title": "Post-release tidy",
+    "items": [
+      "AI Insights: a stored provider key can be removed (Remove beside the saved mark; the API clears on an explicit empty string)",
+      "Windows releases ship SHA256SUMS.windows beside the installer and zip",
+      "Nonprofit mode: the Contributions by Donor card and the analytics aging header speak donor, not sales and customer",
+      "Migrations create every table on their own; the install guide's counts are current"
+    ]
+  },
   "2.9.0": {
     "title": "Nonprofit mode",
     "items": [

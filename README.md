@@ -246,7 +246,7 @@ Production checklist: **[docs/release-checklist.md](docs/release-checklist.md)**
 | [packaging/macos/README.md](packaging/macos/README.md) | macOS maintainer build, signing, notarization runbook |
 | [docs/features.md](docs/features.md) | Full feature catalog + API endpoint reference |
 | [docs/development.md](docs/development.md) | Tech stack, project structure, contributor flow |
-| [docs/data-model.md](docs/data-model.md) | Database schema — 55 tables |
+| [docs/data-model.md](docs/data-model.md) | Database schema |
 | [docs/operations.md](docs/operations.md) | Backups, restore, key rotation, monitoring |
 | [docs/payroll-hr-module.md](docs/payroll-hr-module.md) | Payroll / HR module reference |
 | [docs/release-checklist.md](docs/release-checklist.md) | Production deployment checklist |

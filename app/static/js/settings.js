@@ -888,7 +888,7 @@ const SettingsPage = {
                 </p>
             </fieldset>
             <label class="form-field">
-                <span>API Key / Shared Secret ${hasKey ? '<em class="ai-key-saved">(saved &#10003;)</em>' : ''}</span>
+                <span>API Key / Shared Secret ${hasKey ? '<em class="ai-key-saved">(saved &#10003;)</em> <button type="button" class="btn btn-sm" id="ai-settings-key-remove" title="Remove the stored key">Remove</button>' : ''}</span>
                 <input type="password" id="ai-settings-key"
                        placeholder="${hasKey ? 'Leave blank to keep existing' : 'Paste key or openssl rand -hex 32'}"
                        autocomplete="new-password">
@@ -975,12 +975,33 @@ const SettingsPage = {
             cloudflare_account_id: document.getElementById('ai-settings-cf-account').value.trim(),
             worker_url: document.getElementById('ai-settings-worker-url').value.trim(),
             endpoint_url: document.getElementById('ai-settings-endpoint-url') ? document.getElementById('ai-settings-endpoint-url').value.trim() : '',
-            api_key: document.getElementById('ai-settings-key').value,
         });
+        // The key field is write-only: send it only when the user typed a new
+        // one. A blank field must never round-trip as "clear the key".
+        const keyPayload = () => {
+            const v = document.getElementById('ai-settings-key').value;
+            return v.trim() ? { api_key: v } : {};
+        };
+
+        const removeBtn = document.getElementById('ai-settings-key-remove');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', async () => {
+                if (!confirm('Remove the stored API key? AI Insights will be off until a new key is saved.')) return;
+                try {
+                    // An explicit empty string is the API's "clear the key".
+                    const updated = await API.put('/analytics/ai-config', { ...collectPayload(), api_key: '' });
+                    SettingsPage.aiConfigState = updated;
+                    toast('AI provider key removed', 'success');
+                    SettingsPage.loadAiConfig();
+                } catch (err) {
+                    toast('Could not remove the key: ' + (err.message || err), 'error');
+                }
+            });
+        }
 
         saveBtn.addEventListener('click', async () => {
             try {
-                const updated = await API.put('/analytics/ai-config', collectPayload());
+                const updated = await API.put('/analytics/ai-config', { ...collectPayload(), ...keyPayload() });
                 SettingsPage.aiConfigState = updated;
                 toast('AI settings saved', 'success');
                 // Re-render to reflect "(saved ✓)" state and clear the key input
@@ -995,7 +1016,7 @@ const SettingsPage = {
             testRes.textContent = 'Saving…';
             testRes.className = 'ai-settings-test-result';
             try {
-                await API.put('/analytics/ai-config', collectPayload());
+                await API.put('/analytics/ai-config', { ...collectPayload(), ...keyPayload() });
             } catch (err) {
                 testRes.textContent = 'Save failed: ' + (err.message || err);
                 testRes.classList.add('ai-test-fail');

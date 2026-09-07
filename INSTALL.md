@@ -132,8 +132,8 @@ Open **http://localhost:3001** in your browser.
 ### What happens on first run
 
 1. PostgreSQL 17 starts and creates the `bookkeeper` database
-2. Alembic runs all migrations (creates 55 tables)
-3. Chart of Accounts is seeded (50 accounts — Contractor template, includes the payroll-liability accounts needed for pay-run processing)
+2. Alembic runs all migrations (the complete schema — no table depends on app startup)
+3. Chart of Accounts is seeded (57 accounts — Contractor template, includes the payroll-liability accounts and 6810 Depreciation Expense) and a default Equipment asset type
 4. Uvicorn starts serving the app on port 3001
 5. On first visit, you'll be prompted to set an operator password (min 8 characters)
 

@@ -759,3 +759,59 @@ def test_create_all_is_serialized_under_postgres(monkeypatch):
     assert "pg_advisory_xact_lock" in calls[1][1]
     assert calls[2] == ("create_all", "FakeConn")
     assert calls[-1] == ("commit",)
+
+
+# ---- 2.9.1: post-release tidy ------------------------------------------
+
+
+def test_migrations_create_every_model_table(tmp_path):
+    import sqlite3
+
+    from app.database import Base
+    import app.models  # noqa: F401
+
+    db = _migrate_fresh_sqlite(tmp_path)
+    migrated = {
+        r[0]
+        for r in sqlite3.connect(db).execute(
+            "select name from sqlite_master where type='table'"
+        )
+    }
+    missing = sorted(set(Base.metadata.tables) - migrated)
+    assert missing == [], f"tables only create_all() makes: {missing}"
+
+
+def test_ai_api_key_can_be_cleared_with_an_explicit_empty_string(client):
+    base = {"provider": "openai", "model": "gpt-5.4-mini"}
+    r = client.put(
+        "/api/analytics/ai-config", json={**base, "api_key": "sk-test-1234567890"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["has_api_key"] is True
+    # omitted -> kept
+    r = client.put("/api/analytics/ai-config", json=base)
+    assert r.json()["has_api_key"] is True
+    # explicit empty string -> cleared
+    r = client.put("/api/analytics/ai-config", json={**base, "api_key": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["has_api_key"] is False
+
+
+def test_settings_page_never_round_trips_a_blank_ai_key():
+    src = open("app/static/js/settings.js").read()
+    assert "keyPayload" in src and "ai-settings-key-remove" in src
+    assert "api_key: document.getElementById('ai-settings-key').value," not in src
+
+
+def test_nonprofit_vocabulary_on_analytics_aging_and_donor_card():
+    analytics = open("app/static/js/analytics.js").read()
+    assert '_agingTable(data.ar_aging, T("Customer"))' in analytics
+    reports = open("app/static/js/reports.js").read()
+    assert "Sales totals per donor" not in reports
+    assert "Contribution totals per donor" in reports
+
+
+def test_windows_workflow_publishes_checksums():
+    wf = open(".github/workflows/windows.yml").read()
+    assert "SHA256SUMS.windows" in wf
+    assert wf.count("SHA256SUMS.windows") >= 3  # written, uploaded, attached

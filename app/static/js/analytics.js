@@ -139,7 +139,7 @@ const AnalyticsPage = {
             <div class="analytics-section-title">Accounts Receivable Aging</div>
             <div class="analytics-card">
                 <div class="chart-wrap chart-wrap-sm"><canvas id="chart-ar-aging"></canvas></div>
-                ${this._agingTable(data.ar_aging, "Customer")}
+                ${this._agingTable(data.ar_aging, T("Customer"))}
             </div>
 
             <div class="analytics-section-title">Accounts Payable Aging</div>

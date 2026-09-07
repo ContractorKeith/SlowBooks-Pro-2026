@@ -7,6 +7,22 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.9.1 — Post-release tidy from the 2.9.0 gate
+
+**A stored AI provider key can be removed.** `PUT /api/analytics/ai-config`
+with `"api_key": ""` clears it (omit the field to keep it; a value replaces
+it), the spec says so, and the Settings page has a Remove button beside the
+saved-key mark — it no longer round-trips a blank field. **Windows releases
+publish `SHA256SUMS.windows`** beside the installer and zip, the same
+format as the macOS file, so a download can be checked without trusting
+the transport. **The migrations now create every table** (`api_tokens` was
+the last one only app startup made), so `alembic upgrade head` alone yields
+the complete schema. Two nonprofit vocabulary leaks closed: the
+Contributions by Donor card described "sales totals", and the analytics
+receivables aging header said "Customer". The macOS maintainer runbook
+describes the staple-before-DMG order that has shipped since 2.9.0, and the
+install guide's table and account counts are current.
+
 ### v2.9.0 — Nonprofit mode
 
 **A nonprofit sees its own words in the first minute.** Settings → Company
