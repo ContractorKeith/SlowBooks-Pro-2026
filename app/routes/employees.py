@@ -28,6 +28,7 @@ from app.models.bank_accounts import (
     DepositType,
 )
 from app.models.payroll import Employee
+from app.routes._roles import is_admin
 from app.routes.attachments import (
     _sanitize_filename,
     _resolve_within,
@@ -79,20 +80,58 @@ def _iso_utc(dt: datetime | None) -> str | None:
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 
 
+# What a non-admin sees of a staff record: the directory entry. Time
+# entries and job costing need names, activity and the work state; pay,
+# tax elections, home address and the SSN tail are HR's (GHSA-pwj7-6qq3-h4fj).
+_EMPLOYEE_PRIVATE_DEFAULTS = {
+    "ssn_last_four": None,
+    "pay_rate": 0,
+    "cost_rate": None,
+    "burden_pct": None,
+    "filing_status": "",
+    "multiple_jobs": False,
+    "dependents_amount": 0,
+    "other_income_annual": 0,
+    "deductions_annual": 0,
+    "extra_withholding": 0,
+    "address1": None,
+    "address2": None,
+    "city": None,
+    "state": None,
+    "zip": None,
+    "residence_state": None,
+    "wc_class_code": None,
+    "state_allowances": 0,
+    "state_extra_withholding": 0,
+    "state_rate_override": None,
+    "local_tax_rate": None,
+}
+
+
+def _employee_view(emp: Employee, request: Request) -> dict:
+    out = EmployeeResponse.model_validate(emp).model_dump()
+    if not is_admin(request):
+        out.update(_EMPLOYEE_PRIVATE_DEFAULTS)
+    return out
+
+
 @router.get("", response_model=list[EmployeeResponse])
-def list_employees(active_only: bool = False, db: Session = Depends(get_db)):
+def list_employees(
+    request: Request, active_only: bool = False, db: Session = Depends(get_db)
+):
     q = db.query(Employee)
     if active_only:
         q = q.filter(Employee.is_active == True)  # noqa: E712
-    return q.order_by(Employee.last_name, Employee.first_name).all()
+    rows = q.order_by(Employee.last_name, Employee.first_name).all()
+    return [_employee_view(e, request) for e in rows]
 
 
 @router.get("/{emp_id}", response_model=EmployeeResponse)
-def get_employee(emp_id: int, db: Session = Depends(get_db)):
+def get_employee(request: Request, emp_id: int, db: Session = Depends(get_db)):
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    return emp
+    return _employee_view(emp, request)
 
 
 @router.post("", response_model=EmployeeResponse, status_code=201)

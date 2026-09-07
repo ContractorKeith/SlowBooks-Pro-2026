@@ -79,7 +79,16 @@ def create_batch_payment(data: BatchPaymentCreate, db: Session = Depends(get_db)
         db.flush()
 
         for alloc in allocs:
-            invoice = db.query(Invoice).filter(Invoice.id == alloc.invoice_id).first()
+            # Row lock for the read-check-write, as create_payment does:
+            # two concurrent batches against one invoice must not both
+            # pass the balance check (GHSA-rm5h-555g-vpjj). No-op on
+            # SQLite; real lock on Postgres.
+            invoice = (
+                db.query(Invoice)
+                .filter(Invoice.id == alloc.invoice_id)
+                .with_for_update()
+                .first()
+            )
             if not invoice:
                 raise HTTPException(
                     status_code=404, detail=f"Invoice {alloc.invoice_id} not found"
@@ -99,6 +108,11 @@ def create_batch_payment(data: BatchPaymentCreate, db: Session = Depends(get_db)
             )
             invoice.amount_paid += Decimal(str(alloc.amount))
             invoice.balance_due -= Decimal(str(alloc.amount))
+            if invoice.balance_due < 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Invoice {invoice.invoice_number} would be over-applied",
+                )
             if invoice.balance_due <= 0:
                 invoice.status = InvoiceStatus.PAID
             else:

@@ -501,6 +501,9 @@ const App = {
     // Rewrites the static shell into the company's words. index.html is
     // served raw, so the sidebar and toolbar arrive as business-worded
     // HTML; this runs once at boot, before the first page renders.
+    // Sidebar entries the server serves to admins only (app.main RBAC).
+    ADMIN_ONLY_PAGES: ['employees', 'payroll', 'hr-onboarding', 'hr-benefits', 'hr-deductions', 'hr-tax-forms', 'users'],
+
     applyTerminology() {
         for (const r of Object.values(App.routes)) r.label = T(r.label);
         $$('#sidebar .nav-section').forEach(el => { el.textContent = T(el.textContent.trim()); });
@@ -605,6 +608,14 @@ const App = {
             const auth = await fetch('/api/auth/status', { credentials: 'same-origin' });
             if (auth.ok) {
                 const a = await auth.json();
+                if (a.multi_user && a.user && a.user.role !== 'admin') {
+                    // HR and payroll are admin functions; the server refuses
+                    // them for other roles, so do not offer the pages.
+                    App.ADMIN_ONLY_PAGES.forEach(page => {
+                        const link = document.querySelector(`#sidebar .nav-link[data-page="${page}"]`);
+                        if (link && link.parentElement) link.parentElement.hidden = true;
+                    });
+                }
                 if (a.multi_user && a.user) {
                     const right = document.querySelector('.topbar-right');
                     if (right && !document.getElementById('user-chip')) {

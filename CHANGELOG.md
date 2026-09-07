@@ -7,7 +7,28 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
-### v2.9.2 — Server Edition CSP, SimpleFIN on PostgreSQL, bank feeds to liability accounts
+### v2.9.2 — Security: HR and payroll are admin-only; payment row locks; Server Edition CSP; SimpleFIN on PostgreSQL
+
+**Security (Server Edition).** Four private reports arrived on the same
+morning, three from @hongshengy and one from @furkan-arslan-sec, and all four
+were right. The role gate treated everything outside six admin prefixes as
+"daily books", so a bookkeeper could mint any employee's self-service portal
+token (a full login as that employee: W-4, bank accounts, pay stubs), rewrite
+any employee's direct-deposit account and export the NACHA file, and a
+read-only user could download pay stubs, W-2s and I-9 paperwork. The docs
+said HR and payroll were admin functions; the code now agrees: payroll,
+tax forms, benefits, garnishments, onboarding, and the credential-bearing
+parts of an employee record (portal token, bank accounts, documents,
+E-Verify, year-to-date) are refused to bookkeeper and read-only roles for
+every method; creating or editing an employee is an admin write; the
+employee list stays readable as a directory with pay, tax and address fields
+blanked for non-admins. The SPA hides those pages for non-admins. Separately,
+batch payments and bill payments now take the same row lock on the invoice
+or bill that single payments already did, so two concurrent requests on
+PostgreSQL cannot both pass the balance check and over-apply; an
+over-application that slips past the check is refused with 409 instead of a
+negative balance. Advisories GHSA-rh68-48w8-pj8r, GHSA-rh75-6834-f66j,
+GHSA-pwj7-6qq3-h4fj, GHSA-rm5h-555g-vpjj; fixed in 2.9.2.
 
 **Server Edition no longer serves the desktop's relaxed script policy to
 LAN browsers.** The launcher marks every server it starts as "desktop",

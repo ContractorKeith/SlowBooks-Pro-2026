@@ -77,6 +77,18 @@ This policy applies to the Slowbooks Pro 2026 codebase. Security issues in third
 
 For the engineering log of the production hardening pass (with file pointers, OWASP coverage, and the production deployment checklist), see [`docs/security-hardening.md`](docs/security-hardening.md).
 
+## Fixed advisories
+
+Reports that came in through private vulnerability reporting, with the
+release that fixed them. Thank you to the reporters.
+
+| Advisory | Reported by | Fixed in | What |
+|---|---|---|---|
+| GHSA-rh68-48w8-pj8r | @hongshengy | 2.9.2 | bookkeeper could mint any employee's self-service portal token |
+| GHSA-rh75-6834-f66j | @hongshengy | 2.9.2 | bookkeeper could rewrite direct-deposit accounts and export NACHA |
+| GHSA-pwj7-6qq3-h4fj | @hongshengy | 2.9.2 | read-only could download pay stubs, W-2s and employee documents |
+| GHSA-rm5h-555g-vpjj | @furkan-arslan-sec | 2.9.2 | batch and bill payments took no row lock on the invoice or bill (PostgreSQL race) |
+
 ## Known considerations
 
 - Slowbooks is designed to run on a **local network or single machine** — session auth provides single-user protection but is not a substitute for network-level security on the public internet. Run behind a TLS-terminating reverse proxy for external access

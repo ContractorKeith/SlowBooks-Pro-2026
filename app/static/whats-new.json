@@ -1,7 +1,8 @@
 {
   "2.9.2": {
-    "title": "Server Edition policy, SimpleFIN on PostgreSQL, credit-card feeds",
+    "title": "Security: HR and payroll are admin-only; Server Edition policy, SimpleFIN on PostgreSQL, credit-card feeds",
     "items": [
+      "Server Edition: payroll, tax forms, benefits, employee bank accounts, documents and portal tokens are admin-only for every role below admin; batch and bill payments lock the invoice or bill row",
       "Server Edition over the LAN gets the strict script policy again; only the desktop window's own loopback connection is relaxed",
       "SimpleFIN settings save on PostgreSQL installs (the settings value column is now text)",
       "A bank feed can target a liability account, so credit-card feeds land on the card"

@@ -531,13 +531,44 @@ _ADMIN_WRITE_PREFIXES = (
     "/api/backups",
     "/api/companies",
     "/api/migration",
+    # Staff records carry SSN, pay rate and W-4 elections: creating or
+    # editing one is HR, not daily books (GHSA-rh75-6834-f66j).
+    "/api/employees",
+)
+# HR and payroll are admin functions, reads included: pay stubs, W-2s and
+# 941s, NACHA files, benefit elections, garnishments and onboarding
+# paperwork are the payroll clerk's, not the read-only reviewer's
+# (docs/server-edition.md; GHSA-pwj7-6qq3-h4fj). Every method.
+_ADMIN_ONLY_PREFIXES = (
+    "/api/payroll",
+    "/api/tax-forms",
+    "/api/benefits",
+    "/api/deductions",
+    "/api/onboarding",
+)
+# The parts of an employee record that are a credential or a bank account:
+# the self-service portal token (a full login as that employee —
+# GHSA-rh68-48w8-pj8r), direct-deposit accounts, I-9 and other documents,
+# E-Verify, year-to-date pay. The record itself stays listable by every
+# role (time entries and job costing need the names) but is redacted for
+# non-admins in the employees router.
+_ADMIN_ONLY_EMPLOYEE_RE = _re.compile(
+    r"^/api/employees/[^/]+/(portal-token|portal-access|everify|bank-accounts|documents|ytd)(/|$)"
 )
 _READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _is_hr_sensitive(path: str) -> bool:
+    return path.startswith(_ADMIN_ONLY_PREFIXES) or bool(
+        _ADMIN_ONLY_EMPLOYEE_RE.match(path)
+    )
 
 
 def _role_allows(role: str, method: str, path: str) -> bool:
     if role == "admin":
         return True
+    if _is_hr_sensitive(path):
+        return False
     is_read = method in _READ_METHODS
     if role == "readonly":
         # Field finding: audit payloads snapshot full record contents

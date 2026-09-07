@@ -73,7 +73,14 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
     # booked rate) — the realized-FX basis, mirroring the A/R side.
     ap_home_debits: list[Decimal] = []
     for alloc_data in data.allocations:
-        bill = db.query(Bill).filter(Bill.id == alloc_data.bill_id).first()
+        # Row lock for the read-check-write, as the void path below and
+        # create_payment already do (GHSA-rm5h-555g-vpjj). No-op on SQLite.
+        bill = (
+            db.query(Bill)
+            .filter(Bill.id == alloc_data.bill_id)
+            .with_for_update()
+            .first()
+        )
         if not bill:
             raise HTTPException(
                 status_code=404, detail=f"Bill {alloc_data.bill_id} not found"
@@ -107,6 +114,11 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
 
         bill.amount_paid += Decimal(str(alloc_data.amount))
         bill.balance_due -= Decimal(str(alloc_data.amount))
+        if bill.balance_due < 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Bill {bill.bill_number} would be over-applied",
+            )
         if bill.balance_due <= 0:
             bill.status = BillStatus.PAID
         else:

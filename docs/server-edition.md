@@ -10,7 +10,13 @@ separate download, free either way.
 - One Windows PC hosts the books; everyone else uses a **browser** —
   nothing to install on the other computers.
 - **Users and roles**: admin (everything), bookkeeper (daily books, no
-  admin functions), read-only (reports and lookups).
+  admin functions), read-only (reports and lookups). **HR and payroll are
+  admin functions** — pay runs, pay stubs, W-2/941 forms, direct-deposit
+  accounts, portal tokens, benefits, garnishments, onboarding paperwork and
+  employee records are refused to the other two roles, reads included; the
+  employee list stays visible to them as a directory (names, activity,
+  work state) with pay, tax elections and addresses blanked. Time entries
+  and time off remain daily books.
 - Every change in the audit log says **who** made it.
 - The company stays **one file** — backup is copy, undo is restore.
 
