@@ -1,4 +1,12 @@
 {
+  "2.9.2": {
+    "title": "Server Edition policy, SimpleFIN on PostgreSQL, credit-card feeds",
+    "items": [
+      "Server Edition over the LAN gets the strict script policy again; only the desktop window's own loopback connection is relaxed",
+      "SimpleFIN settings save on PostgreSQL installs (the settings value column is now text)",
+      "A bank feed can target a liability account, so credit-card feeds land on the card"
+    ]
+  },
   "2.9.1": {
     "title": "Post-release tidy",
     "items": [

@@ -387,6 +387,34 @@ def test_csp_header_follows_the_desktop_flag(client):
     assert "'unsafe-eval'" not in r.headers["Content-Security-Policy"]
 
 
+def test_csp_relaxed_only_for_loopback_even_with_the_desktop_flag(monkeypatch):
+    """Keith, #98: the launcher sets SLOWBOOKS_DESKTOP=1 for --serve-lan too,
+    so the flag alone handed 'unsafe-eval' to every LAN browser. The web
+    view only ever connects from loopback; a LAN client must get strict."""
+    import app.main as m
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(m, "_DESKTOP_FLAG", True)
+    loopback = TestClient(m.app, client=("127.0.0.1", 40000)).get("/static/js/app.js")
+    assert "'unsafe-eval'" in loopback.headers["Content-Security-Policy"]
+    lan = TestClient(m.app, client=("192.168.68.60", 40000)).get("/static/js/app.js")
+    assert "'unsafe-eval'" not in lan.headers["Content-Security-Policy"]
+    assert "script-src 'self' 'unsafe-inline'" in lan.headers["Content-Security-Policy"]
+    # and without the flag even loopback is strict (Docker / browser install)
+    monkeypatch.setattr(m, "_DESKTOP_FLAG", False)
+    r = TestClient(m.app, client=("127.0.0.1", 40000)).get("/static/js/app.js")
+    assert "'unsafe-eval'" not in r.headers["Content-Security-Policy"]
+
+
+def test_is_loopback():
+    from app.main import _is_loopback
+
+    assert all(_is_loopback(h) for h in ("127.0.0.1", "127.1.2.3", "::1", "localhost"))
+    assert not any(
+        _is_loopback(h) for h in ("192.168.68.60", "10.0.0.8", "testclient", "", None)
+    )
+
+
 def test_desktop_fetches_get_inline_not_attachment(client, seed_accounts):
     """A desktop-shell fetch() never receives Content-Disposition: attachment
     (both webviews swallow those as native downloads). Every CSV producer,

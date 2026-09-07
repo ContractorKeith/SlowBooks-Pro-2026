@@ -7,7 +7,20 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
-### v2.9.1 — Post-release tidy from the 2.9.0 gate
+### v2.9.2 — Server Edition CSP, SimpleFIN on PostgreSQL, bank feeds to liability accounts
+
+**Server Edition no longer serves the desktop's relaxed script policy to
+LAN browsers.** The launcher marks every server it starts as "desktop",
+including headless `--serve-lan`, so the `'unsafe-eval'` allowance the
+native web view needs went to the whole office (found by Keith in the
+post-release macOS review). The policy is now decided per request: relaxed
+only when the launcher flag is set *and* the request arrived over
+loopback, which is the only way the web view ever connects. **SimpleFIN
+settings on PostgreSQL** — the settings table was created with a 500-
+character value column that SQLite ignores and PostgreSQL enforces, and a
+bank feed's access URL is longer than that; the column is now text
+(contributed by @kycrna). **Bank feeds can target a liability account**,
+so a credit card feed lands where the card lives (also @kycrna).
 
 **A stored AI provider key can be removed.** `PUT /api/analytics/ai-config`
 with `"api_key": ""` clears it (omit the field to keep it; a value replaces

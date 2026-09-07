@@ -376,7 +376,41 @@ def _build_csp(desktop: bool) -> str:
     )
 
 
-_CSP = _build_csp(desktop=os.environ.get("SLOWBOOKS_DESKTOP") == "1")
+_CSP_STRICT = _build_csp(desktop=False)
+_CSP_DESKTOP = _build_csp(desktop=True)
+# The launcher sets this for every server it starts — the windowed app AND
+# Server Edition's headless --serve-lan (system.py reads it for the update
+# check), so the flag alone over-reaches: it served 'unsafe-eval' to LAN
+# browsers (Keith, #98). The relaxation is for the native web view, which
+# only ever connects from loopback, so require both.
+_DESKTOP_FLAG = os.environ.get("SLOWBOOKS_DESKTOP") == "1"
+
+
+def _is_loopback(host: str | None) -> bool:
+    if not host:
+        return False
+    if host in ("localhost", "::1"):
+        return True
+    try:
+        import ipaddress
+
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _csp_for(request: Request) -> str:
+    """The desktop policy only for the desktop shell: launcher flag set AND
+    the request came over loopback. A LAN browser talking to --serve-lan
+    gets the strict policy exactly like a Docker install."""
+    client = request.client.host if request.client else None
+    if _DESKTOP_FLAG and _is_loopback(client):
+        return _CSP_DESKTOP
+    return _CSP_STRICT
+
+
+# Backwards-compatible name: the policy this process serves to its own shell.
+_CSP = _CSP_DESKTOP if _DESKTOP_FLAG else _CSP_STRICT
 
 
 def _set_if_unset(headers, name: str, value: str) -> None:
@@ -418,7 +452,7 @@ async def security_headers(request: Request, call_next):
     # no-cache still allows ETag/304 revalidation (free on localhost) but
     # forbids serving from cache without asking.
     _set_if_unset(response.headers, "Cache-Control", "no-cache")
-    _set_if_unset(response.headers, "Content-Security-Policy", _CSP)
+    _set_if_unset(response.headers, "Content-Security-Policy", _csp_for(request))
     # HSTS instructs browsers to refuse plain HTTP for HSTS_MAX_AGE seconds.
     # Only emit when HTTPS is actually enforced; sending it under plain HTTP
     # would lock users out if they later visit via http://.
