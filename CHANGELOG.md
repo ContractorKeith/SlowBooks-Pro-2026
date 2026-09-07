@@ -29,6 +29,10 @@ PostgreSQL cannot both pass the balance check and over-apply; an
 over-application that slips past the check is refused with 409 instead of a
 negative balance. Advisories GHSA-rh68-48w8-pj8r, GHSA-rh75-6834-f66j,
 GHSA-pwj7-6qq3-h4fj, GHSA-rm5h-555g-vpjj; fixed in 2.9.2.
+The SimpleFIN bridge request now connects to the address the SSRF guard
+approved (host header and SNI keep the hostname, the peer address is
+checked again after connect), closing the DNS-rebinding window between the
+guard's lookup and the connection's (CodeQL py/full-ssrf, #104).
 
 **Server Edition no longer serves the desktop's relaxed script policy to
 LAN browsers.** The launcher marks every server it starts as "desktop",

@@ -47,12 +47,15 @@ class SimpleFINError(Exception):
     """Raised with a user-safe message — never wraps raw exception text."""
 
 
-def _assert_public_https(url: str) -> None:
+def _assert_public_https(url: str) -> str:
     """SSRF guard: bridge URLs are user-supplied by design (self-hosted
     bridges are a feature), so before any request we require https and
     refuse hosts that resolve to non-public addresses — loopback, RFC1918,
     link-local/metadata, and friends. A hostile setup token must not be
-    able to point SlowBooks at localhost services or the LAN."""
+    able to point SlowBooks at localhost services or the LAN.
+
+    Returns the address that passed, so the caller connects to THAT address
+    and not to whatever a second lookup returns (DNS rebinding)."""
     parts = urlsplit(url)
     if parts.scheme != "https":
         raise SimpleFINError("Bridge URLs must use https")
@@ -63,38 +66,66 @@ def _assert_public_https(url: str) -> None:
         infos = socket.getaddrinfo(host, parts.port or 443, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
         raise SimpleFINError("Could not resolve the bridge hostname")
+    if not infos:
+        raise SimpleFINError("Could not resolve the bridge hostname")
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if not ip.is_global:
             raise SimpleFINError(
                 "Bridge host resolves to a private or local address — refusing"
             )
+    return infos[0][4][0]
+
+
+def _pin(url: str, address: str) -> tuple[str, dict]:
+    """Rewrite `url` to connect to `address` while keeping the hostname for
+    the Host header and TLS (SNI + certificate check), so the socket cannot
+    be steered elsewhere by a second DNS answer."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    ip = ipaddress.ip_address(address)
+    netloc = f"[{address}]" if ip.version == 6 else address
+    if parts.port:
+        netloc += f":{parts.port}"
+    pinned = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    return pinned, {"host": host, "sni": host}
 
 
 def send(request: dict, timeout: float = DEFAULT_TIMEOUT) -> httpx.Response:
     """Execute a request dict from a build_* function (hardened defaults).
 
     Every outbound URL passes the SSRF guard first — this is the single
-    network chokepoint for the SimpleFIN feature."""
-    _assert_public_https(request["url"])
+    network chokepoint for the SimpleFIN feature — and the connection is
+    made to the address the guard approved (host header and SNI keep the
+    hostname), then the peer address is checked once more after connect."""
+    address = _assert_public_https(request["url"])
+    pinned_url, names = _pin(request["url"], address)
     try:
         with httpx.Client(
             verify=True,
             follow_redirects=False,
             timeout=timeout,
-            headers={"User-Agent": "slowbooks-bankfeed"},
+            headers={"User-Agent": "slowbooks-bankfeed", "Host": names["host"]},
             trust_env=False,
         ) as client:
-            return client.request(
+            response = client.request(
                 request["method"],
-                request["url"],
+                pinned_url,
                 params=request.get("params"),
                 auth=request.get("auth"),
                 content=request.get("content"),
+                extensions={"sni_hostname": names["sni"]},
             )
     except httpx.RequestError:
         logger.warning("SimpleFIN bridge request failed", exc_info=True)
         raise SimpleFINError("Could not reach the SimpleFIN bridge right now")
+    stream = response.extensions.get("network_stream")
+    peer = stream.get_extra_info("server_addr") if stream is not None else None
+    if peer and not ipaddress.ip_address(peer[0]).is_global:
+        raise SimpleFINError(
+            "Bridge host resolves to a private or local address — refusing"
+        )
+    return response
 
 
 def decode_setup_token(setup_token: str) -> str:

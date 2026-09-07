@@ -6,6 +6,8 @@ import json
 from datetime import date
 from decimal import Decimal
 
+import socket
+
 import httpx
 import pytest
 
@@ -324,3 +326,98 @@ def test_ssrf_guard_rejects_non_public(url):
 def test_ssrf_guard_allows_public_literal():
     # Literal public IP: getaddrinfo resolves numerically, no DNS involved
     sf._assert_public_https("https://1.1.1.1/simplefin")
+
+
+# ---------------------------------------------------------------------------
+# DNS rebinding: the request must go to the address the guard approved.
+# ---------------------------------------------------------------------------
+
+
+def _fake_getaddrinfo(ip):
+    def gai(host, port, *a, **kw):
+        fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+        return [(fam, socket.SOCK_STREAM, 6, "", (ip, port))]
+
+    return gai
+
+
+class _Stream:
+    def __init__(self, peer):
+        self.peer = peer
+
+    def get_extra_info(self, name):
+        return self.peer if name == "server_addr" else None
+
+
+def test_send_pins_the_connection_to_the_approved_address(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+
+    def fake_request(self, method, url, **kw):
+        seen.update(
+            method=method,
+            url=str(url),
+            headers=dict(self.headers),
+            ext=kw.get("extensions"),
+        )
+        return httpx.Response(
+            200,
+            text="ok",
+            extensions={"network_stream": _Stream(("93.184.216.34", 443))},
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", fake_request)
+    r = sf.send(
+        {"method": "GET", "url": "https://bridge.example.com/simplefin/accounts"}
+    )
+    assert r.status_code == 200
+    assert seen["url"] == "https://93.184.216.34/simplefin/accounts"
+    assert seen["headers"]["host"] == "bridge.example.com"
+    assert seen["ext"] == {"sni_hostname": "bridge.example.com"}
+
+
+def test_send_pins_ipv6_with_brackets_and_keeps_the_port(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        socket, "getaddrinfo", _fake_getaddrinfo("2606:2800:220:1:248:1893:25c8:1946")
+    )
+
+    def fake_request(self, method, url, **kw):
+        seen["url"] = str(url)
+        return httpx.Response(200, text="ok")
+
+    monkeypatch.setattr(httpx.Client, "request", fake_request)
+    sf.send(
+        {
+            "method": "GET",
+            "url": "https://bridge.example.com:8443/simplefin/accounts?x=1",
+        }
+    )
+    assert (
+        seen["url"]
+        == "https://[2606:2800:220:1:248:1893:25c8:1946]:8443/simplefin/accounts?x=1"
+    )
+
+
+def test_send_refuses_when_the_socket_landed_on_a_private_peer(monkeypatch):
+    """Belt and braces after connect: if the peer is not the public address
+    the guard approved, the response is discarded."""
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, m, u, **kw: httpx.Response(
+            200,
+            text="secret",
+            extensions={"network_stream": _Stream(("10.0.0.5", 443))},
+        ),
+    )
+    with pytest.raises(sf.SimpleFINError):
+        sf.send(
+            {"method": "GET", "url": "https://bridge.example.com/simplefin/accounts"}
+        )
+
+
+def test_guard_returns_the_address_it_checked(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+    assert sf._assert_public_https("https://bridge.example.com/x") == "93.184.216.34"
