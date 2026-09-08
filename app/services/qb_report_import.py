@@ -20,6 +20,7 @@
 
 import csv
 import io
+import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -38,6 +39,8 @@ from app.services.accounting import (
     get_undeposited_funds_id,
 )
 from app.services.iif_import import _find_account
+
+logger = logging.getLogger(__name__)
 
 # Columns the parser needs to see in the report's header row. Memo, Item,
 # Item Description, and Qty are used when present but not required.
@@ -405,9 +408,17 @@ def import_sales_receipt_report(db: Session, csv_text: str) -> dict:
 
             sp.commit()
             result["imported"] += 1
-        except Exception as e:
+        except (ValueError, LookupError, InvalidOperation) as e:
+            # data problems carry our own wording — keep it for the user
             sp.rollback()
             result["errors"].append(f"Receipt {rec.get('num') or rec['row']}: {e}")
+        except Exception:
+            sp.rollback()
+            logger.exception("QB report import row failed")
+            result["errors"].append(
+                f"Receipt {rec.get('num') or rec['row']}"
+                + ": unexpected error — the server log has the details"
+            )
 
     db.commit()
     return result
@@ -550,9 +561,17 @@ def import_deposit_report(db: Session, csv_text: str) -> dict:
             )
             sp.commit()
             result["deposits"] += 1
-        except Exception as e:
+        except (ValueError, LookupError, InvalidOperation) as e:
+            # data problems carry our own wording — keep it for the user
             sp.rollback()
             result["errors"].append(f"Deposit block at row {block['row']}: {e}")
+        except Exception:
+            sp.rollback()
+            logger.exception("QB report import row failed")
+            result["errors"].append(
+                f"Deposit block at row {block['row']}"
+                + ": unexpected error — the server log has the details"
+            )
 
     for btype, count in sorted(skipped_types.items()):
         result["warnings"].append(
@@ -680,9 +699,17 @@ def import_check_report(db: Session, csv_text: str) -> dict:
             )
             sp.commit()
             result["checks"] += 1
-        except Exception as e:
+        except (ValueError, LookupError, InvalidOperation) as e:
+            # data problems carry our own wording — keep it for the user
             sp.rollback()
             result["errors"].append(f"Check block at row {block['row']}: {e}")
+        except Exception:
+            sp.rollback()
+            logger.exception("QB report import row failed")
+            result["errors"].append(
+                f"Check block at row {block['row']}"
+                + ": unexpected error — the server log has the details"
+            )
 
     for btype, count in sorted(skipped_types.items()):
         result["warnings"].append(

@@ -108,10 +108,19 @@ ACK_BODY = """<p>{{ donor.salutation or ('Dear ' ~ donor_name) }},</p>
 <p>{{ company.company_name }}</p>"""
 
 
+class NotAGift(ValueError):
+    """This document does not get an acknowledgment; `reason` says why, in
+    the user's words (a fixed phrase, never exception text)."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 def gift_from_invoice(inv) -> dict:
     """A sales receipt is a gift; a pledge is not until it is paid."""
     if not inv.is_sales_receipt:
-        raise ValueError("Acknowledge the payment, not the pledge")
+        raise NotAGift("Acknowledge the payment, not the pledge")
     return {
         "kind": "invoice",
         "id": inv.id,
@@ -148,10 +157,10 @@ def payment_gift_amount(db, payment) -> Decimal:
 
 def gift_from_payment(db, payment) -> dict:
     if getattr(payment, "is_voided", False):
-        raise ValueError("This payment is void")
+        raise NotAGift("This payment is void")
     amount = payment_gift_amount(db, payment)
     if amount <= 0:
-        raise ValueError(
+        raise NotAGift(
             "This payment belongs to a donation receipt — acknowledge the receipt"
         )
     return {
@@ -170,7 +179,7 @@ def gift_from_payment(db, payment) -> dict:
 
 def gift_from_in_kind(gift) -> dict:
     if gift.status == "void":
-        raise ValueError("This in-kind gift is void")
+        raise NotAGift("This in-kind gift is void")
     return {
         "kind": "in-kind",
         "id": gift.id,

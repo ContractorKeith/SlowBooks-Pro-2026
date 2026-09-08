@@ -18,6 +18,7 @@ from app.services.donor_documents import (
     collect_gifts,
     gift_irs,
     giving_statement_irs_text,
+    NotAGift,
     load_gift,
     render_acknowledgment,
 )
@@ -46,8 +47,8 @@ def _gift_or_404(db: Session, kind: str, gift_id: int):
         gift = load_gift(db, kind, gift_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except NotAGift as exc:
+        raise HTTPException(status_code=400, detail=exc.reason)
     customer = db.get(Customer, gift["customer_id"])
     if customer is None:
         raise HTTPException(status_code=404, detail="Donor not found")
@@ -74,8 +75,8 @@ def acknowledgment_preview(kind: str, gift_id: int, db: Session = Depends(get_db
         gift = load_gift(db, kind, gift_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        return {"eligible": False, "amount": None, "reason": str(exc)}
+    except NotAGift as exc:
+        return {"eligible": False, "amount": None, "reason": exc.reason}
     return {
         "eligible": True,
         "amount": float(gift["amount"]) if gift["amount"] is not None else None,
