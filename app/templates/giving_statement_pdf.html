@@ -10,6 +10,7 @@
     .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
     .company-info { font-size: 9pt; color: #4a4a6a; }
     .company-name { font-size: 16pt; font-weight: 700; color: #003366; margin-bottom: 4px; }
+    .company-logo { display: block; max-height: 60px; max-width: 200px; margin-bottom: 6px; }
     .doc-title { text-align: right; }
     .doc-title h1 { font-size: 20pt; font-weight: 700; color: #003366; margin: 0; letter-spacing: 0.05em; }
     .as-of { font-size: 10pt; color: #666; margin-top: 4px; }
@@ -36,6 +37,7 @@
     <div class="statement">
     <div class="header">
         <div>
+            {% if company_logo_data_uri %}<img class="company-logo" src="{{ company_logo_data_uri }}" alt="">{% endif %}
             <div class="company-name">{{ company.company_name }}</div>
             <div class="company-info">
                 {% if company.company_address1 %}{{ company.company_address1 }}<br>{% endif %}

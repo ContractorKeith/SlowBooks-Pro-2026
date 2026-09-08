@@ -7,6 +7,7 @@
     body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11pt; color: #333; line-height: 1.5; }
     .header { border-bottom: 3px solid #003366; padding-bottom: 12px; margin-bottom: 24px; }
     .company-name { font-size: 18pt; font-weight: 700; color: #003366; }
+    .company-logo { display: block; max-height: 60px; max-width: 200px; margin-bottom: 6px; }
     .company-info { font-size: 9pt; color: #666; margin-top: 4px; }
     .date { text-align: right; margin-bottom: 24px; font-size: 10pt; color: #666; }
     .customer-address { margin-bottom: 24px; line-height: 1.6; }
@@ -19,6 +20,7 @@
 </head>
 <body>
     <div class="header">
+        {% if company_logo_data_uri %}<img class="company-logo" src="{{ company_logo_data_uri }}" alt="">{% endif %}
         <div class="company-name">{{ company.company_name }}</div>
         <div class="company-info">
             {% if company.company_address1 %}{{ company.company_address1 }}{% endif %}

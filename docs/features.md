@@ -264,7 +264,7 @@ curl http://localhost:3001/api/analytics/export.pdf > snapshot.pdf
 - **Invoice Email** — Send invoices as PDF attachments via SMTP with configurable email settings. Includes "Pay Online" button when Stripe is enabled
 - **CSV Import/Export** — Import/export customers, vendors, items, invoices, and chart of accounts as CSV
 - **Print Preview** — Browser print dialog for invoices and estimates via dedicated HTML preview endpoints. Native OS print dialog with "Save as PDF" option
-- **Print-Optimized PDF** — Enhanced invoice PDF template with company logo support
+- **Print-Optimized PDF** — Enhanced invoice PDF template; the company logo (Settings → Company Information) prints on every document: invoices, estimates, statements, letters, donor documents and reports
 - **IIF Import/Export** — Full QuickBooks 2003 Pro interoperability (see below)
 
 ## Inventory, Drill-Down & Duplicate Detection

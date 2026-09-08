@@ -7,6 +7,15 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.9.4 — The company logo on every document
+
+**Every PDF now carries the company logo when one is set.** The logo
+helper fed only the analytics PDF and the new-hire report; invoices,
+estimates, statements, collection letters, donor acknowledgments, giving
+statements and the financial reports never received it, though the
+features list said they did (discussion #108). The render helper attaches
+it to every document and each header shows it.
+
 ### v2.9.3 — SimpleFIN request pinned to the address the guard approved
 
 **One security fix, right behind 2.9.2.** The SimpleFIN SSRF guard resolved
