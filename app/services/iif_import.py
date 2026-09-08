@@ -35,6 +35,7 @@ from app.services.accounting import (
     get_ar_account_id,
     get_default_income_account_id,
 )
+from app.services.safe_errors import safe_message
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +289,7 @@ def import_classes(db: Session, rows: list) -> dict:
 
         except Exception as e:
             sp.rollback()
-            errors.append({"row": i + 1, "message": str(e)})
+            errors.append({"row": i + 1, "message": safe_message(e, "IIF import")})
 
     return {"imported": imported, "errors": errors}
 
@@ -394,7 +395,7 @@ def import_accounts(db: Session, rows: list) -> dict:
 
         except Exception as e:
             sp.rollback()
-            errors.append({"row": i + 1, "message": str(e)})
+            errors.append({"row": i + 1, "message": safe_message(e, "IIF import")})
 
     # Build a single opening-balance journal entry from OBAMOUNT values
     # (dropping any that summed to exactly zero after merging).
@@ -503,7 +504,8 @@ def _create_opening_balance_entry(db: Session, balances: list) -> dict:
         logger.exception("Failed to create opening balance journal entry")
         return {
             "created": False,
-            "warning": f"Opening balance journal entry failed: {e}",
+            "warning": "Opening balance journal entry failed: "
+            + safe_message(e, "IIF opening balances"),
         }
 
 
@@ -565,7 +567,7 @@ def import_customers(db: Session, rows: list) -> dict:
 
         except Exception as e:
             sp.rollback()
-            errors.append({"row": i + 1, "message": str(e)})
+            errors.append({"row": i + 1, "message": safe_message(e, "IIF import")})
 
     return {"imported": imported, "errors": errors}
 
@@ -616,7 +618,7 @@ def import_vendors(db: Session, rows: list) -> dict:
 
         except Exception as e:
             sp.rollback()
-            errors.append({"row": i + 1, "message": str(e)})
+            errors.append({"row": i + 1, "message": safe_message(e, "IIF import")})
 
     return {"imported": imported, "errors": errors}
 
@@ -669,7 +671,7 @@ def import_items(db: Session, rows: list) -> dict:
 
         except Exception as e:
             sp.rollback()
-            errors.append({"row": i + 1, "message": str(e)})
+            errors.append({"row": i + 1, "message": safe_message(e, "IIF import")})
 
     return {"imported": imported, "errors": errors}
 
@@ -758,7 +760,10 @@ def import_transactions(db: Session, blocks: list) -> dict:
         except Exception as e:
             sp.rollback()
             errors.append(
-                {"row": i + 1, "message": f"Transaction block {i + 1}: {str(e)}"}
+                {
+                    "row": i + 1,
+                    "message": f"Transaction block {i + 1}: {safe_message(e, "IIF import")}",
+                }
             )
 
     return {"imported": counts, "errors": errors, "warnings": warnings}

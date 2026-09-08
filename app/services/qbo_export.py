@@ -26,6 +26,8 @@ from app.services.qbo_common import (
 from app.services.qbo_service import get_qbo_client
 
 # ============================================================================
+from app.services.safe_errors import safe_message
+
 # Export functions
 # ============================================================================
 
@@ -80,7 +82,7 @@ def export_accounts(db: Session) -> dict:
                     "entity": "account",
                     "id": acct.id,
                     "name": acct.name,
-                    "message": str(e),
+                    "message": safe_message(e, "QBO export"),
                 }
             )
 
@@ -150,7 +152,7 @@ def export_customers(db: Session) -> dict:
                     "entity": "customer",
                     "id": cust.id,
                     "name": cust.name,
-                    "message": str(e),
+                    "message": safe_message(e, "QBO export"),
                 }
             )
 
@@ -209,7 +211,7 @@ def export_vendors(db: Session) -> dict:
                     "entity": "vendor",
                     "id": vend.id,
                     "name": vend.name,
-                    "message": str(e),
+                    "message": safe_message(e, "QBO export"),
                 }
             )
 
@@ -286,7 +288,12 @@ def export_items(db: Session) -> dict:
 
         except Exception as e:
             errors.append(
-                {"entity": "item", "id": item.id, "name": item.name, "message": str(e)}
+                {
+                    "entity": "item",
+                    "id": item.id,
+                    "name": item.name,
+                    "message": safe_message(e, "QBO export"),
+                }
             )
 
     return {"exported": exported, "errors": errors}
@@ -370,7 +377,13 @@ def export_invoices(db: Session) -> dict:
             exported += 1
 
         except Exception as e:
-            errors.append({"entity": "invoice", "id": inv.id, "message": str(e)})
+            errors.append(
+                {
+                    "entity": "invoice",
+                    "id": inv.id,
+                    "message": safe_message(e, "QBO export"),
+                }
+            )
 
     return {"exported": exported, "errors": errors}
 
@@ -451,7 +464,13 @@ def export_payments(db: Session) -> dict:
             exported += 1
 
         except Exception as e:
-            errors.append({"entity": "payment", "id": pmt.id, "message": str(e)})
+            errors.append(
+                {
+                    "entity": "payment",
+                    "id": pmt.id,
+                    "message": safe_message(e, "QBO export"),
+                }
+            )
 
     return {"exported": exported, "errors": errors}
 

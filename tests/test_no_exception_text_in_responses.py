@@ -89,3 +89,119 @@ def test_donor_preview_reason_is_a_fixed_phrase_not_exception_text(
         pdf.status_code == 400
         and pdf.json()["detail"] == "Acknowledge the payment, not the pledge"
     )
+
+
+# ---------------------------------------------------------------------------
+# macbase1, 2.9.4 gate (HIGH): the IIF importer catches per ROW and answered
+# 200 with the whole INSERT statement and every bound parameter — a live
+# payment_token included — for an ordinary QuickBooks export missing its
+# document number. The route-level handler never fires.
+# ---------------------------------------------------------------------------
+
+INVOICE_IIF_NO_DOCNUM = (
+    "!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tDOCNUM\tDUEDATE\tTERMS\tMEMO\n"
+    "!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tDOCNUM\tMEMO\n"
+    "!ENDTRNS\n"
+    "TRNS\tINVOICE\t01/02/2026\tAccounts Receivable\tGate Customer\t1234.56\t\t01/02/2026\tNet 30\tno docnum\n"
+    "SPL\tINVOICE\t01/02/2026\tSales\tGate Customer\t-1234.56\t\tline\n"
+    "ENDTRNS\n"
+)
+
+SQL_MARKERS = (
+    "INSERT INTO",
+    "[SQL:",
+    "[parameters:",
+    "payment_token",
+    "VALUES (",
+    "Traceback",
+)
+
+
+def test_iif_row_errors_carry_the_constraint_not_the_statement(
+    client, db_session, seed_accounts
+):
+    from app.models.contacts import Customer
+
+    db_session.add(Customer(name="Gate Customer", is_active=True))
+    db_session.commit()
+    r = client.post(
+        "/api/iif/import",
+        files={"file": ("invoices.iif", INVOICE_IIF_NO_DOCNUM.encode(), "text/plain")},
+    )
+    assert r.status_code == 200, r.text
+    body = r.text
+    assert not any(m in body for m in SQL_MARKERS), body[:600]
+    errors = r.json().get("errors") or []
+    # the row is still reported, and the constraint is named — that is the
+    # part a user can act on
+    assert errors, r.text
+    joined = " ".join(
+        e.get("message", "") if isinstance(e, dict) else str(e) for e in errors
+    )
+    assert (
+        "constraint" in joined.lower()
+        or "invoice_number" in joined
+        or "document" in joined.lower()
+    ), joined
+
+
+def test_safe_message_shapes(caplog):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services.safe_errors import GENERIC, safe_message
+
+    class _Orig(Exception):
+        pass
+
+    ie = IntegrityError(
+        "INSERT INTO invoices (...) VALUES (?, ?)",
+        ("tok-secret", 1),
+        _Orig("NOT NULL constraint failed: invoices.invoice_number"),
+    )
+    try:
+        raise ie
+    except IntegrityError as exc:
+        msg = safe_message(exc, "test")
+    assert (
+        msg
+        == "Database constraint: NOT NULL constraint failed: invoices.invoice_number"
+    )
+    assert "tok-secret" not in msg and "INSERT" not in msg
+    assert (
+        safe_message(ValueError("Row 3: amount is not a number"), "test")
+        == "Row 3: amount is not a number"
+    )
+    with caplog.at_level("ERROR"):
+        try:
+            raise RuntimeError(SECRET)
+        except RuntimeError as exc:
+            msg = safe_message(exc, "test")
+    assert msg == GENERIC and "secret" not in msg
+    assert "secret/path.db" in caplog.text and "Traceback" in caplog.text
+
+
+def test_qbo_auth_url_and_export_entity_and_test_email_do_not_echo(client, monkeypatch):
+    from app.routes import qbo as route
+    from app.services import qbo_service
+
+    monkeypatch.setattr(qbo_service, "get_auth_url", _boom)
+    r = (
+        client.get("/api/qbo/auth-url")
+        if any(
+            getattr(x, "path", "") == "/api/qbo/auth-url" for x in route.router.routes
+        )
+        else None
+    )
+    if r is not None:
+        assert r.status_code == 400 and "secret" not in r.text, r.text
+    monkeypatch.setattr(qbo_service, "is_connected", lambda db: True)
+    monkeypatch.setitem(route._EXPORT_ENTITY_MAP, "customers", _boom)
+    r = client.post("/api/qbo/export/customers")
+    assert (
+        r.status_code == 500 and "secret" not in r.text and "server log" in r.text
+    ), r.text
+    from app.routes import settings as settings_route
+
+    monkeypatch.setattr(settings_route, "send_email", _boom, raising=False)
+    r = client.post("/api/settings/test-email")
+    assert r.status_code in (400, 500, 502) and "secret" not in r.text, r.text

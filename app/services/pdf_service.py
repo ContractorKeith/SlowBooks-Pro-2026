@@ -304,6 +304,9 @@ def generate_giving_statement_pdf(
 
 
 def generate_check_pdf(check_data: dict, company_settings: dict) -> bytes:
+    """Checks print on pre-printed stock that already carries the bank's
+    and the company's marks, so this is the one document that deliberately
+    bypasses _render() and gets no logo."""
     template = _jinja_env.get_template("check_pdf.html")
     check_data["amount_words"] = _amount_to_words(check_data.get("amount", 0))
     html_str = template.render(check=check_data, company=company_settings)

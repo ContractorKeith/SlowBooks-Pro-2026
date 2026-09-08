@@ -42,11 +42,12 @@ def get_auth_url(db: Session = Depends(get_db)):
     try:
         url = qbo_service.get_auth_url(db)
         return {"url": url}
-    except Exception as e:
+    except Exception:
+        logger.exception("QBO auth URL failed")
         raise HTTPException(
             400,
-            f"Failed to generate auth URL: {str(e)}. "
-            "Check that Client ID and Client Secret are configured in Settings.",
+            "Failed to generate the auth URL — check that Client ID and Client "
+            "Secret are configured in Settings; the server log has the details.",
         )
 
 
@@ -202,8 +203,11 @@ def export_entity(entity: str, db: Session = Depends(get_db)):
     try:
         result = _EXPORT_ENTITY_MAP[entity](db)
         db.commit()
-    except Exception as e:
+    except Exception:
         db.rollback()
-        raise HTTPException(500, f"Export of {entity} failed: {str(e)}")
+        logger.exception("QBO export of %s failed", entity)
+        raise HTTPException(
+            500, f"Export of {entity} failed — the server log has the details"
+        )
 
     return result

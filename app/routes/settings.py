@@ -1,3 +1,5 @@
+import logging
+
 # ============================================================================
 # Settings — QuickBooks 2003 had a 12-tab preferences dialog; we condensed
 # everything into a single key-value store because nobody needs 12 tabs.
@@ -65,6 +67,8 @@ class SettingsUpdate(BaseModel):
     # DEFAULT_SETTINGS is the authoritative key list, not the schema.
     model_config = ConfigDict(extra="allow")
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -215,5 +219,10 @@ def test_email(db: Session = Depends(get_db)):
     except HTTPException:
         # Don't let the catch-all below rewrite our own 502 into a 500.
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")
+    except Exception:
+        # SMTP errors carry hostnames and server banners: log them, say only
+        # that it failed (the email log has the reason, as the 502 says).
+        logger.exception("Test email failed")
+        raise HTTPException(
+            status_code=500, detail="Email failed — see the email log for the reason"
+        )
