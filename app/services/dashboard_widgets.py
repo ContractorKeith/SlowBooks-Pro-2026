@@ -528,5 +528,7 @@ def build(db: Session, ids: list[str]) -> dict[str, dict]:
         try:
             out[wid] = entry[3](db)
         except Exception as exc:  # pragma: no cover - defensive
-            out[wid] = {"error": str(exc)}
+            from app.services.safe_errors import safe_message
+
+            out[wid] = {"error": safe_message(exc, f"dashboard widget {wid}")}
     return out

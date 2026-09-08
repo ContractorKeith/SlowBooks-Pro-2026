@@ -205,3 +205,26 @@ def test_qbo_auth_url_and_export_entity_and_test_email_do_not_echo(client, monke
     monkeypatch.setattr(settings_route, "send_email", _boom, raising=False)
     r = client.post("/api/settings/test-email")
     assert r.status_code in (400, 500, 502) and "secret" not in r.text, r.text
+
+
+def test_python_errors_are_bugs_not_user_messages(caplog):
+    """macbase1, 2.9.4 round 2: KeyError / IndexError / ZeroDivisionError are
+    what Python raises when the code is wrong; they must be logged as bugs
+    and answered generically, never passed through as "'ACCNT'"."""
+    from decimal import Decimal, InvalidOperation
+
+    from app.services.safe_errors import GENERIC, safe_message
+
+    cases = []
+    for thrower in (lambda: {}["ACCNT"], lambda: [][3], lambda: 1 / 0):
+        try:
+            thrower()
+        except Exception as exc:
+            with caplog.at_level("ERROR"):
+                cases.append(safe_message(exc, "test"))
+    assert cases == [GENERIC, GENERIC, GENERIC]
+    assert caplog.text.count("Traceback") >= 3
+    try:
+        Decimal("abc")
+    except InvalidOperation as exc:
+        assert safe_message(exc, "test") == "a number could not be read"

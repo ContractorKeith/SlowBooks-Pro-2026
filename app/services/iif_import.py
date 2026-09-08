@@ -762,7 +762,8 @@ def import_transactions(db: Session, blocks: list) -> dict:
             errors.append(
                 {
                     "row": i + 1,
-                    "message": f"Transaction block {i + 1}: {safe_message(e, "IIF import")}",
+                    "message": f"Transaction block {i + 1}: "
+                    + safe_message(e, "IIF import"),
                 }
             )
 

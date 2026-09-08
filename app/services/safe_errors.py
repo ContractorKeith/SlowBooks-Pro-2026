@@ -18,8 +18,12 @@ logger = logging.getLogger(__name__)
 
 GENERIC = "unexpected error — the server log has the details"
 
-# Exceptions whose message is ours (raised with a user-facing sentence).
-DATA_ERRORS = (ValueError, LookupError, InvalidOperation, ArithmeticError)
+# Exceptions whose message is ours: the importers and services raise
+# ValueError with a sentence for the user ("Missing customer NAME"). Not
+# LookupError / ArithmeticError — those are what Python raises when the
+# code is wrong (KeyError, IndexError, ZeroDivisionError), and a bug must
+# be logged, not handed to the user as "'ACCNT'" (macbase1, 2.9.4 gate).
+DATA_ERRORS = (ValueError,)
 
 
 def safe_message(exc: BaseException, context: str = "operation") -> str:
@@ -35,7 +39,12 @@ def safe_message(exc: BaseException, context: str = "operation") -> str:
     if isinstance(exc, StatementError) and not isinstance(exc, DATA_ERRORS):
         logger.exception("%s: database error", context)
         return "Database error — the server log has the details"
+    if isinstance(exc, InvalidOperation):
+        # decimal's own text is "[<class 'decimal.ConversionSyntax'>]"
+        logger.info("%s: a number could not be read", context)
+        return "a number could not be read"
     if isinstance(exc, DATA_ERRORS):
+        logger.info("%s: %s", context, exc)
         return str(exc)
     logger.exception("%s: unexpected error", context)
     return GENERIC

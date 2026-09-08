@@ -135,16 +135,21 @@ def email_invoice(
     except HTTPException:
         raise
     except Exception as e:
+        # A failure before send_email() ran (rendering, the payment URL)
+        # has no EmailLog row yet; write one, with the same sanitised text
+        # the response gets — SMTP and provider errors carry hostnames.
         from app.models.email_log import EmailLog
+        from app.services.safe_errors import safe_message
 
+        message = safe_message(e, "invoice email")
         log = EmailLog(
             entity_type="invoice",
             entity_id=inv.id,
             recipient=data.recipient,
             subject=subject,
             status="failed",
-            error_message=str(e),
+            error_message=message,
         )
         db.add(log)
         db.commit()
-        raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Email failed: {message}")
