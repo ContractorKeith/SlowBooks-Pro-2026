@@ -51,7 +51,9 @@ def test_create_company_quotes_db_name_via_dialect():
 
     with patch("app.services.company_service._is_sqlite", return_value=False), patch(
         "app.services.company_service.create_engine", return_value=engine
-    ), patch("app.services.company_service._base_url", return_value="postgresql://x/"), patch(
+    ), patch(
+        "app.services.company_service._base_url", return_value="postgresql://x/"
+    ), patch(
         "app.services.company_service._init_company_db"
     ) as init_db:
         result = create_company(db, "Acme", "acme_books")
