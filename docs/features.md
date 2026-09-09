@@ -48,13 +48,15 @@ pass, and the per-integration setup guides ([Stripe](setup-stripe.md),
 Tax calculations are approximate — verify with a tax professional. Full module reference (models, routes, UI pages, pending items) lives at [docs/payroll-hr-module.md](payroll-hr-module.md).
 
 ## Banking
-- **Bank Accounts** — Register view with deposits and withdrawals
-- **Check Register** — Filtered bank transaction view with running balance, payment/deposit columns, sorted by date
+The register is the ledger account (v2.10, issue #114). Full guide: [docs/banking.md](banking.md).
+- **Bank and credit-card accounts** — chart accounts flagged `bank` / `credit_card`; every paid-from, deposit-to and pay-from picker lists exactly those
+- **Register** — every posting on the account with a running balance (a card shows the amount owed), payee, source link, cleared/reconciled marks; a register entry posts (DR category / CR account for money out, the reverse for money in)
+- **Transfers** — DR to / CR from between bank and card accounts; paying a card is a transfer. Voidable
 - **Make Deposits** — Move funds from Undeposited Funds to a bank account. Select pending payments, choose target account, create deposit
-- **Credit Card Charges** — Enter credit card charges as expenses (DR Expense, CR Credit Card Payable). Dedicated charge entry form with vendor, amount, and expense category
+- **Credit Card Charges** — DR Expense, CR the card you pick (default 2100). Voidable
 - **Check Printing** — Generate check PDFs in standard 3-per-page format (stub/stub/check) with payee, amount in words, memo, and signature line
-- **Bank Reconciliation** — Full workflow: enter statement balance, toggle cleared items, validate difference = $0, complete
-- **OFX/QFX Import** — Import bank transactions from OFX/QFX files with FITID dedup, preview before import, auto-match by amount/date
+- **Bank feeds and file imports (SimpleFIN, OFX/QFX, Chase/PayPal CSV)** — a review queue: each statement line is auto-matched to the posting the ledger already has (same amount and side within five days, check number narrows, ambiguity waits), or added with a category, or excluded. Bank rules suggest categories and never post
+- **Bank Reconciliation** — over the ledger's lines: beginning balance from the prior statement, tick cleared lines (matched statement lines arrive cleared), difference must be $0, completing locks the lines
 
 ## Reports & Tax
 - **QuickBooks-style period selector** — All reports support preset periods (This Month, This Quarter, This/Last Year, Year to Date, Custom Date) with live refresh
@@ -448,9 +450,14 @@ All endpoints under `/api/`. Swagger docs at `/docs`. 300+ routes across 50 rout
 | `/api/estimates/{id}/print-preview` | GET | Browser print preview (HTML) |
 | `/api/payments` | GET, POST | Record payments with invoice allocation |
 | `/api/payments/{id}/void` | POST | Void payment with reversing journal entry |
-| `/api/banking/accounts` | GET, POST, PUT | Bank account management |
-| `/api/banking/transactions` | GET, POST | Bank register entries |
-| `/api/banking/reconciliations` | GET, POST | Reconciliation sessions |
+| `/api/banking/overview` | GET | Bank and card accounts with ledger balances, feed, to-review count |
+| `/api/banking/accounts` | GET, POST, PUT | Bank feeds (statement identity of a ledger account); `opening_balance` posts; `…/post-legacy-balance` |
+| `/api/banking/transactions` | GET, POST | GET: statement lines (review queue). POST: a register entry — posts a journal entry |
+| `/api/banking/transactions/{id}/candidates · match · unmatch · add · exclude · restore` | GET, POST | Review-queue actions |
+| `/api/banking/accounts/{id}/feed/add-all · auto-match` | POST | Bulk review actions |
+| `/api/banking/entries/{id}/void` | POST | Void a register entry |
+| `/api/banking/reconciliations` | GET, POST, DELETE | Reconciliation sessions over ledger lines (`…/{id}/transactions`, `toggle/{line_id}`, `complete`) |
+| `/api/transfers` | GET, POST | Transfers between bank/card accounts (`…/{id}/void`) |
 
 ### Accounts Payable
 | Endpoint | Methods | Description |
@@ -488,10 +495,10 @@ All payroll, HR, tax-form, and self-service portal endpoints are documented with
 ### Banking & Deposits
 | Endpoint | Methods | Description |
 |----------|---------|-------------|
-| `/api/banking/check-register` | GET | Check register with running balance |
+| `/api/banking/check-register` | GET | The register: ledger lines on a bank/card account with running balance, links, cleared state |
 | `/api/deposits/pending` | GET | Pending deposits in Undeposited Funds |
 | `/api/deposits` | GET, POST | Create deposits (move funds to bank) |
-| `/api/cc-charges` | GET, POST | Credit card charge entry |
+| `/api/cc-charges` | GET, POST | Credit card charge entry (`card_account_id`, `…/{id}/void`) |
 | `/api/checks/print` | GET | Generate check PDF (3-per-page format) |
 
 ### Journal Entries

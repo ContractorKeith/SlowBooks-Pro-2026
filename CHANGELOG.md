@@ -7,6 +7,65 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.10.0 — The bank register is the ledger
+
+**A register entry moves the general ledger, and the register shows what the
+ledger has.** Discussion #112 (a QuickBooks user) asked why a −500 entered in
+the checking register left account 1000 untouched; the answer was that the
+register had been a side ledger since day one — its own rows, its own stored
+balance, imports that never posted, documents that never appeared in it,
+reconciliation ticking rows the ledger had never seen. From 2.10 the ledger
+is the only ledger (issue #114).
+
+**What a bank account is now.** A chart account flagged `bank` or
+`credit_card` (Checking, Savings and Credit Card come flagged; Chart of
+Accounts can flag others). Every "paid from", "deposit to" and "pay from"
+picker lists exactly those, and the register, transfers and reconciliation
+are keyed by the ledger account. A bank feed (SimpleFIN, OFX/QFX, CSV) is the
+account's statement identity and must link to a ledger account.
+
+**One sign rule.** An amount above zero goes into the account (a deposit, a
+card payment), below zero comes out (a payment, a card charge) — the same on
+a bank and on a card; a card's register shows the amount owed as a positive
+number. Statement lines already arrive that way, so nothing is flipped.
+
+**Register entries post** (DR category / CR account for money out, the
+reverse for money in; a bank or card category makes it a transfer). **Transfers**
+are a document: paying a card is a transfer from the bank to the card. Credit
+card charges pick the card (default 2100) and can be voided; so can register
+entries and transfers. A void refuses an entry a completed reconciliation
+holds and hands any matched statement lines back to the review queue.
+
+**Statement lines are a review queue.** On import each line looks for the one
+posting the ledger already has for it (same amount, same side, within five
+days; a check number narrows it; two equal candidates stay unmatched — no
+guessing). Bank rules suggest a category and never post. What is left waits in
+*To review* on the account: **Add** posts it with the category, **Match** links
+it to something already entered, **Exclude** drops it, **Add all categorised**
+posts the rule-suggested lines in one click that says what it skipped.
+
+**Reconciliation runs over the ledger's lines**: the prior statement's balance
+is the beginning balance, ticks clear ledger lines, matched statement lines
+arrive cleared, and completing locks the lines. One open reconciliation per
+account; Abandon keeps the ticks.
+
+**Upgrading.** The old register balance is not posted for you — a migration
+must not write ledger lines you have not reviewed. The Banking page shows the
+number once, with **Post as opening balance** (against 3900 Opening Balance
+Equity, created on demand) or **Dismiss**. Feeds that were never linked get a
+bank account created and linked. Rows ticked in the old reconciliations are
+excluded from the queue (Restore brings one back). API changes: `POST
+/api/banking/accounts` needs `account_id` and takes `opening_balance` (the old
+`balance` is a 422); `POST /api/banking/transactions` needs
+`category_account_id` and returns the journal entry; `GET
+/api/banking/transactions` lists statement lines only; reconciliations take
+`account_id`. The Check Register page is the Banking register (old bookmarks
+redirect).
+
+**QA baseline.** The shared NEONpulse fixture posts its bank account's 42,500
+opening balance now, so the cross-platform trial balance moves from
+3,316,390.46 to 3,358,890.46 — deliberately, once.
+
 ### v2.9.4 — The company logo on every document; exception text stays in the log
 
 **Every PDF now carries the company logo when one is set.** The logo
