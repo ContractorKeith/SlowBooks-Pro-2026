@@ -3,7 +3,7 @@
 # their sum matches the statement balance.
 # ============================================================================
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -510,92 +510,79 @@ def void_bank_entry(txn_id: int, db: Session = Depends(get_db)):
     return _entry_out(txn, bank_line.account_id, db, status="void")
 
 
-# Reconciliations
+# ---------------------------------------------------------------------------
+# Reconciliations — over the ledger account's lines (issue #114).
+# ---------------------------------------------------------------------------
+
+
 @router.get("/reconciliations", response_model=list[ReconciliationResponse])
-def list_reconciliations(bank_account_id: int = None, db: Session = Depends(get_db)):
+def list_reconciliations(
+    account_id: int = None, bank_account_id: int = None, db: Session = Depends(get_db)
+):
     q = db.query(Reconciliation)
-    if bank_account_id:
+    if account_id:
+        q = q.filter(Reconciliation.account_id == account_id)
+    elif bank_account_id:
         q = q.filter(Reconciliation.bank_account_id == bank_account_id)
-    return q.order_by(Reconciliation.statement_date.desc()).all()
+    return q.order_by(
+        Reconciliation.statement_date.desc(), Reconciliation.id.desc()
+    ).all()
 
 
 @router.post("/reconciliations", response_model=ReconciliationResponse, status_code=201)
 def create_reconciliation(data: ReconciliationCreate, db: Session = Depends(get_db)):
-    """Start a reconciliation."""
-    ba = db.query(BankAccount).filter(BankAccount.id == data.bank_account_id).first()
-    if not ba:
-        raise HTTPException(status_code=404, detail="Bank account not found")
-    recon = Reconciliation(**data.model_dump())
-    db.add(recon)
+    """Start a reconciliation (409 with existing_id when one is open)."""
+    from app.services import reconciliation as rc
+
+    account = _resolve_account(db, data.account_id, data.bank_account_id)
+    recon = rc.start(db, account.id, data.statement_date, data.statement_balance)
     db.commit()
     db.refresh(recon)
     return recon
 
 
+def _recon(db: Session, recon_id: int) -> Reconciliation:
+    recon = db.query(Reconciliation).filter(Reconciliation.id == recon_id).first()
+    if not recon:
+        raise HTTPException(status_code=404, detail="Reconciliation not found")
+    return recon
+
+
 @router.get("/reconciliations/{recon_id}/transactions")
 def get_reconciliation_transactions(recon_id: int, db: Session = Depends(get_db)):
-    """Get unreconciled transactions for this bank account"""
-    recon = db.query(Reconciliation).filter(Reconciliation.id == recon_id).first()
-    if not recon:
-        raise HTTPException(status_code=404, detail="Reconciliation not found")
+    """The ledger lines on the account up to the statement date, cleared
+    or not, with the statement / beginning / cleared / difference math."""
+    from app.services import reconciliation as rc
 
-    txns = (
-        db.query(BankTransaction)
-        .filter(BankTransaction.bank_account_id == recon.bank_account_id)
-        .filter(BankTransaction.date <= recon.statement_date)
-        .order_by(BankTransaction.date)
-        .all()
-    )
-
-    # Sum and subtract in Decimal so a reconciliation that's actually zero
-    # doesn't show $0.00000001 of "difference" from float drift over hundreds
-    # of cleared transactions. Convert to float only at the JSON boundary.
-    cleared_total = sum(
-        (Decimal(str(t.amount)) for t in txns if t.reconciled), Decimal("0")
-    )
-    uncleared_total = sum(
-        (Decimal(str(t.amount)) for t in txns if not t.reconciled), Decimal("0")
-    )
-    statement_bal = Decimal(str(recon.statement_balance or 0))
-    difference = statement_bal - cleared_total
-
-    return {
-        "reconciliation_id": recon.id,
-        "statement_balance": float(statement_bal),
-        "cleared_total": float(cleared_total),
-        "uncleared_total": float(uncleared_total),
-        "difference": float(difference),
-        "transactions": [
-            {
-                "id": t.id,
-                "date": t.date.isoformat(),
-                "payee": t.payee or "",
-                "description": t.description or "",
-                "amount": float(t.amount),
-                "check_number": t.check_number,
-                "reconciled": t.reconciled,
-            }
-            for t in txns
-        ],
-    }
+    return rc.session(db, _recon(db, recon_id))
 
 
-@router.post("/reconciliations/{recon_id}/toggle/{txn_id}")
-def toggle_cleared(recon_id: int, txn_id: int, db: Session = Depends(get_db)):
-    """Toggle a transaction's cleared status."""
-    recon = db.query(Reconciliation).filter(Reconciliation.id == recon_id).first()
-    if not recon:
-        raise HTTPException(status_code=404, detail="Reconciliation not found")
-    if recon.status == ReconciliationStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Reconciliation already completed")
+@router.post("/reconciliations/{recon_id}/toggle/{line_id}")
+def toggle_cleared(recon_id: int, line_id: int, db: Session = Depends(get_db)):
+    from app.services import reconciliation as rc
 
-    txn = db.query(BankTransaction).filter(BankTransaction.id == txn_id).first()
-    if not txn:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
-    txn.reconciled = not txn.reconciled
+    line = rc.toggle(db, _recon(db, recon_id), line_id)
     db.commit()
-    return {"id": txn.id, "reconciled": txn.reconciled}
+    return {"id": line.id, "reconciled": bool(line.cleared)}
+
+
+@router.post("/reconciliations/{recon_id}/complete")
+def complete_reconciliation(recon_id: int, db: Session = Depends(get_db)):
+    """Finish: the difference must be zero; the cleared lines are stamped."""
+    from app.services import reconciliation as rc
+
+    out = rc.complete(db, _recon(db, recon_id))
+    db.commit()
+    return out
+
+
+@router.delete("/reconciliations/{recon_id}")
+def abandon_reconciliation(recon_id: int, db: Session = Depends(get_db)):
+    from app.services import reconciliation as rc
+
+    rc.abandon(db, _recon(db, recon_id))
+    db.commit()
+    return {"status": "abandoned", "reconciliation_id": recon_id}
 
 
 @router.get("/check-register")
@@ -645,33 +632,3 @@ def check_register(
         "balance": float(gl_balance(db, account.id)),
         "entries": entries,
     }
-
-
-@router.post("/reconciliations/{recon_id}/complete")
-def complete_reconciliation(recon_id: int, db: Session = Depends(get_db)):
-    """Finish a reconciliation — validates the difference is 0."""
-    recon = db.query(Reconciliation).filter(Reconciliation.id == recon_id).first()
-    if not recon:
-        raise HTTPException(status_code=404, detail="Reconciliation not found")
-    if recon.status == ReconciliationStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Already completed")
-
-    txns = (
-        db.query(BankTransaction)
-        .filter(BankTransaction.bank_account_id == recon.bank_account_id)
-        .filter(BankTransaction.date <= recon.statement_date)
-        .filter(BankTransaction.reconciled)
-        .all()
-    )
-    cleared_total = sum(t.amount for t in txns)
-
-    if abs(cleared_total - recon.statement_balance) > Decimal("0.01"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Difference is ${float(recon.statement_balance - cleared_total):.2f} — must be $0.00 to complete",
-        )
-
-    recon.status = ReconciliationStatus.COMPLETED
-    recon.completed_at = datetime.utcnow()
-    db.commit()
-    return {"status": "completed", "reconciliation_id": recon.id}

@@ -127,16 +127,23 @@ class StatementAdd(StrictModel):
 
 
 class ReconciliationCreate(StrictModel):
-    bank_account_id: int
+    """`account_id` is the ledger account; `bank_account_id` (a feed) is
+    accepted for older callers."""
+
+    account_id: Optional[int] = None
+    bank_account_id: Optional[int] = None
     statement_date: dt_date
     statement_balance: Decimal
 
 
 class ReconciliationResponse(BaseModel):
     id: int
-    bank_account_id: int
+    account_id: Optional[int]
+    bank_account_id: Optional[int]
     statement_date: dt_date
     statement_balance: Decimal
+    beginning_balance: Decimal
+    cleared_total: Optional[Decimal]
     status: ReconciliationStatus
     created_at: datetime
     completed_at: Optional[datetime]
