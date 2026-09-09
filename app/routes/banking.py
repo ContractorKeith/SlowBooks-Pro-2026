@@ -23,14 +23,26 @@ from app.schemas.banking import (
     BankAccountCreate,
     BankAccountUpdate,
     BankAccountResponse,
+    BankEntryResponse,
     BankTransactionCreate,
     BankTransactionResponse,
     LegacyBalancePost,
     ReconciliationCreate,
     ReconciliationResponse,
 )
-from app.services.bank_posting import post_opening_balance, require_bank_account
-from app.services.bank_register import account_register, gl_balance, gl_balances
+from app.models.transactions import Transaction
+from app.services.bank_posting import (
+    post_bank_entry,
+    post_opening_balance,
+    require_bank_account,
+    void_document,
+)
+from app.services.bank_register import (
+    account_register,
+    gl_balance,
+    gl_balances,
+    voided_transaction_ids,
+)
 from app.services.closing_date import check_closing_date
 
 router = APIRouter(prefix="/api/banking", tags=["banking"])
@@ -260,19 +272,86 @@ def list_bank_transactions(
     return q.order_by(BankTransaction.date.desc()).offset(skip).limit(limit).all()
 
 
-@router.post("/transactions", response_model=BankTransactionResponse, status_code=201)
-def create_bank_transaction(data: BankTransactionCreate, db: Session = Depends(get_db)):
-    check_closing_date(db, data.date)
-    ba = db.query(BankAccount).filter(BankAccount.id == data.bank_account_id).first()
-    if not ba:
-        raise HTTPException(status_code=404, detail="Bank account not found")
+def _entry_out(txn, account_id: int, db: Session, status: str = "recorded") -> dict:
+    bank_line = next(ln for ln in txn.lines if ln.account_id == account_id)
+    other = next((ln for ln in txn.lines if ln.account_id != account_id), bank_line)
+    category = db.query(Account).filter(Account.id == other.account_id).first()
+    amount = (bank_line.debit or Decimal("0")) - (bank_line.credit or Decimal("0"))
+    return {
+        "id": txn.id,
+        "account_id": account_id,
+        "date": txn.date,
+        "amount": amount,
+        "category_account_id": other.account_id,
+        "category_name": category.name if category else "",
+        "payee": txn.description or "",
+        "description": bank_line.description or "",
+        "reference": txn.reference or "",
+        "source_type": txn.source_type or "",
+        "status": status,
+    }
 
-    txn = BankTransaction(**data.model_dump())
-    ba.balance += data.amount
-    db.add(txn)
+
+def _resolve_account(db: Session, account_id, bank_account_id) -> Account:
+    if account_id is None and bank_account_id is None:
+        raise HTTPException(status_code=422, detail="account_id is required")
+    if account_id is None:
+        ba = db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
+        if not ba:
+            raise HTTPException(status_code=404, detail="Bank account not found")
+        if not ba.account_id:
+            raise HTTPException(
+                status_code=400, detail="Link this feed to a ledger account first"
+            )
+        account_id = ba.account_id
+    return require_bank_account(db, account_id)
+
+
+@router.post("/transactions", response_model=BankEntryResponse, status_code=201)
+def create_bank_transaction(data: BankTransactionCreate, db: Session = Depends(get_db)):
+    """A register entry posts to the ledger (issue #114): DR category /
+    CR account for money out, the reverse for money in; a bank or card
+    category makes it a transfer."""
+    check_closing_date(db, data.date)
+    account = _resolve_account(db, data.account_id, data.bank_account_id)
+    category = db.query(Account).filter(Account.id == data.category_account_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category account not found")
+    txn = post_bank_entry(
+        db,
+        account,
+        data.date,
+        data.amount,
+        category,
+        payee=data.payee,
+        memo=data.description,
+        reference=data.check_number,
+        class_id=data.class_id,
+        job_id=data.job_id,
+    )
     db.commit()
     db.refresh(txn)
-    return txn
+    return _entry_out(txn, account.id, db)
+
+
+@router.post("/entries/{txn_id}/void", response_model=BankEntryResponse)
+def void_bank_entry(txn_id: int, db: Session = Depends(get_db)):
+    txn = (
+        db.query(Transaction)
+        .filter(Transaction.id == txn_id, Transaction.source_type == "bank_entry")
+        .first()
+    )
+    if not txn:
+        raise HTTPException(status_code=404, detail="Bank entry not found")
+    if txn.id in voided_transaction_ids(db, [txn.id]):
+        raise HTTPException(status_code=400, detail="Bank entry is already void")
+    bank_line = next(
+        (ln for ln in txn.lines if ln.account and ln.account.bank_kind), txn.lines[0]
+    )
+    void_document(db, txn, "bank_entry_void")
+    db.commit()
+    db.refresh(txn)
+    return _entry_out(txn, bank_line.account_id, db, status="void")
 
 
 # Reconciliations

@@ -61,13 +61,35 @@ class LegacyBalancePost(StrictModel):
 
 
 class BankTransactionCreate(StrictModel):
-    bank_account_id: int
+    """A register entry: posts a journal entry. amount > 0 debits the bank
+    or card account (money in / card payment), amount < 0 credits it
+    (money out / card charge). `account_id` is the ledger account;
+    `bank_account_id` (the feed) is accepted for older callers."""
+
+    account_id: Optional[int] = None
+    bank_account_id: Optional[int] = None
     date: dt_date
     amount: Decimal
+    category_account_id: int
     payee: Optional[str] = None
     description: Optional[str] = None
     check_number: Optional[str] = None
-    category_account_id: Optional[int] = None
+    class_id: Optional[int] = None
+    job_id: Optional[int] = None
+
+
+class BankEntryResponse(BaseModel):
+    id: int  # the journal entry
+    account_id: int
+    date: dt_date
+    amount: Decimal
+    category_account_id: int
+    category_name: str
+    payee: str
+    description: str
+    reference: str
+    source_type: str
+    status: str
 
 
 class BankTransactionResponse(BaseModel):
