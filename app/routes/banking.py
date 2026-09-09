@@ -28,6 +28,8 @@ from app.schemas.banking import (
     BankTransactionResponse,
     LegacyBalancePost,
     ReconciliationCreate,
+    StatementAdd,
+    StatementMatch,
     ReconciliationResponse,
 )
 from app.models.transactions import Transaction
@@ -258,18 +260,172 @@ def post_legacy_balance(
 
 
 # Bank Transactions
+def _statement_out(rows: list, db: Session) -> list[dict]:
+    ids = {r.category_account_id for r in rows if r.category_account_id}
+    names = (
+        {a.id: a.name for a in db.query(Account).filter(Account.id.in_(ids)).all()}
+        if ids
+        else {}
+    )
+    return [
+        {
+            "id": r.id,
+            "bank_account_id": r.bank_account_id,
+            "date": r.date,
+            "amount": r.amount,
+            "payee": r.payee,
+            "description": r.description,
+            "check_number": r.check_number,
+            "category_account_id": r.category_account_id,
+            "category_name": names.get(r.category_account_id),
+            "match_status": r.match_status,
+            "transaction_id": r.transaction_id,
+            "transaction_line_id": r.transaction_line_id,
+            "import_source": r.import_source,
+            "reconciled": bool(r.reconciled),
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/transactions", response_model=list[BankTransactionResponse])
 def list_bank_transactions(
     bank_account_id: int = None,
+    status: str = None,
     skip: int = 0,
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
+    """Statement lines (feeds and imports) — the review queue. `status`
+    filters on match_status: unmatched | auto | manual | added | excluded."""
     skip, limit = clamp_pagination(skip, limit)
     q = db.query(BankTransaction)
     if bank_account_id:
         q = q.filter(BankTransaction.bank_account_id == bank_account_id)
-    return q.order_by(BankTransaction.date.desc()).offset(skip).limit(limit).all()
+    if status:
+        q = q.filter(BankTransaction.match_status == status)
+    rows = (
+        q.order_by(BankTransaction.date.desc(), BankTransaction.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return _statement_out(rows, db)
+
+
+def _statement_line(db: Session, txn_id: int) -> BankTransaction:
+    bt = db.query(BankTransaction).filter(BankTransaction.id == txn_id).first()
+    if not bt:
+        raise HTTPException(status_code=404, detail="Statement line not found")
+    return bt
+
+
+@router.get("/transactions/{txn_id}/candidates")
+def statement_candidates(txn_id: int, db: Session = Depends(get_db)):
+    """Ledger lines this statement line could be matched to."""
+    from app.services import bank_matching as m
+
+    bt = _statement_line(db, txn_id)
+    acct = m._feed_account(db, bt)
+    return m.candidate_lines(db, acct.id, bt.amount, bt.date)
+
+
+@router.post("/transactions/{txn_id}/match", response_model=BankTransactionResponse)
+def statement_match(txn_id: int, data: StatementMatch, db: Session = Depends(get_db)):
+    from app.services import bank_matching as m
+
+    bt = m.match(db, _statement_line(db, txn_id), data.line_id)
+    db.commit()
+    db.refresh(bt)
+    return _statement_out([bt], db)[0]
+
+
+@router.post("/transactions/{txn_id}/unmatch", response_model=BankTransactionResponse)
+def statement_unmatch(txn_id: int, db: Session = Depends(get_db)):
+    from app.services import bank_matching as m
+
+    bt = m.unmatch(db, _statement_line(db, txn_id))
+    db.commit()
+    db.refresh(bt)
+    return _statement_out([bt], db)[0]
+
+
+@router.post("/transactions/{txn_id}/add", response_model=BankTransactionResponse)
+def statement_add(
+    txn_id: int, data: StatementAdd = None, db: Session = Depends(get_db)
+):
+    """Post this statement line as a register entry and link it."""
+    from app.services import bank_matching as m
+
+    data = data or StatementAdd()
+    bt = m.add(
+        db,
+        _statement_line(db, txn_id),
+        category_account_id=data.category_account_id,
+        payee=data.payee,
+        memo=data.memo,
+        class_id=data.class_id,
+        job_id=data.job_id,
+    )
+    db.commit()
+    db.refresh(bt)
+    return _statement_out([bt], db)[0]
+
+
+@router.post("/transactions/{txn_id}/exclude", response_model=BankTransactionResponse)
+def statement_exclude(txn_id: int, db: Session = Depends(get_db)):
+    from app.services import bank_matching as m
+
+    bt = m.exclude(_statement_line(db, txn_id))
+    db.commit()
+    db.refresh(bt)
+    return _statement_out([bt], db)[0]
+
+
+@router.post("/transactions/{txn_id}/restore", response_model=BankTransactionResponse)
+def statement_restore(txn_id: int, db: Session = Depends(get_db)):
+    from app.services import bank_matching as m
+
+    bt = m.restore(_statement_line(db, txn_id))
+    db.commit()
+    db.refresh(bt)
+    return _statement_out([bt], db)[0]
+
+
+@router.post("/accounts/{account_id}/feed/add-all")
+def feed_add_all(account_id: int, db: Session = Depends(get_db)):
+    """Add every unmatched line that already carries a category."""
+    from app.services import bank_matching as m
+
+    ba = db.query(BankAccount).filter(BankAccount.id == account_id).first()
+    if not ba:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    out = m.add_all(db, ba)
+    db.commit()
+    return out
+
+
+@router.post("/accounts/{account_id}/feed/auto-match")
+def feed_auto_match(account_id: int, db: Session = Depends(get_db)):
+    """Find matches for this feed's unmatched lines (what an import does
+    on arrival, on demand)."""
+    from app.services import bank_matching as m
+
+    ba = db.query(BankAccount).filter(BankAccount.id == account_id).first()
+    if not ba:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    rows = (
+        db.query(BankTransaction)
+        .filter(
+            BankTransaction.bank_account_id == ba.id,
+            BankTransaction.match_status == "unmatched",
+        )
+        .all()
+    )
+    n = m.auto_match(db, ba, rows)
+    db.commit()
+    return {"matched": n}
 
 
 def _entry_out(txn, account_id: int, db: Session, status: str = "recorded") -> dict:

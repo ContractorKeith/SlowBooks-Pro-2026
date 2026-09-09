@@ -93,6 +93,8 @@ class BankEntryResponse(BaseModel):
 
 
 class BankTransactionResponse(BaseModel):
+    """A statement line in the review queue."""
+
     id: int
     bank_account_id: int
     date: dt_date
@@ -101,10 +103,27 @@ class BankTransactionResponse(BaseModel):
     description: Optional[str]
     check_number: Optional[str]
     category_account_id: Optional[int]
+    category_name: Optional[str] = None
+    match_status: Optional[str] = None
+    transaction_id: Optional[int] = None
+    transaction_line_id: Optional[int] = None
+    import_source: Optional[str] = None
     reconciled: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class StatementMatch(StrictModel):
+    line_id: int
+
+
+class StatementAdd(StrictModel):
+    category_account_id: Optional[int] = None
+    payee: Optional[str] = None
+    memo: Optional[str] = None
+    class_id: Optional[int] = None
+    job_id: Optional[int] = None
 
 
 class ReconciliationCreate(StrictModel):
