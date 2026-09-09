@@ -310,6 +310,7 @@ def _init_company_db(url: str) -> None:
                             name=entry["name"],
                             account_number=entry["account_number"],
                             account_type=AccountType(entry["account_type"]),
+                            bank_kind=entry.get("bank_kind"),
                             is_system=True,
                         )
                     )

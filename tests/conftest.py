@@ -144,6 +144,7 @@ def seed_accounts(db_session):
             account_number=data["account_number"],
             name=data["name"],
             account_type=AccountType(data["account_type"]),
+            bank_kind=data.get("bank_kind"),
             is_system=True,
             balance=Decimal("0"),
         )

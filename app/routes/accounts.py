@@ -31,15 +31,40 @@ def _reject_duplicate_number(db: Session, number, exclude_id=None):
         )
 
 
+_BANK_KIND_FOR_TYPE = {"bank": "asset", "credit_card": "liability"}
+
+
+def _check_bank_kind(bank_kind, account_type) -> None:
+    """A bank is an asset, a card is a liability; anything else is a
+    mistake the picker would propagate everywhere."""
+    if bank_kind is None:
+        return
+    want = _BANK_KIND_FOR_TYPE.get(bank_kind)
+    have = getattr(account_type, "value", account_type)
+    if want != have:
+        raise HTTPException(
+            status_code=400,
+            detail=f"bank_kind {bank_kind!r} needs account_type {want!r}, not {have!r}",
+        )
+
+
 @router.get("", response_model=list[AccountResponse])
 def list_accounts(
-    active_only: bool = False, account_type: str = None, db: Session = Depends(get_db)
+    active_only: bool = False,
+    account_type: str = None,
+    bank: bool = False,
+    db: Session = Depends(get_db),
 ):
+    """`?bank=1` lists the bank and credit-card accounts (bank_kind set) —
+    what the register, the transfer form and every paid-from / deposit-to
+    picker use."""
     q = db.query(Account)
     if active_only:
         q = q.filter(Account.is_active)
     if account_type:
         q = q.filter(Account.account_type == account_type)
+    if bank:
+        q = q.filter(Account.bank_kind.isnot(None))
     return q.order_by(Account.account_number).all()
 
 
@@ -51,6 +76,7 @@ def get_account(account_id: int, db: Session = Depends(get_db)):
 @router.post("", response_model=AccountResponse, status_code=201)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     _reject_duplicate_number(db, data.account_number)
+    _check_bank_kind(data.bank_kind, data.account_type)
     account = Account(**data.model_dump())
     db.add(account)
     try:
@@ -75,6 +101,11 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     if fields.get("parent_id") == account_id:
         raise HTTPException(
             status_code=400, detail="An account cannot be its own parent."
+        )
+    if "bank_kind" in fields or "account_type" in fields:
+        _check_bank_kind(
+            fields.get("bank_kind", account.bank_kind),
+            fields.get("account_type", account.account_type),
         )
 
     for key, val in fields.items():

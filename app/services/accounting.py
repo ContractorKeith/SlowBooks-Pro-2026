@@ -270,6 +270,12 @@ def get_cc_account_id(db: Session) -> int:
     return acct.id if acct else None
 
 
+def get_opening_balance_equity_id(db: Session) -> int:
+    """3900 Opening Balance Equity, created on demand: the offset for a bank
+    or card account's opening balance (issue #114)."""
+    return ensure_account(db, "3900", "Opening Balance Equity", AccountType.EQUITY).id
+
+
 def ensure_account(
     db: Session, number: str, name: str, account_type: AccountType
 ) -> Account:
