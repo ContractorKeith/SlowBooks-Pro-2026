@@ -2,18 +2,24 @@ from datetime import date as dt_date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.schemas.common import StrictModel
 
 from app.models.banking import ReconciliationStatus
 
 
 class BankAccountCreate(StrictModel):
+    """A bank feed / statement identity for a ledger account that has
+    bank_kind set. An opening balance posts a journal entry against 3900
+    Opening Balance Equity; it is what the statement says (cash in the
+    bank, or the amount owed on a card)."""
+
     name: str
-    account_id: Optional[int] = None
+    account_id: int
     bank_name: Optional[str] = None
     last_four: Optional[str] = None
-    balance: Decimal = Decimal("0")
+    opening_balance: Decimal = Decimal("0")
+    opening_date: Optional[dt_date] = None
 
 
 class BankAccountUpdate(StrictModel):
@@ -22,20 +28,36 @@ class BankAccountUpdate(StrictModel):
     bank_name: Optional[str] = None
     last_four: Optional[str] = None
     is_active: Optional[bool] = None
+    # only null is accepted: dismisses the pre-2.10 balance banner
+    legacy_balance: Optional[Decimal] = None
+
+    @field_validator("legacy_balance")
+    @classmethod
+    def only_null(cls, v):
+        if v is not None:
+            raise ValueError("legacy_balance can only be cleared (null)")
+        return v
 
 
 class BankAccountResponse(BaseModel):
     id: int
     name: str
     account_id: Optional[int]
+    account_name: Optional[str] = None
+    bank_kind: Optional[str] = None
     bank_name: Optional[str]
     last_four: Optional[str]
-    balance: Decimal
+    balance: Decimal  # the linked ledger account's balance (0 when unlinked)
+    legacy_balance: Optional[Decimal] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class LegacyBalancePost(StrictModel):
+    date: dt_date
 
 
 class BankTransactionCreate(StrictModel):
