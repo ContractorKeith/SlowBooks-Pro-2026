@@ -35,6 +35,7 @@ pass, and the per-integration setup guides ([Stripe](setup-stripe.md),
 - **Manual Journal Entries** — Full CRUD for manual journal entries with dynamic line rows, running debit/credit totals, balance indicator, and void with reversing entries
 - **Auto Journal Entries** — Every invoice, payment, bill, and payroll run automatically creates balanced journal entries. Void creates reversing entries
 - **Chart of Accounts** — 39+ seeded accounts (Contractor template), 6 account types (asset, liability, equity, income, COGS, expense)
+- **Control accounts** — Fifteen accounts are found by their number when a document posts: 1000 Checking, 1100 Accounts Receivable, 1200 Undeposited Funds, 1300 Inventory, 2000 Accounts Payable, 2100 Credit Card, 2200 Sales Tax Payable, 3200 Retained Earnings, 4000 Service Income, 4800 Late Fee Income, 5000 Cost of Goods Sold, 5900 Inventory Adjustments, 6000 Advertising & Marketing, 6120 Payroll Tax Expense, 6150 Employee Benefits Expense. **You can rename any of them**; changing the number or the type is refused, because a document that cannot find its control account would have nowhere to post. Every other account, seeded or not, can be renumbered freely. A posting that cannot resolve a control account fails with a 409 naming it and writes nothing — it never saves a document that skipped the ledger (issue #119)
 - **Closing Date Enforcement** — Prevent modifications to transactions before a configurable closing date with optional password protection
 - **Audit Log** — Automatic logging of all create/update/delete operations with old/new value tracking via SQLAlchemy event hooks
 - **Account Balances** — Updated in real-time as transactions post
@@ -434,7 +435,7 @@ All endpoints under `/api/`. Swagger docs at `/docs`. 300+ routes across 50 rout
 | `/api/settings` | GET, PUT | Company settings |
 | `/api/settings/test-email` | POST | Send SMTP test email |
 | `/api/search` | GET | Unified search across all entities |
-| `/api/accounts` | GET, POST, PUT, DELETE | Chart of Accounts CRUD |
+| `/api/accounts` | GET, POST, PUT, DELETE | Chart of Accounts CRUD. `?bank=1` filters to bank/card accounts. PUT refuses the number or type of a control account (400) and DELETE refuses a system account |
 | `/api/customers` | GET, POST, PUT, DELETE | Customer management |
 | `/api/vendors` | GET, POST, PUT, DELETE | Vendor management |
 | `/api/items` | GET, POST, PUT, DELETE | Items & services |
