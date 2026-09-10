@@ -97,6 +97,14 @@ error strings that interpolated another library's exception text (the stored
 scan image reader, the custom AI worker URL parser) now say the problem in the
 app's own words (issue #111).
 
+**macOS release tooling (testing-repo #28, macbase1).** `release.py` retries a
+codesign step up to three times when Apple's timestamp service answers
+"A timestamp was expected but was not found" — that failure alone; any other
+signing error stops the run on the first try. The app bundle's
+`CFBundleVersion` is now `<version>+<12-char git SHA>` so two builds of one
+release can be told apart from the bundle itself (the Windows exe got the same
+treatment in #106); the macOS workflow refuses a bundle without it.
+
 **Cash flow statement follows the cash** (PR #117, @jsonmez). The report used to
 sum the net change of every account — both sides of every journal, non-cash
 accruals such as an unpaid bill, and opening-balance carry-forwards — and could
