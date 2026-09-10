@@ -77,6 +77,14 @@ on PATH. When nothing can render, the message names the fix for the platform
 you are on. `GET /api/ocr/status` reports `pdf` (`windows` | `macos` |
 `poppler` | null) and the Settings OCR row shows it.
 
+**Dependency: WeasyPrint 69.0 → 70.0** (CVE-2026-55073, GHSA-jf6q-chmf-3h3v: two
+`write_pdf()` channels ignored a document's `url_fetcher`). The app's fetcher
+was already data-URI-only and the templates never pass those channels, so no
+SlowBooks PDF was exposed; the pin moves because the scanner flags 69.0 and
+because 70.0 made the fetcher a class the library enforces everywhere
+(`allowed_protocols`). A regression test renders `file://` images, stylesheets
+and `@import`s and asserts the file's bytes never reach the PDF.
+
 ### v2.9.4 — The company logo on every document; exception text stays in the log
 
 **Every PDF now carries the company logo when one is set.** The logo
