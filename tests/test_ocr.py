@@ -684,6 +684,8 @@ def test_tesseract_cmd_falls_back_to_stock_install_dir(tmp_path, monkeypatch):
     leave tesseract off PATH; the resolver checks the stock locations."""
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     monkeypatch.setattr(ocr_service, "_cache", {"at": 0.0, "info": None})
+    # Isolate the missing-install case from Homebrew or other host installs.
+    monkeypatch.setattr(ocr_service, "_tesseract_candidates", lambda: [])
     assert ocr_service.tesseract_cmd() is None
     assert ocr_service.tesseract_info()["available"] is False
 
