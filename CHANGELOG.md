@@ -7,6 +7,50 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.10.2 — You can edit your chart of accounts again
+
+**2.10.1 told operators "You can rename it", and through the interface they
+could not rename anything at all.** Found by skytech at the GUI while
+confirming 2.10.1's control-account guard. The Chart of Accounts rendered
+its Edit button only for accounts that are not system accounts, and *every*
+one of the 57 accounts a new company is seeded with is a system account — so
+the Actions column was empty for every row on the page. The release notes,
+the changelog and the docs all promised a rename the product did not offer.
+
+The gating predates 2.10.1 and is not a regression from it. What 2.10.1 did
+was make the gap visible by publishing the promise.
+
+**Every account has an Edit button now, and the API is the authority on what
+may change.** Hiding the control pre-emptively was a reasonable belt when the
+API had no opinion; it has a good one since 2.10.1, and it refuses the number
+and the type of a control account with a message naming the account and its
+purpose. So the button is there, renaming works, and the fifteen ordinary
+seeded accounts nobody considers structural are editable again too.
+
+**Control accounts are marked and explained.** A `CONTROL` badge on the row,
+and an edit form that says which account it is, what the software posts to it,
+that the number and type are fixed because a document that could not find it
+would have nowhere to post — and that you can rename it. The number and type
+fields are disabled rather than absent, so the reason is visible at the point
+of the restriction. `GET /api/accounts` carries `is_control` and
+`control_purpose`, derived from the registry, so the page cannot drift from
+what the posting code actually reads.
+
+Also resolved: a dead ternary on the accounts row (`is_system ? '' : ''`,
+both branches empty) that had been standing in for the badge.
+
+**The test suite runs without WeasyPrint's native stack** (issue #121).
+Importing the app pulled in pango/cairo/gobject at module scope, so the suite
+could not even be collected on a machine without them — which is how a
+Windows-only failure reached 2.10.0: CI runs pytest on Linux only, the
+Windows workflow never runs the suite, and the one box that would have caught
+it could not import the app. WeasyPrint is imported lazily now; 1,988 of
+2,025 tests run with nothing installed and the 37 that genuinely render skip
+cleanly. A test skips exactly when it reached for the missing library, so
+there is no marker list to forget. Both PyInstaller specs name WeasyPrint
+explicitly, because a lazily imported PDF engine is not something to leave to
+the scanner's discretion.
+
 ### v2.10.1 — A document is never accepted without its journal entry
 
 **A saved invoice that never reached the books is worse than a rejected

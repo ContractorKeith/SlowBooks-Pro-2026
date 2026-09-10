@@ -4,7 +4,7 @@ from typing import Optional
 
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import model_validator, BaseModel, field_validator
 from app.schemas.common import StrictModel
 
 from app.models.accounts import AccountType
@@ -52,6 +52,11 @@ class AccountResponse(BaseModel):
     is_active: bool
     is_system: bool
     bank_kind: Optional[str] = None
+    # Issue #122: the posting code finds these by number, so the number and
+    # the type cannot change (PUT refuses with 400). The UI reads this rather
+    # than keeping its own copy of the registry, which would drift.
+    is_control: bool = False
+    control_purpose: Optional[str] = None
     balance: Decimal
     created_at: datetime
 
@@ -60,6 +65,18 @@ class AccountResponse(BaseModel):
     def null_balance_to_zero(cls, v):
         # legacy/imported rows can carry NULL balances; don't 500 on read
         return Decimal("0") if v is None else v
+
+    @model_validator(mode="after")
+    def mark_control_account(self):
+        """Derived from the number, so it can never drift from the registry
+        the posting code and the route guard actually read (issue #122)."""
+        from app.services import control_accounts
+
+        if control_accounts.is_control_number(self.account_number):
+            self.is_control = True
+            _name, purpose = control_accounts.describe(self.account_number)
+            self.control_purpose = purpose
+        return self
 
     updated_at: datetime
 

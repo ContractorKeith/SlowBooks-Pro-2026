@@ -180,11 +180,11 @@ const App = {
             for (const a of accts) {
                 html += `<tr>
                     <td style="font-family:var(--font-mono);">${escapeHtml(a.account_number || '')}</td>
-                    <td>${a.is_system ? '' : ''}<strong>${escapeHtml(a.name)}</strong></td>
+                    <td><strong>${escapeHtml(a.name)}</strong>${a.is_control ? ` <span class="badge-control" title="${escapeHtml(a.control_purpose || 'the software finds this account by its number')}">control</span>` : ''}</td>
                     <td>${a.account_type}</td>
                     <td class="amount">${formatCurrency(a.balance)}</td>
                     <td class="actions">
-                        ${!a.is_system ? `<button class="btn btn-sm btn-secondary" onclick="App.showAccountForm(${a.id})">Edit</button>` : ''}
+                        <button class="btn btn-sm btn-secondary" onclick="App.showAccountForm(${a.id})">Edit</button>
                     </td>
                 </tr>`;
             }
@@ -198,15 +198,28 @@ const App = {
         if (id) acct = await API.get(`/accounts/${id}`);
 
         const types = ['asset','liability','equity','income','cogs','expense'];
+        // A control account is found by its number when a document posts, so the
+        // number and the type are fixed and the API refuses to change them (400).
+        // Renaming is allowed and is the point — say so instead of hiding the form.
+        const locked = !!acct.is_control;
+        const lockNote = locked
+            ? `<div class="form-group full-width"><div class="hint hint--locked">
+                   <strong>${escapeHtml(acct.account_number || '')} ${escapeHtml(acct.name)} is a control account.</strong>
+                   The software finds it by its number to post ${escapeHtml(acct.control_purpose || 'part of the books')},
+                   so the number and type cannot change — a document that could not find it would have nowhere to post.
+                   <em>You can rename it.</em>
+               </div></div>`
+            : '';
         openModal(id ? 'Edit Account' : 'New Account', `
             <form onsubmit="App.saveAccount(event, ${id})">
                 <div class="form-grid">
+                    ${lockNote}
                     <div class="form-group"><label>Account Number</label>
-                        <input name="account_number" value="${escapeHtml(acct.account_number || '')}"></div>
+                        <input name="account_number" value="${escapeHtml(acct.account_number || '')}"${locked ? ' readonly disabled' : ''}></div>
                     <div class="form-group"><label>Name *</label>
                         <input name="name" required value="${escapeHtml(acct.name)}"></div>
                     <div class="form-group"><label>Type *</label>
-                        <select name="account_type">
+                        <select name="account_type"${locked ? ' disabled' : ''}>
                             ${types.map(t => `<option value="${t}" ${acct.account_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
                         </select></div>
                     <div class="form-group full-width"><label>Description</label>

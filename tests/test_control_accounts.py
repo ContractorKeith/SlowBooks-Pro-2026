@@ -235,3 +235,85 @@ def test_exports_stay_tolerant_of_an_odd_chart(db_session):
     """An export only needs a display name; it must not raise on a chart
     that lacks the account (app/services/iif_export.py)."""
     assert control_accounts.find(db_session, "2000") is None
+
+
+# ---------------------------------------------------------------------------
+# Issue #122 — the Chart of Accounts must offer the rename we promise
+# ---------------------------------------------------------------------------
+
+
+def test_the_api_tells_the_ui_which_accounts_are_control_accounts(
+    client, seed_accounts
+):
+    """The page must not keep its own copy of the registry — it would drift
+    from the one the posting code and the route guard actually read."""
+    rows = client.get("/api/accounts").json()
+    by_number = {r["account_number"]: r for r in rows}
+
+    ar = by_number["1100"]
+    assert ar["is_control"] is True
+    assert "customers owe" in (ar["control_purpose"] or "")
+
+    ordinary = next(
+        r
+        for n, r in by_number.items()
+        if not control_accounts.is_control_number(n) and n.startswith("6")
+    )
+    assert ordinary["is_control"] is False
+    assert ordinary["control_purpose"] is None
+
+
+def test_every_control_account_is_flagged_and_nothing_else_is(client, seed_accounts):
+    rows = client.get("/api/accounts").json()
+    flagged = {r["account_number"] for r in rows if r["is_control"]}
+    expected = {
+        n
+        for n in control_accounts.CONTROL_ACCOUNTS
+        if n in {r["account_number"] for r in rows}
+    }
+    assert flagged == expected
+
+
+def test_the_page_offers_edit_on_every_account(client):
+    """#122: the row rendered Edit only for `!is_system`, and every seeded
+    account is a system account — so no account could be edited at all, while
+    the release notes said renaming was allowed. Guard the markup itself."""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "app/static/js/app.js").read_text(
+        encoding="utf-8"
+    )
+    row = js.split("async showAccountForm")[0]
+    assert (
+        "App.showAccountForm(${a.id})" in row
+    ), "the accounts row lost its Edit button"
+    assert (
+        "!a.is_system ? `<button" not in row
+    ), "Edit is gated on is_system again — every seeded account has that flag (#122)"
+
+
+def test_the_form_locks_a_control_account_and_says_renaming_is_allowed():
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "app/static/js/app.js").read_text(
+        encoding="utf-8"
+    )
+    form = js.split("async showAccountForm")[1].split("async saveAccount")[0]
+    assert "acct.is_control" in form
+    assert "You can rename it" in form
+    # the number and the type are the two fields the API refuses
+    assert form.count("locked ?") >= 2
+
+
+def test_renaming_a_control_account_through_the_api_the_form_uses(
+    client, seed_accounts
+):
+    """A disabled input is not submitted, so the form sends name only. That
+    must succeed — it is the operation the refusal message points at."""
+    ar = seed_accounts["1100"]
+    r = client.put(f"/api/accounts/{ar.id}", json={"name": "Trade Debtors"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["name"] == "Trade Debtors"
+    assert body["account_number"] == "1100"
+    assert body["is_control"] is True

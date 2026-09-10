@@ -1,4 +1,12 @@
 {
+  "2.10.2": {
+    "title": "You can edit your chart of accounts again",
+    "items": [
+      "Every account has an Edit button. Before this, no account in a new company could be edited at all — including renaming, which 2.10.1 told you was allowed",
+      "Accounts the software posts to are marked CONTROL, and their edit form explains why the number and type are fixed while the name is yours to change",
+      "The test suite now runs on a machine without the PDF rendering libraries, so the Windows box can run it too"
+    ]
+  },
   "2.10.1": {
     "title": "A document is never accepted without its journal entry",
     "items": [

@@ -379,3 +379,16 @@
     border-color: var(--pick-stroke);
 }
 [data-theme="dark"] .btn.ocr-pick:hover { filter: brightness(1.15); }
+
+/* Control accounts (issue #122) — same treatment as badge-partial, which is
+   the amber the dark theme already uses for "attention, not a problem". */
+[data-theme="dark"] .badge-control { background: #3a3010; color: #e0a840; border-color: #5a5020; }
+[data-theme="dark"] .hint--locked {
+    background: #2a2410;
+    border-color: #5a5020;
+    border-left-color: #e0a840;
+    color: #e8d9b0;
+}
+[data-theme="dark"] .hint--locked em { color: #e0a840; }
+[data-theme="dark"] .form-group input[disabled],
+[data-theme="dark"] .form-group select[disabled] { background: #23262b; color: #8b9098; }
