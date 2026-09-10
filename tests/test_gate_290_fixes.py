@@ -494,7 +494,7 @@ def test_setup_and_settings_keep_the_manifest_name_in_step(tmp_path, monkeypatch
         }
     )
     assert sync_manifest_name("NEONpulse Techshop") is True
-    manifest = json.loads((data / "companies.json").read_text())
+    manifest = json.loads((data / "companies.json").read_text(encoding="utf-8"))
     assert manifest["companies"][0]["name"] == "NEONpulse Techshop"
     assert sync_manifest_name("NEONpulse Techshop") is False  # idempotent
     assert sync_manifest_name("") is False  # blank never renames
@@ -521,7 +521,9 @@ def test_settings_company_name_updates_manifest(client, tmp_path, monkeypatch):
     r = client.put("/api/settings", json={"company_name": "New Name LLC"})
     assert r.status_code == 200, r.text
     assert (
-        json.loads((data / "companies.json").read_text())["companies"][0]["name"]
+        json.loads((data / "companies.json").read_text(encoding="utf-8"))["companies"][
+            0
+        ]["name"]
         == "New Name LLC"
     )
     # and the list reconciles from settings even if the manifest is edited by hand
@@ -571,7 +573,9 @@ def test_sync_refuses_a_name_another_file_already_uses(tmp_path, monkeypatch, ca
         assert sync_manifest_name("neonpulse techshop") is False  # case-insensitive
     names = [
         c["name"]
-        for c in json.loads((data / "companies.json").read_text())["companies"]
+        for c in json.loads((data / "companies.json").read_text(encoding="utf-8"))[
+            "companies"
+        ]
     ]
     assert names == ["QA Host", "NEONpulse Techshop"]
     assert "already uses that name" in caplog.text
@@ -590,7 +594,9 @@ def test_settings_rename_to_another_files_name_is_409(client, tmp_path, monkeypa
     assert client.get("/api/settings").json()["company_name"] != "NEONpulse Techshop"
     names = [
         c["name"]
-        for c in json.loads((data / "companies.json").read_text())["companies"]
+        for c in json.loads((data / "companies.json").read_text(encoding="utf-8"))[
+            "companies"
+        ]
     ]
     assert names == ["QA Host", "NEONpulse Techshop"]
     # renaming to something unique still works and follows through
@@ -600,7 +606,9 @@ def test_settings_rename_to_another_files_name_is_409(client, tmp_path, monkeypa
     )
     names = [
         c["name"]
-        for c in json.loads((data / "companies.json").read_text())["companies"]
+        for c in json.loads((data / "companies.json").read_text(encoding="utf-8"))[
+            "companies"
+        ]
     ]
     assert names == ["QA Host Books", "NEONpulse Techshop"]
 

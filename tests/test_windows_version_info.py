@@ -27,7 +27,7 @@ def test_version_tuple_is_four_integers():
 def test_rendered_resource_names_the_product(tmp_path):
     out = tmp_path / "version_info.txt"
     v = version_info.write(ROOT / "app" / "__init__.py", out)
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert text.startswith("# Generated")
     assert "VSVersionInfo(" in text
     assert f"StringStruct('FileVersion', '{v}')" in text

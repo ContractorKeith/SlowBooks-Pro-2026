@@ -336,7 +336,7 @@ def test_timestamp_failure_gives_up_after_three(monkeypatch):
 
 
 def test_sign_and_dmg_codesign_go_through_the_retry():
-    src = (MACOS_DIR / "release.py").read_text()
+    src = (MACOS_DIR / "release.py").read_text(encoding="utf-8")
     body = src.split("def _sign(")[1].split("def _sign_app(")[0]
     assert "_run_signing(*command)" in body
     dmg = src.split('f"{BUNDLE_ID}.dmg"')[0]
