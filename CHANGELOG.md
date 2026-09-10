@@ -85,6 +85,15 @@ because 70.0 made the fetcher a class the library enforces everywhere
 (`allowed_protocols`). A regression test renders `file://` images, stylesheets
 and `@import`s and asserts the file's bytes never reach the PDF.
 
+**Cash flow statement follows the cash** (PR #117, @jsonmez). The report used to
+sum the net change of every account — both sides of every journal, non-cash
+accruals such as an unpaid bill, and opening-balance carry-forwards — and could
+overstate the period's cash change several times over. It now reads only the
+non-cash side of journals that touch a bank account (the chart's `bank` kind),
+classifies each cash movement once, and leaves opening-balance entries out;
+transfers between bank accounts net to nothing. Investing shows a purchase as
+an outflow directly, so the old sign flip is gone.
+
 ### v2.9.4 — The company logo on every document; exception text stays in the log
 
 **Every PDF now carries the company logo when one is set.** The logo
