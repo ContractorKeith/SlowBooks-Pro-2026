@@ -7,6 +7,12 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+**Cash flow now follows actual movement in linked bank accounts.** The report
+previously included both sides of every journal, non-cash accruals, and opening
+balance carry-forwards, which could substantially overstate the period's cash
+change. It now classifies only the non-cash side of journals that move an active
+linked bank account and excludes opening-balance entries.
+
 ### v2.9.4 — The company logo on every document; exception text stays in the log
 
 **Every PDF now carries the company logo when one is set.** The logo

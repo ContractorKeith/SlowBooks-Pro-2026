@@ -3,10 +3,11 @@ from decimal import Decimal
 
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func as sqlfunc
+from sqlalchemy import func as sqlfunc, select
 
 from app.database import get_db
 from app.models.accounts import Account, AccountType
+from app.models.banking import BankAccount
 from app.models.transactions import Transaction, TransactionLine
 from app.routes.reports._router import router
 from app.services.terminology import Terms, terms_from_db
@@ -380,7 +381,7 @@ def cash_flow(
     end_date: date = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """Cash Flow Statement: Operating, Investing, Financing sections."""
+    """Cash flow from the non-cash side of journals that move linked cash."""
     if not start_date:
         start_date = date(date.today().year, 1, 1)
     if not end_date:
@@ -396,6 +397,13 @@ def cash_flow(
         AccountType.EQUITY: "financing",
     }
 
+    cash_account_ids = select(BankAccount.account_id).where(
+        BankAccount.is_active.is_(True), BankAccount.account_id.is_not(None)
+    )
+    cash_transaction_ids = select(TransactionLine.transaction_id).where(
+        TransactionLine.account_id.in_(cash_account_ids)
+    )
+
     results = (
         db.query(
             Account.name,
@@ -407,7 +415,13 @@ def cash_flow(
         )
         .join(TransactionLine, TransactionLine.account_id == Account.id)
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)
-        .filter(Transaction.date >= start_date, Transaction.date <= end_date)
+        .filter(
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            Transaction.id.in_(cash_transaction_ids),
+            ~TransactionLine.account_id.in_(cash_account_ids),
+            sqlfunc.coalesce(Transaction.source_type, "") != "opening_balance",
+        )
         .group_by(
             Account.id, Account.name, Account.account_number, Account.account_type
         )
@@ -421,10 +435,6 @@ def cash_flow(
     for acct_name, acct_num, acct_type, net_change in results:
         section = section_map.get(acct_type, "operating")
         amount = float(net_change)
-        # For investing (assets), net cash flow is negative of net change
-        # (buying assets = cash outflow)
-        if section == "investing":
-            amount = -amount
         sections[section].append(
             {
                 "account_name": acct_name,
