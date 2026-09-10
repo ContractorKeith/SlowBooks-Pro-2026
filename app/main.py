@@ -29,6 +29,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exception_handlers import http_exception_handler
 
 from app.services import storage
+from app.services.control_accounts import MissingControlAccount
 from app.services.rate_limit import limiter
 
 from app.routes import (
@@ -243,6 +244,30 @@ async def lifespan(app: FastAPI):
         warn_if_manifest_missing()
     except Exception:
         pass  # a diagnostic, never a reason not to boot
+    # Issue #119: say once, at boot, if this company's chart is missing an
+    # account the posting code resolves by number. Before 2.10.1 the first
+    # symptom was a document that looked saved and never reached the ledger;
+    # now the posting refuses, and this is the warning that gets ahead of it.
+    # A diagnostic, never fatal — refusing to boot would lock an operator out
+    # of the very chart they need to repair.
+    try:
+        from app.services.control_accounts import missing as _missing_controls
+
+        _db = SessionLocal()
+        try:
+            gaps = _missing_controls(_db)
+        finally:
+            _db.close()
+        if gaps:
+            logging.getLogger(__name__).warning(
+                "chart of accounts is missing %d control account(s): %s — "
+                "documents that need them will be refused (409) until they are "
+                "restored with these exact numbers",
+                len(gaps),
+                ", ".join(f"{n} {name}" for n, name in gaps),
+            )
+    except Exception:
+        pass  # a diagnostic, never a reason not to boot
     # At-rest upgrade: encrypt any legacy plaintext credential rows (SMTP,
     # payment, QBO, SimpleFIN secrets) on first boot after upgrading.
     try:
@@ -323,6 +348,24 @@ async def _method_not_allowed_handler(request: Request, exc: StarletteHTTPExcept
 
 
 app.add_exception_handler(StarletteHTTPException, _method_not_allowed_handler)
+
+
+# ---- Missing control account (issue #119) ----
+# A posting path that cannot resolve the account it must debit or credit
+# now raises instead of silently skipping its journal entry. Answer 409 —
+# the request was valid, the company's chart is not — and name the account
+# so the operator can restore it. Nothing was written: the raise happens
+# before any journal line is built.
+async def _missing_control_account_handler(request: Request, exc: Exception):
+    logging.getLogger(__name__).warning(
+        "posting refused: control account %s (%s) missing from the chart",
+        getattr(exc, "number", "?"),
+        getattr(exc, "name", "?"),
+    )
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+app.add_exception_handler(MissingControlAccount, _missing_control_account_handler)
 
 # ---- CORS (Phase 9.7: locked down) ----
 # Wildcard origins with credentials is a CSRF amplifier. Default to just

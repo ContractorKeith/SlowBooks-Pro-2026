@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.accounts import Account
+from app.services import control_accounts
 from app.models.transactions import TransactionLine
 from app.schemas.accounts import AccountCreate, AccountUpdate, AccountResponse
 from app.routes._helpers import get_or_404
@@ -95,6 +96,26 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
 def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(get_db)):
     account = get_or_404(db, Account, account_id)
     fields = data.model_dump(exclude_unset=True)
+
+    # Issue #119: the posting code resolves these accounts BY NUMBER, so
+    # renumbering one makes every later document skip its journal entry —
+    # silently, with a trial balance that still balances. Renaming is fine
+    # and stays allowed; only the number and the type are load-bearing.
+    # (Not gated on is_system: every seeded account carries that flag, and
+    # renumbering an ordinary expense account is a reasonable request.)
+    if control_accounts.is_control_number(account.account_number):
+        name, purpose = control_accounts.describe(account.account_number)
+        for field, what in (("account_number", "number"), ("account_type", "type")):
+            if field in fields and fields[field] != getattr(account, field):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{account.account_number} {name} is a control account — "
+                        f"the software finds it by its number to post {purpose}. "
+                        f"Changing its {what} would stop new documents reaching "
+                        f"the ledger. You can rename it."
+                    ),
+                )
 
     if "account_number" in fields:
         _reject_duplicate_number(db, fields["account_number"], exclude_id=account_id)

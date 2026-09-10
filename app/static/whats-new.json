@@ -1,4 +1,12 @@
 {
+  "2.10.1": {
+    "title": "A document is never accepted without its journal entry",
+    "items": [
+      "Renumbering an account the software posts to — Accounts Receivable, Accounts Payable and thirteen others — is refused instead of quietly breaking new documents; renaming is still yours to do",
+      "A posting that cannot find the account it needs now stops and names it, rather than saving a document that never reached the ledger",
+      "Opening a company file says once if its chart of accounts is missing an account the books depend on"
+    ]
+  },
   "2.10.0": {
     "title": "The bank register is the ledger",
     "items": [
