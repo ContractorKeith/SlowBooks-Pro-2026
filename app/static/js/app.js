@@ -18,7 +18,8 @@ const App = {
         '/in-kind-gifts': { page: 'in-kind-gifts',   label: 'In-Kind Gifts',      render: () => InKindPage.render() },
         '/estimates':     { page: 'estimates',       label: 'Create Estimates',   render: () => EstimatesPage.render() },
         '/payments':      { page: 'payments',        label: 'Receive Payments',   render: () => PaymentsPage.render() },
-        '/banking':       { page: 'banking',         label: 'Bank Accounts',      render: () => BankingPage.render() },
+        '/banking':       { page: 'banking',         label: 'Banking',            render: () => BankingPage.render() },
+        '/banking/:id':   { page: 'banking',         label: 'Register',           render: (id) => BankingPage.renderRegister(id) },
         '/accounts':      { page: 'accounts',        label: 'Chart of Accounts',  render: () => App.renderAccounts() },
         '/reports':       { page: 'reports',         label: 'Report Center',      render: () => ReportsPage.render() },
         '/settings':      { page: 'settings',        label: 'Company Settings',   render: () => SettingsPage.render() },
@@ -56,7 +57,8 @@ const App = {
         // Phase 9: Forum Bug Fixes & Missing Features
         '/journal':       { page: 'journal',         label: 'Journal Entries',    render: () => JournalPage.render() },
         '/deposits':      { page: 'deposits',        label: 'Make Deposits',      render: () => DepositsPage.render() },
-        '/check-register': { page: 'check-register', label: 'Check Register',     render: () => CheckRegisterPage.render() },
+        // The Check Register page is the Banking register now (2.10); old bookmarks land there.
+        '/check-register': { page: 'banking',         label: 'Banking',            render: () => { App.navigate('#/banking'); return ''; } },
         '/cc-charges':    { page: 'cc-charges',      label: 'CC Charges',         render: () => CCChargesPage.render() },
         '/expenses':      { page: 'expenses',        label: 'Enter Expenses',     render: () => ExpensesPage.render() },
         // Phase 10: Quick Wins + Medium Effort Features
