@@ -4,9 +4,11 @@ Each test corresponds to a specific observed failure, recorded here so the
 behaviour cannot silently return.
 """
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.conftest import WEASYPRINT_AVAILABLE
 
 
 def _bearer(token):
@@ -181,6 +183,11 @@ def test_token_settings_writes_are_otherwise_unaffected(client):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not WEASYPRINT_AVAILABLE,
+    reason="emails an invoice, which renders a PDF; safe_message turns the "
+    "missing native stack into a generic 500 the exception hook cannot see",
+)
 def test_invoice_email_does_not_raise_typeerror(client, seed_customer, seed_accounts):
     inv = client.post(
         "/api/invoices",

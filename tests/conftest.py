@@ -29,6 +29,62 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# WeasyPrint's native stack (issue #121)
+#
+# Rendering a PDF needs pango/cairo/gobject. Importing the app no longer does
+# (app/services/pdf_service.py imports WeasyPrint lazily), so the suite runs
+# on a machine without them — which matters because CI runs pytest on Linux
+# only, and the Windows box that would have caught @wilsons043's encoding bug
+# could not import the app at all.
+#
+# A test that actually renders still cannot pass without the stack. Rather
+# than guess which tests those are with a marker anyone can forget, we let
+# the test run and turn the library's own ImportError into a SKIP — so a test
+# skips exactly when it needed the missing library, and never otherwise.
+# ---------------------------------------------------------------------------
+
+try:  # noqa: SIM105
+    import weasyprint as _weasyprint  # noqa: F401
+
+    WEASYPRINT_AVAILABLE = True
+except Exception:
+    WEASYPRINT_AVAILABLE = False
+
+
+def _is_missing_native_stack(exc: BaseException) -> bool:
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, (ImportError, OSError)):
+            text = str(exc).lower()
+            if (
+                "weasyprint" in text
+                or "gobject" in text
+                or "pango" in text
+                or "cairo" in text
+            ):
+                return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    outcome = yield
+    if WEASYPRINT_AVAILABLE:
+        return
+    exc = outcome.excinfo[1] if getattr(outcome, "excinfo", None) else None
+    if exc is not None and _is_missing_native_stack(exc):
+        outcome.force_exception(
+            pytest.skip.Exception(
+                "needs WeasyPrint's native stack (pango/cairo/gobject), which "
+                "is not installed on this machine — the rest of the suite runs"
+            )
+        )
+
+
 from starlette.requests import HTTPConnection  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
@@ -37,7 +93,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 
 # Import all model modules so Base.metadata sees every table before create_all.
 # Without these imports, tables defined in unimported modules wouldn't be created.
-from app.models import (  # noqa: F401
+from app.models import (  # noqa: F401,E402
     accounts,
     attachments,
     audit,

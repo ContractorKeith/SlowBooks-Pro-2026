@@ -7,7 +7,6 @@ import mimetypes
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML, URLFetcher
 
 from app.services import storage
 
@@ -65,7 +64,24 @@ def _company_logo_data_uri(company_settings: dict) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-class _SafeURLFetcher(URLFetcher):
+# WeasyPrint is imported lazily (issue #121). Importing it pulls in the
+# native pango/cairo/gobject stack, and doing that at module scope meant
+# `import app.main` — and therefore the whole test suite — could not run on a
+# machine without it. That is how a Windows-only failure reached a release:
+# CI runs pytest on Linux only, and the one box that would have caught it
+# could not import the app. Rendering a PDF still requires the stack; only
+# importing the module no longer does.
+_FETCHER = None
+
+
+def _weasyprint():
+    """(HTML, URLFetcher) — imported on first use, not at import time."""
+    from weasyprint import HTML, URLFetcher
+
+    return HTML, URLFetcher
+
+
+def _build_safe_fetcher():
     """Restrict WeasyPrint to data: URIs only.
 
     Without this, user-controlled HTML (e.g. invoice notes, customer name
@@ -78,17 +94,40 @@ class _SafeURLFetcher(URLFetcher):
     channel of write_pdf() honours it; ``allowed_protocols`` is the
     library's own gate, and ``fetch`` refuses anything else a second time.
     """
+    _HTML, URLFetcher = _weasyprint()
 
-    def __init__(self):
-        super().__init__(allowed_protocols=("data",))
+    class _SafeURLFetcher(URLFetcher):
+        def __init__(self):
+            super().__init__(allowed_protocols=("data",))
 
-    def fetch(self, url, headers=None):
-        if not url.lower().startswith("data:"):
-            raise ValueError(f"URL scheme not allowed in PDF templates: {url!r}")
-        return super().fetch(url, headers=headers)
+        def fetch(self, url, headers=None):
+            if not url.lower().startswith("data:"):
+                raise ValueError(f"URL scheme not allowed in PDF templates: {url!r}")
+            return super().fetch(url, headers=headers)
+
+    return _SafeURLFetcher()
 
 
-_safe_url_fetcher = _SafeURLFetcher()
+def _get_fetcher():
+    """The document's fetcher, built on first use.
+
+    WeasyPrint calls attributes on this object (``_fail_on_errors``), so it
+    must be the URLFetcher instance itself — a plain callable wrapper is not
+    a substitute.
+    """
+    global _FETCHER
+    if _FETCHER is None:
+        _FETCHER = _build_safe_fetcher()
+    return _FETCHER
+
+
+def __getattr__(name):
+    """Module-level lazy attribute (PEP 562): `pdf_service._safe_url_fetcher`
+    still resolves to the fetcher instance, but building it — and therefore
+    importing WeasyPrint — happens on first access rather than at import."""
+    if name == "_safe_url_fetcher":
+        return _get_fetcher()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def render_pdf(html_str: str) -> bytes:
@@ -98,7 +137,8 @@ def render_pdf(html_str: str) -> bytes:
     a W-2 or an invoice readable to a blind user. Falls back to a plain PDF
     if the installed WeasyPrint can't do the variant, so a render never
     fails on an environment quirk."""
-    doc = HTML(string=html_str, url_fetcher=_safe_url_fetcher)
+    HTML, _ = _weasyprint()
+    doc = HTML(string=html_str, url_fetcher=_get_fetcher())
     try:
         return doc.write_pdf(pdf_variant="pdf/ua-1")
     except Exception:  # pragma: no cover - older WeasyPrint / font edge cases
