@@ -77,7 +77,10 @@ class _Page:
     def __init__(self, calls):
         self.calls = calls
 
-    async def render_to_stream_async(self, out, opts):
+    async def render_to_stream_async(self, out):  # the one-argument WinRT method
+        raise AssertionError("render_to_stream_async takes no options")
+
+    async def render_with_options_to_stream_async(self, out, opts):
         self.calls.append((opts.destination_width, opts.destination_height))
         out.buf += PNG
 
@@ -177,6 +180,23 @@ def test_native_failure_falls_back_to_poppler(monkeypatch):
     monkeypatch.setattr(pdf_raster, "_macos_render", broken)
     monkeypatch.setattr(pdf_raster, "_poppler_render", lambda d, dpi: (PNG, 2))
     assert pdf_raster.rasterize(b"x", poppler_ok=True) == (PNG, 2)
+
+
+def test_library_error_text_never_reaches_the_user(monkeypatch):
+    """A WinRT HRESULT or a Quartz message is not a ValueError of ours: log it,
+    answer with our own words (skytech: '[WinError -2147188716] …' in a 400)."""
+    monkeypatch.setattr(pdf_raster, "windows_available", lambda: True)
+
+    def broken(d, dpi):
+        raise OSError(
+            -2147188716, "The text associated with this error code could not be found."
+        )
+
+    monkeypatch.setattr(pdf_raster, "_windows_render", broken)
+    with pytest.raises(ValueError) as exc:
+        pdf_raster.rasterize(b"x", poppler_ok=False)
+    assert "WinError" not in str(exc.value) and "2147188716" not in str(exc.value)
+    assert "valid, unencrypted" in str(exc.value)
 
 
 def test_present_renderer_failing_on_this_file_is_a_file_error(monkeypatch):

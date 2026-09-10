@@ -18,6 +18,7 @@ platform, not a Linux command.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
@@ -26,6 +27,8 @@ import tempfile
 from pathlib import Path
 
 PDF_DPI = 300
+
+logger = logging.getLogger(__name__)
 
 
 class PdfRasterUnavailable(ValueError):
@@ -148,7 +151,10 @@ def _windows_render(data: bytes, dpi: int) -> tuple[bytes, int]:
         opts.destination_width = max(1, int(page.size.width * dpi / 72.0))
         opts.destination_height = max(1, int(page.size.height * dpi / 72.0))
         out = Stream()
-        await page.render_to_stream_async(out, opts)
+        # RenderToStreamAsync takes the stream alone; the overload that
+        # takes options is a separate method in WinRT (skytech, 2.10.0
+        # gate: "Invalid parameter count" on every PDF).
+        await page.render_with_options_to_stream_async(out, opts)
         out.seek(0)
         size = int(out.size)
         reader = DataReader(out.get_input_stream_at(0))
@@ -309,4 +315,10 @@ def rasterize(
             continue
     if not tried:
         raise PdfRasterUnavailable(unavailable_message())
-    raise ValueError(str(last_error) if last_error else "Could not read the PDF")
+    # Our own renderers speak in ValueError with our own words; anything
+    # else is a library's text (a WinRT HRESULT, a Quartz message) and
+    # stays in the log — never in the response (skytech, 2.10.0 gate).
+    if isinstance(last_error, ValueError):
+        raise ValueError(str(last_error))
+    logger.warning("PDF rasterization failed: %r", last_error)
+    raise ValueError("Could not read the PDF — is it a valid, unencrypted file?")

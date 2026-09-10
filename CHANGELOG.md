@@ -75,7 +75,9 @@ page 1 with Windows.Data.Pdf and the macOS app with Quartz, both already in
 the bundle; poppler-utils stays the Linux path and the fallback anywhere it is
 on PATH. When nothing can render, the message names the fix for the platform
 you are on. `GET /api/ocr/status` reports `pdf` (`windows` | `macos` |
-`poppler` | null) and the Settings OCR row shows it.
+`poppler` | null) and the Settings OCR row shows it. A renderer's own error text
+(a WinRT HRESULT, a Quartz message) stays in the log; the response says the PDF
+could not be read.
 
 **Dependency: WeasyPrint 69.0 → 70.0** (CVE-2026-55073, GHSA-jf6q-chmf-3h3v: two
 `write_pdf()` channels ignored a document's `url_fetcher`). The app's fetcher
@@ -84,6 +86,16 @@ SlowBooks PDF was exposed; the pin moves because the scanner flags 69.0 and
 because 70.0 made the fetcher a class the library enforces everywhere
 (`allowed_protocols`). A regression test renders `file://` images, stylesheets
 and `@import`s and asserts the file's bytes never reach the PDF.
+
+**Three Windows/launcher gaps from the 2.9.x gates closed.** The Windows exe now
+carries a version resource (FileVersion, ProductVersion, ProductName from the
+app version — Properties → Details and inventory tools can read it; the build
+fails if it is missing; issue #106). A headless `--serve-lan` / `--no-window`
+run no longer rewrites the desktop app's `.env` DATABASE_URL or last-opened
+company, so it cannot repoint the next windowed launch (issue #110). Two
+error strings that interpolated another library's exception text (the stored
+scan image reader, the custom AI worker URL parser) now say the problem in the
+app's own words (issue #111).
 
 **Cash flow statement follows the cash** (PR #117, @jsonmez). The report used to
 sum the net change of every account — both sides of every journal, non-cash
