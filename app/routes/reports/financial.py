@@ -7,7 +7,6 @@ from sqlalchemy import func as sqlfunc, select
 
 from app.database import get_db
 from app.models.accounts import Account, AccountType
-from app.models.banking import BankAccount
 from app.models.transactions import Transaction, TransactionLine
 from app.routes.reports._router import router
 from app.services.terminology import Terms, terms_from_db
@@ -318,9 +317,9 @@ def cash_flow(
         AccountType.EQUITY: "financing",
     }
 
-    cash_account_ids = select(BankAccount.account_id).where(
-        BankAccount.is_active.is_(True), BankAccount.account_id.is_not(None)
-    )
+    # Cash = the chart's bank accounts (2.10: Account.bank_kind), whether or
+    # not a feed is linked; a card is a liability, not cash.
+    cash_account_ids = select(Account.id).where(Account.bank_kind == "bank")
     cash_transaction_ids = select(TransactionLine.transaction_id).where(
         TransactionLine.account_id.in_(cash_account_ids)
     )

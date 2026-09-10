@@ -2,7 +2,6 @@ from datetime import date
 from decimal import Decimal
 
 from app.models.accounts import Account, AccountType
-from app.models.banking import BankAccount
 from app.models.transactions import Transaction, TransactionLine
 
 
@@ -22,8 +21,10 @@ def _post(db, when, source_type, *lines):
 
 
 def test_cash_flow_matches_linked_cash_change_for_native_journals(client, db_session):
-    checking = Account(name="Checking", account_type=AccountType.ASSET)
-    savings = Account(name="Savings", account_type=AccountType.ASSET)
+    checking = Account(
+        name="Checking", account_type=AccountType.ASSET, bank_kind="bank"
+    )
+    savings = Account(name="Savings", account_type=AccountType.ASSET, bank_kind="bank")
     equipment = Account(name="Equipment", account_type=AccountType.ASSET)
     payable = Account(name="Accounts payable", account_type=AccountType.LIABILITY)
     loan = Account(name="Term loan", account_type=AccountType.LIABILITY)
@@ -34,12 +35,6 @@ def test_cash_flow_matches_linked_cash_change_for_native_journals(client, db_ses
         [checking, savings, equipment, payable, loan, equity, revenue, expense]
     )
     db_session.flush()
-    db_session.add_all(
-        [
-            BankAccount(name="Checking", account_id=checking.id, balance=0),
-            BankAccount(name="Savings", account_id=savings.id, balance=0),
-        ]
-    )
 
     # Carried state belongs in the opening cash balance, not period cash flow.
     _post(
