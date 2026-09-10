@@ -102,7 +102,7 @@ def test_tax_rate_percent_is_rejected_naming_the_unit(client):
     assert "fraction" in r.text and "percent" in r.text
 
 
-def test_tax_rate_fraction_still_books_tax(client):
+def test_tax_rate_fraction_still_books_tax(client, seed_accounts):
     cid = _customer(client)
     r = client.post(
         "/api/invoices",
@@ -191,7 +191,7 @@ def test_pto_enums_in_spec(client):
 # ---- R7: DELETE on a posted document names the void route ----------------
 
 
-def test_delete_invoice_405_names_void(client):
+def test_delete_invoice_405_names_void(client, seed_accounts):
     cid = _customer(client)
     inv = client.post(
         "/api/invoices",
