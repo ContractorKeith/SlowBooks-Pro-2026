@@ -84,6 +84,11 @@ hiddenimports = (
         # alembic.ini logging config and desktop SQLite dialect
         "logging.config",
         "sqlalchemy.dialects.sqlite",
+        # WeasyPrint is imported lazily since #121 (so the suite runs on a
+        # machine without the native stack). PyInstaller's scanner does walk
+        # function-level imports, but the PDF engine is not something to
+        # leave to "usually" — name it, so its hook always fires.
+        "weasyprint",
     ]
 )
 
