@@ -134,6 +134,23 @@ def test_windows_available_only_on_win32(monkeypatch):
     assert pdf_raster.windows_available() is False
 
 
+def test_macos_available_requires_the_imageio_functions(monkeypatch):
+    """`import Quartz` working is not enough: the render also needs ImageIO's
+    CGImageDestination*, which PyInstaller collects separately."""
+    import sys as _sys
+    import types
+
+    quartz = types.ModuleType("Quartz")
+    for name in pdf_raster._QUARTZ_NEEDED:
+        setattr(quartz, name, lambda *a, **k: None)
+    monkeypatch.setitem(_sys.modules, "Quartz", quartz)
+    monkeypatch.setitem(_sys.modules, "Foundation", types.ModuleType("Foundation"))
+    monkeypatch.setattr(pdf_raster.sys, "platform", "darwin")
+    assert pdf_raster.macos_available() is True
+    delattr(quartz, "CGImageDestinationCreateWithData")
+    assert pdf_raster.macos_available() is False
+
+
 # ---------------------------------------------------------------------------
 # Order and fallback
 # ---------------------------------------------------------------------------

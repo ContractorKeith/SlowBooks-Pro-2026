@@ -164,10 +164,32 @@ def _windows_render(data: bytes, dpi: int) -> tuple[bytes, int]:
 # ---------------------------------------------------------------------------
 
 
+_QUARTZ_NEEDED = (
+    "CGDataProviderCreateWithCFData",
+    "CGPDFDocumentCreateWithProvider",
+    "CGPDFDocumentGetNumberOfPages",
+    "CGPDFDocumentGetPage",
+    "CGPDFPageGetBoxRect",
+    "CGBitmapContextCreate",
+    "CGContextDrawPDFPage",
+    "CGBitmapContextCreateImage",
+    "CGImageDestinationCreateWithData",  # ImageIO — a separately collected submodule
+    "CGImageDestinationAddImage",
+    "CGImageDestinationFinalize",
+)
+
+
 def _quartz_bridge():
+    """Quartz and Foundation, with every function the render uses proven
+    present — `import Quartz` succeeding says nothing about ImageIO, which
+    PyInstaller collects separately, and the status field the SPA shows
+    must not promise a renderer that then fails (macbase1, 2.10.0 gate)."""
     import Foundation
     import Quartz
 
+    missing = [name for name in _QUARTZ_NEEDED if not hasattr(Quartz, name)]
+    if missing:
+        raise ImportError(f"Quartz lacks {', '.join(missing)}")
     return Quartz, Foundation
 
 

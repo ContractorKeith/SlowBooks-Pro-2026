@@ -49,7 +49,32 @@ def _redacted_args(args: Iterable[str]) -> list[str]:
 
 def _run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(_redacted_args(args)), flush=True)
-    return subprocess.run(args, check=check, capture_output=True, text=True)
+    result = subprocess.run(args, check=False, capture_output=True, text=True)
+    if check and result.returncode != 0:
+        # Both streams are captured, so a bare CalledProcessError would carry
+        # only the command and the exit code — a transient codesign failure
+        # cost a full rebuild to learn nothing (macbase1, 2.10.0 gate). Print
+        # what the tool said before raising, and keep it on the exception.
+        print(
+            f"! exit {result.returncode}: {' '.join(_redacted_args(args))}", flush=True
+        )
+        if result.stdout:
+            print(
+                result.stdout,
+                end="" if result.stdout.endswith("\n") else "\n",
+                flush=True,
+            )
+        if result.stderr:
+            print(
+                result.stderr,
+                end="" if result.stderr.endswith("\n") else "\n",
+                file=sys.stderr,
+                flush=True,
+            )
+        raise subprocess.CalledProcessError(
+            result.returncode, args, output=result.stdout, stderr=result.stderr
+        )
+    return result
 
 
 def _record_run(
