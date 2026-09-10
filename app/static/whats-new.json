@@ -7,7 +7,8 @@
       "Statement lines from feeds and imports wait in To review: match them to what you entered, or add them with a category — nothing posts silently",
       "Transfers between accounts (that is how a card gets paid); credit-card charges pick the card and can be voided",
       "Reconciliation ticks ledger lines, starts from the prior statement, and locks what it closed",
-      "Upgrading: the old register balance is shown once — post it as an opening balance or dismiss it"
+      "Upgrading: the old register balance is shown once — post it as an opening balance or dismiss it",
+      "PDF receipts scan on Windows and macOS with nothing to install; poppler-utils is only needed on Linux"
     ]
   },
   "2.9.4": {

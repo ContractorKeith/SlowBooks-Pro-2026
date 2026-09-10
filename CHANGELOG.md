@@ -66,6 +66,17 @@ redirect).
 opening balance now, so the cross-platform trial balance moves from
 3,316,390.46 to 3,358,890.46 — deliberately, once.
 
+**Also in 2.10.0 — PDF receipts scan on Windows and macOS with nothing to
+install (issue #116).** Scanning an image on the desktop apps has used the OS
+engine since 2.9, but a PDF first has to become an image and only poppler's
+`pdftoppm` did that — a tool the installers do not ship, so a PDF on Windows
+answered "PDF scanning requires poppler-utils". The Windows app now renders
+page 1 with Windows.Data.Pdf and the macOS app with Quartz, both already in
+the bundle; poppler-utils stays the Linux path and the fallback anywhere it is
+on PATH. When nothing can render, the message names the fix for the platform
+you are on. `GET /api/ocr/status` reports `pdf` (`windows` | `macos` |
+`poppler` | null) and the Settings OCR row shows it.
+
 ### v2.9.4 — The company logo on every document; exception text stays in the log
 
 **Every PDF now carries the company logo when one is set.** The logo

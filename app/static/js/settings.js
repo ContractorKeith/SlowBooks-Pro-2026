@@ -655,9 +655,15 @@ const SettingsPage = {
                 const langs = (s.languages || []).join(', ') || '—';
                 const engineNames = { tesseract: 'Tesseract OCR', vision: 'Apple Vision (built into macOS)', winrt: 'Windows OCR (built into Windows)' };
                 const engineLabel = engineNames[s.engine] || 'OCR engine';
+                const pdfNames = { windows: 'built into Windows', macos: 'built into macOS', poppler: 'via poppler-utils' };
+                const pdfNote = s.pdf
+                    ? ` &middot; PDFs: ${escapeHtml(pdfNames[s.pdf] || s.pdf)}`
+                    : '<div style="font-size:11px; color:#b45309; margin-top:4px;">PDF scanning is not available on this machine (images still scan). '
+                      + 'Linux: <code>sudo apt-get install poppler-utils</code>; other platforms: <code>brew install poppler</code> / poppler for Windows on PATH.</div>';
                 el.innerHTML = `<strong style="color:#166534;">${escapeHtml(engineLabel)} is ready</strong>`
                     + (s.version ? ` <span style="color:var(--text-muted);">(${escapeHtml(s.version)})</span>` : '')
-                    + ` &middot; languages: ${escapeHtml(langs)}`;
+                    + ` &middot; languages: ${escapeHtml(langs)}`
+                    + pdfNote;
             } else {
                 el.innerHTML = '<strong style="color:#b45309;">No OCR engine is available — scanning is disabled.</strong>'
                     + '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">macOS and Windows normally use the engine built into the OS; installing Tesseract enables scanning anywhere.</div>'
@@ -665,9 +671,8 @@ const SettingsPage = {
                     + 'Ubuntu: <code>sudo apt-get install tesseract-ocr</code> &middot; '
                     + 'macOS: <code>brew install tesseract</code> &middot; '
                     + 'Windows: install the UB Mannheim Tesseract build.<br>'
-                    + 'PDFs also need poppler-utils: '
-                    + '<code>sudo apt-get install poppler-utils</code> (Ubuntu) / '
-                    + '<code>brew install poppler</code> (macOS).'
+                    + 'PDF receipts render without extra software on Windows and macOS; '
+                    + 'on Linux install poppler-utils: <code>sudo apt-get install poppler-utils</code>.'
                     + '</div>';
             }
         } catch (e) {

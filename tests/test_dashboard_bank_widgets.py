@@ -1,7 +1,6 @@
 """Dashboard bank balances come from the ledger, and cards are not cash."""
 
 
-
 def test_bank_balances_and_cash_position_from_the_ledger(
     client, db_session, seed_accounts
 ):
