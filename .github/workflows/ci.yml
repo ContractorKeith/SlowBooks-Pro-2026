@@ -161,7 +161,10 @@ jobs:
           # (no WeasyPrint stack on the runner)
           # 2.24.0's round 4: the invitation's browser test, skipped like
           # the other Playwright modules (no Playwright on the runner)
-          MAX_SKIPS: "121"
+          # 122 with the home currency: test_each_request_reads_its_own_company_setting
+          # (tests/test_home_currency_display.py) renders the Trial Balance
+          # PDF, which skips here with the other PDF tests (no WeasyPrint stack)
+          MAX_SKIPS: "122"
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
