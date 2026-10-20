@@ -181,20 +181,31 @@ def sync(payload: SyncRequest, db: Session = Depends(get_db)):
     except mercury.MercuryError as exc:
         raise HTTPException(502, str(exc))
     result = {"imported": 0, "skipped": 0, "matched": 0}
-    for bank_id, rows in prepared.items():
-        # Serialize import dedup for this feed across PostgreSQL workers.
-        db.query(BankAccount).filter(BankAccount.id == bank_id).with_for_update().one()
-        imported = import_transactions(db, bank_id, rows, import_source="mercury")
-        for key in result:
-            result[key] += imported[key]
-    balances.save_snapshots(db, accounts)
-    set_setting(db, "mercury_since", payload.since.isoformat())
-    set_setting(
-        db,
-        "mercury_last_sync",
-        datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    )
-    db.commit()
+    try:
+        # Stable lock order avoids deadlocks when concurrent mappings differ in order.
+        for bank_id in sorted(prepared):
+            db.query(BankAccount).filter(
+                BankAccount.id == bank_id
+            ).with_for_update().one()
+            imported = import_transactions(
+                db, bank_id, prepared[bank_id], import_source="mercury", commit=False
+            )
+            for key in result:
+                result[key] += imported[key]
+        balances.save_snapshots(db, accounts)
+        set_setting(db, "mercury_since", payload.since.isoformat())
+        set_setting(
+            db,
+            "mercury_last_sync",
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+        db.commit()
+    except balances.BalanceConflict as exc:
+        db.rollback()
+        raise HTTPException(503, str(exc)) from None
+    except Exception:
+        db.rollback()
+        raise
     return {**result, "warnings": list(dict.fromkeys(warnings))}
 
 

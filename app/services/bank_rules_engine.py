@@ -30,10 +30,12 @@ def _hit(rule, payee: str) -> bool:
     return False
 
 
-def apply_bank_rules(db: Session, bank_account_id: int | None = None) -> int:
+def apply_bank_rules(
+    db: Session, bank_account_id: int | None = None, *, commit: bool = True
+) -> int:
     """Categorise unmatched statement lines by the active rules (highest
     priority first, first hit wins). Returns how many lines got a category.
-    Commits when anything changed."""
+    Commits when anything changed unless the caller owns the transaction."""
     from app.models.bank_rules import BankRule
 
     rules = (
@@ -56,6 +58,6 @@ def apply_bank_rules(db: Session, bank_account_id: int | None = None) -> int:
                     txn.category_account_id = rule.account_id
                     categorised += 1
                 break
-    if categorised:
+    if categorised and commit:
         db.commit()
     return categorised

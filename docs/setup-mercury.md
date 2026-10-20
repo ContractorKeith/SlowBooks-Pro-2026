@@ -22,6 +22,9 @@ its other bank activity. The connector only reads Mercury; it cannot send money.
 
 Sync runs when you click **Sync Mercury**. Each sync rechecks the selected date
 range, follows every page, and skips Mercury transaction IDs already imported.
+All mapped feeds, category suggestions, automatic matches, balance snapshots,
+and sync metadata are saved together. If saving fails, none of those changes
+are kept; a temporary balance-update conflict asks you to retry.
 It filters by posting date so a transaction created earlier can still appear
 when it posts. Pending, failed, cancelled and blocked transactions are not
 imported. Reversed transactions produce a warning for manual reconciliation;

@@ -7,6 +7,10 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+- Mercury sync now saves all mapped feeds, rules/matches, balances, and sync
+  metadata in one transaction. A late failure rolls back the entire sync;
+  balance-update conflicts return a retryable response.
+
 - **Mercury bank feed:** connect a read-only Mercury API token, map accounts,
   and import posted transactions into Banking's review queue with deduplication
   and matching. Optional signed balance webhooks update displayed bank balances;

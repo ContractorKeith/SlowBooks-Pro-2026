@@ -83,11 +83,14 @@ def import_transactions(
     bank_account_id: int,
     transactions: list[dict],
     import_source: str = "ofx",
+    *,
+    commit: bool = True,
 ) -> dict:
     """Import parsed transactions, deduplicating by FITID.
 
     Shared by the OFX upload path and the SimpleFIN feed (which passes
     import_source="simplefin" and SimpleFIN transaction ids as fitids).
+    With commit=False the caller owns the transaction, including rules/matches.
     """
     imported = 0
     skipped = 0
@@ -122,14 +125,19 @@ def import_transactions(
         db.add(bt)
         imported += 1
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
 
     matched = 0
     if imported > 0:
         # rules suggest a category; then each new line looks for the one
         # posting the ledger already has for it (issue #114)
-        apply_bank_rules(db, bank_account_id)
-        matched = _auto_match_new(db, bank_account_id)
+        apply_bank_rules(db, bank_account_id, commit=commit)
+        matched = _auto_match_new(db, bank_account_id, commit=commit)
+        if not commit:
+            db.flush()
 
     return {
         "imported": imported,
@@ -139,7 +147,7 @@ def import_transactions(
     }
 
 
-def _auto_match_new(db: Session, bank_account_id: int) -> int:
+def _auto_match_new(db: Session, bank_account_id: int, *, commit: bool = True) -> int:
     from app.models.banking import BankAccount
     from app.services.bank_matching import auto_match
 
@@ -155,6 +163,6 @@ def _auto_match_new(db: Session, bank_account_id: int) -> int:
         .all()
     )
     n = auto_match(db, ba, rows)
-    if n:
+    if n and commit:
         db.commit()
     return n
