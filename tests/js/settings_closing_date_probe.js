@@ -54,6 +54,7 @@ const ctx = {
   // utils.js's formatDate, as the page has it
   formatDate: (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
   escapeHtml: (s) => String(s ?? ''),
+  currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
   T: (s) => s,
   Terms: { text: (s) => s, isNonprofit: () => false },
   toast: (msg, kind) => toasts.push([msg, kind || 'success']),

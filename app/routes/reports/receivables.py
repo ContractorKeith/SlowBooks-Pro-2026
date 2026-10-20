@@ -18,6 +18,7 @@ from app.services.pdf_service import (
     generate_statement_pdf,
     generate_collection_letter_pdf,
 )
+from app.services.money import money_text
 from app.services.settings_service import get_all_settings as get_settings
 from app.services.request_utils import content_disposition
 from app.routes.reports._router import router
@@ -336,7 +337,7 @@ def statement_activity(db: Session, customer: Customer, as_of_date: date) -> dic
         if paid:
             parts.append(f"applied to {paid}")
         if left > 0:
-            left_text = f"{code} {left:,.2f}" if code else f"${left:,.2f}"
+            left_text = money_text(left, code)
             parts.append(
                 words.text(f"{left_text} not applied to an invoice yet")
                 if paid
@@ -572,7 +573,7 @@ def collection_letters(data: CollectionLetterRequest, db: Session = Depends(get_
                     db=db,
                     to_email=customer.email,
                     subject=f"{type_labels.get(letter_type, 'Collection Notice')} — {settings.get('company_name', '')}",
-                    html_body=f"<p>Dear {html.escape(customer.name)},</p><p>Please see the attached collection notice regarding your outstanding balance of ${total_due:,.2f}.</p>",
+                    html_body=f"<p>Dear {html.escape(customer.name)},</p><p>Please see the attached collection notice regarding your outstanding balance of {money_text(total_due)}.</p>",
                     attachment_bytes=pdf_bytes,
                     attachment_name=f"Collection_{letter_type}day_{customer.name}.pdf",
                     entity_type="collection",

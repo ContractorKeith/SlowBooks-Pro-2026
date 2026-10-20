@@ -1105,7 +1105,7 @@ const BankingPage = {
                     <div class="card-value">${formatCurrency(data.statement_balance)}</div></div>
                 <div class="card"><div class="card-header">Difference</div>
                     <div class="card-value" id="recon-diff" style="color:${diffColor}">${formatCurrency(data.difference)}</div>
-                    <div style="font-size:11px; font-weight:600;" role="status">${balanced ? '✓ Balanced — ready to finish' : '⚠ Out of balance — finish when this is $0.00'}</div></div>
+                    <div style="font-size:11px; font-weight:600;" role="status">${balanced ? '✓ Balanced — ready to finish' : '⚠ Out of balance — finish when this is ' + formatCurrency(0)}</div></div>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;" data-write>
                 <button class="btn btn-sm btn-secondary" onclick="BankingPage.markAll(${reconId}, true)">Mark all</button>
@@ -1154,7 +1154,7 @@ const BankingPage = {
         try {
             const data = await API.get(`/banking/reconciliations/${reconId}/transactions`);
             if (Math.abs(data.difference) >= 0.005) {
-                const why = `Not finished: the difference is ${formatCurrency(data.difference)}, and it must be $0.00. Tick the lines that are on your statement, or check the statement's ending balance.`;
+                const why = `Not finished: the difference is ${formatCurrency(data.difference)}, and it must be ${formatCurrency(0)}. Tick the lines that are on your statement, or check the statement's ending balance.`;
                 if (msg) msg.textContent = why;
                 toast(why, 'error');
                 return;

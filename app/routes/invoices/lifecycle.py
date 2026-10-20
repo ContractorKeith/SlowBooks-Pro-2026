@@ -21,6 +21,7 @@ from app.services.accounting import (
     void_line_memo,
 )
 from app.services.jobs_service import own_job
+from app.services.money import money_text
 from app.services.numbering import next_invoice_number
 from app.services.settings_service import get_all_settings as get_settings
 from app.services.closing_date import check_closing_date
@@ -535,7 +536,7 @@ def duplicate_invoice(
         bool(data and data.allow_zero_total),
         noun,
         "duplicating it",
-        question=f"This {noun} adds up to $0.00. Duplicate it anyway?",
+        question=f"This {noun} adds up to {money_text(0)}. Duplicate it anyway?",
     )
 
     left_off: list[str] = []

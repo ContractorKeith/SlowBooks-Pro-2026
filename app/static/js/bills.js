@@ -269,9 +269,9 @@ const BillsPage = {
                 </table></div>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="BillsPage.addLine()">+ Add Line</button>
                 <div class="invoice-totals">
-                    ${BillsPage._taxRate ? `<div class="total-row"><span class="label">Subtotal</span><span class="value" id="bill-subtotal">$0.00</span></div>
-                    <div class="total-row" title="Part of what the goods cost: it posts with the lines, not to Sales Tax Payable"><span class="label">Tax (${Number((BillsPage._taxRate * 100).toFixed(4))}%)</span><span class="value" id="bill-tax">$0.00</span></div>` : ''}
-                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="bill-total">$0.00</span></div>
+                    ${BillsPage._taxRate ? `<div class="total-row"><span class="label">Subtotal</span><span class="value" id="bill-subtotal">${formatCurrency(0)}</span></div>
+                    <div class="total-row" title="Part of what the goods cost: it posts with the lines, not to Sales Tax Payable"><span class="label">Tax (${Number((BillsPage._taxRate * 100).toFixed(4))}%)</span><span class="value" id="bill-tax">${formatCurrency(0)}</span></div>` : ''}
+                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="bill-total">${formatCurrency(0)}</span></div>
                 </div>
                 <div class="form-group" style="margin-top:12px;"><label>Notes</label>
                     <textarea name="notes">${bill ? escapeHtml(bill.notes || '') : ''}</textarea></div>
@@ -316,7 +316,7 @@ const BillsPage = {
                 <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"${l.is_billable ? ' checked' : ''}></td>
                 <td><input class="line-qty" type="number" step="0.0001" value="${line ? Number(l.quantity) : 1}" oninput="BillsPage.recalc()"></td>
                 <td><input class="line-rate" type="number" step="0.0001" value="${line ? Number(l.rate) : 0}" oninput="BillsPage.recalc()"></td>
-                <td class="col-amount line-amount">$0.00</td>
+                <td class="col-amount line-amount">${formatCurrency(0)}</td>
             </tr>`;
     },
 

@@ -15,6 +15,7 @@ from app.models.recurring import RecurringInvoice
 from app.models.invoices import Invoice, InvoiceLine
 from app.models.items import Item
 from app.services.jobs_service import own_job
+from app.services.money import money_text
 from app.services.numbering import next_invoice_number
 from app.services.accounting import (
     taxed_copy_lines,
@@ -99,7 +100,7 @@ def generate_due_invoices(
                         "recurring_id": rec.id,
                         "customer_name": rec.customer.name if rec.customer else None,
                         "message": (
-                            f"The schedule for {who} adds up to $0.00, so "
+                            f"The schedule for {who} adds up to {money_text(0)}, so "
                             "nothing was created. Open it and enter a rate "
                             "on at least one line."
                         ),

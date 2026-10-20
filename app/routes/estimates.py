@@ -29,6 +29,7 @@ from app.models.contacts import Customer
 from app.schemas.estimates import EstimateCreate, EstimateUpdate, EstimateResponse
 from app.schemas.invoices import InvoiceResponse, ZeroTotalConfirmation
 from app.services.pdf_service import generate_estimate_pdf
+from app.services.money import money_text
 from app.services.numbering import next_estimate_number, next_invoice_number
 from app.services.settings_service import get_all_settings as get_settings, set_setting
 from app.services.request_utils import content_disposition
@@ -335,7 +336,7 @@ def convert_to_invoice(
         bool(data and data.allow_zero_total),
         "estimate",
         "converting it",
-        question="This estimate adds up to $0.00. Convert it to an invoice anyway?",
+        question=f"This estimate adds up to {money_text(0)}. Convert it to an invoice anyway?",
     )
     from app.services.contact_balances import home_amount
 

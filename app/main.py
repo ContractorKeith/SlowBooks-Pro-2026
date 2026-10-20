@@ -1056,8 +1056,46 @@ class ActingUserContextMiddleware:
             _acting_username.reset(token)
 
 
+class HomeCurrencyContextMiddleware:
+    """Pure-ASGI middleware: the company's home currency in a contextvar for
+    the length of an API request, so every amount a handler puts into words
+    (money_text, the PDF filters, an error's sentence) prints its symbol
+    (#125). Set here, not in get_db: FastAPI runs a sync dependency in a
+    copy of the context, so a value set there never reaches the handler;
+    a value set in this middleware is inherited by every copy below it,
+    the way the acting username is."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/"):
+            return await self.app(scope, receive, send)
+        from starlette.concurrency import run_in_threadpool
+
+        from app.services.money import reset_home_currency, set_home_currency
+
+        token = set_home_currency(await run_in_threadpool(_stored_home_currency))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_home_currency(token)
+
+
+def _stored_home_currency() -> str:
+    from app import database
+    from app.services.money import read_home_currency
+
+    db = database.SessionLocal()
+    try:
+        return read_home_currency(db)
+    finally:
+        db.close()
+
+
 # ---- Session cookie (Phase 9.7) ----
 app.add_middleware(ActingUserContextMiddleware)
+app.add_middleware(HomeCurrencyContextMiddleware)
 
 # Added AFTER require_session so SessionMiddleware becomes the outer
 # layer (Starlette: last added = outermost). That way request.session

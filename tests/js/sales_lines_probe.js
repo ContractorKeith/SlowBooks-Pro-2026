@@ -3,13 +3,19 @@
 // answers the line's inputs. Prints one JSON object for the pytest side.
 const fs = require('fs'), vm = require('vm');
 
+// SalesLines.money is utils.js formatCurrency (#125: one formatter reads
+// the home currency), so the real one is loaded, not a stub.
 const ctx = {
   console,
   window: {},
+  document: { addEventListener() {} },
   App: { settings: { home_currency: 'USD' } },
-  formatCurrency: (n) => '$' + (Number(n) || 0).toFixed(2),
 };
 vm.createContext(ctx);
+vm.runInContext(
+  fs.readFileSync('app/static/js/utils.js', 'utf8') + '\nthis.formatCurrency = formatCurrency;',
+  ctx,
+);
 vm.runInContext(
   fs.readFileSync('app/static/js/invoices.js', 'utf8') + '\nthis.SalesLines = SalesLines;',
   ctx,

@@ -225,7 +225,7 @@ const JournalPage = {
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="JournalPage.addLine()">+ Add Line</button>
                 <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <span id="je-totals" style="font-size:11px;">Debits: $0.00 | Credits: $0.00</span>
+                        <span id="je-totals" style="font-size:11px;">Debits: ${formatCurrency(0)} | Credits: ${formatCurrency(0)}</span>
                         <span id="je-balance" style="font-size:11px; margin-left:12px; font-weight:700;"></span>
                     </div>
                     <div class="form-actions" style="margin:0;">

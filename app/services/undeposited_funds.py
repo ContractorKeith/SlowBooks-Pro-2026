@@ -34,6 +34,7 @@ from app.models.accounts import Account
 from app.models.payments import Payment
 from app.models.transactions import Transaction, TransactionLine
 from app.services.control_accounts import MissingControlAccount
+from app.services.money import money_text
 
 ZERO = Decimal("0")
 
@@ -146,7 +147,7 @@ def describe_deposit(db: Session, txn: Transaction) -> str:
     bank = next((ln for ln in txn.lines if ln.debit > 0), None)
     account = db.get(Account, bank.account_id) if bank else None
     amount = Decimal(str(bank.debit)) if bank else ZERO
-    extra = f"${amount:,.2f}"
+    extra = money_text(amount)
     if txn.reference:
         extra = f"slip {txn.reference}, {extra}"
     where = f" to {account.name}" if account else ""

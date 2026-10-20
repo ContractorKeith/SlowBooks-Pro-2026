@@ -13,6 +13,7 @@ function fixture(settings = {}) {
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
         })[character]),
         toast() {},
+        currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
         // Save disables its button and re-reads the form for the unsaved-
         // changes note (2.18.0); neither is on this fake page.
         document: { getElementById: () => null },

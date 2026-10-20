@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.accounts import Account, AccountType
 from app.models.transactions import Transaction, TransactionLine
 from app.routes.reports._router import router
+from app.services.money import money_text
 from app.services.terminology import Terms, terms_from_db
 
 # Debit-normal account types. For these, natural balance = debit - credit.
@@ -1065,9 +1066,7 @@ def job_profitability_report(
 
 
 def _money(value) -> str:
-    amount = Decimal(str(value or 0))
-    sign = "-" if amount < 0 else ""
-    return f"{sign}${abs(amount):,.2f}"
+    return money_text(value)
 
 
 def _period_words(data: dict) -> str:

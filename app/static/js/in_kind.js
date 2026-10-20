@@ -61,7 +61,7 @@ const InKindPage = {
                     <tbody id="ik-lines">${InKindPage.lineHtml(0)}</tbody>
                 </table></div>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="InKindPage.addLine()">+ Add Line</button>
-                <div style="margin-top:8px;text-align:right;font-weight:700" id="ik-total">Total: $0.00</div>
+                <div style="margin-top:8px;text-align:right;font-weight:700" id="ik-total">Total: ${formatCurrency(0)}</div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Post Gift</button>
@@ -77,7 +77,7 @@ const InKindPage = {
             <td><input class="ik-desc" placeholder="Yamaha U1 upright piano" required style="min-width:180px"></td>
             <td><input class="ik-qty" type="number" step="0.01" min="0.01" value="1" oninput="InKindPage.recalc()"></td>
             <td><input class="ik-fv" type="number" step="0.01" min="0" value="0" oninput="InKindPage.recalc()"></td>
-            <td class="col-amount ik-amount">$0.00</td>
+            <td class="col-amount ik-amount">${formatCurrency(0)}</td>
             <td><select class="ik-debit" required>${opts}</select></td>
             <td><button type="button" class="btn btn-sm btn-danger" aria-label="Remove line" onclick="this.closest('tr').remove();InKindPage.recalc()">X</button></td>
         </tr>`;

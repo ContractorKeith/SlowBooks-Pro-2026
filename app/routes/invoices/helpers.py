@@ -18,6 +18,7 @@ from app.services.accounting import (
     compute_line_totals,
     _q,
 )
+from app.services.money import money_text
 from app.services.terminology import document_reference
 
 ZERO_TOTAL_CODE = "zero_total"
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def _zero_total_sentence(noun: str, action: str) -> str:
     return (
-        f"This {noun} adds up to $0.00. Enter a rate on at least one line "
+        f"This {noun} adds up to {money_text(0)}. Enter a rate on at least one line "
         f"before {action}."
     )
 
@@ -72,7 +73,8 @@ def confirm_zero_total(
         detail={
             "code": ZERO_TOTAL_CODE,
             "message": _zero_total_sentence(noun, action),
-            "question": question or f"This {noun} adds up to $0.00. Save it anyway?",
+            "question": question
+            or f"This {noun} adds up to {money_text(0)}. Save it anyway?",
         },
     )
 
@@ -116,8 +118,8 @@ def confirm_credit_limit(
     if after <= limit:
         return
     sentence = (
-        f"{customer.name}'s credit limit is ${limit:,.2f}. "
-        f"With this {noun} they would owe ${after:,.2f}."
+        f"{customer.name}'s credit limit is {money_text(limit)}. "
+        f"With this {noun} they would owe {money_text(after)}."
     )
     raise HTTPException(
         status_code=409,

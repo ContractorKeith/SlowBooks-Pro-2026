@@ -145,6 +145,33 @@ def _guard_closing_period(request: Request, db: Session, fields: dict):
         )
 
 
+def _home_currency_to_store(db: Session, value) -> str:
+    """An ISO 4217 code, upper-cased; and only while the ledger is empty.
+    Every posted amount is booked in the home currency, so changing it
+    under them would relabel the books, not convert them (#125)."""
+    from app.models.transactions import Transaction
+    from app.services.money import normalize_code
+    from app.services.settings_service import get_setting_raw
+
+    code = normalize_code(value)
+    if not code:
+        raise HTTPException(
+            status_code=422,
+            detail="Home currency must be a three-letter ISO code, such as USD, EUR or ZAR.",
+        )
+    current = normalize_code(get_setting_raw(db, "home_currency")) or "USD"
+    if code != current and db.query(Transaction.id).first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"The home currency is {current} and the ledger already has "
+                "postings in it. It can be changed only in a company with "
+                "nothing posted yet: start a new company file for the other currency."
+            ),
+        )
+    return code
+
+
 @router.put("")
 def update_settings(
     data: SettingsUpdate, request: Request, db: Session = Depends(get_db)
@@ -195,6 +222,8 @@ def update_settings(
             )
         if key in SECRET_KEYS and value == SECRET_PLACEHOLDER:
             continue
+        if key == "home_currency":
+            value = _home_currency_to_store(db, value)
         try:
             cleaned[key] = clean_setting_value(key, value)
         except SettingValueError as exc:

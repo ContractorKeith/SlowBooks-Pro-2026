@@ -48,7 +48,7 @@ const OpeningBalancesPage = {
                     <tbody>${rows}</tbody>
                 </table></div>
                 <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                    <div id="ob-difference" style="font-weight:700;">Difference: $0.00</div>
+                    <div id="ob-difference" style="font-weight:700;">Difference: ${formatCurrency(0)}</div>
                     <label style="font-size:11px;">
                         <input type="checkbox" id="ob-auto-balance" data-write> Auto-balance to
                     </label>

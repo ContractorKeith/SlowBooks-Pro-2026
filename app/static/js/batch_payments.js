@@ -71,7 +71,7 @@ const BatchPaymentsPage = {
             const one = foreignCount === 1;
             html += `<p style="margin-top:8px;color:var(--gray-500);">${foreignCount} open ${one ? T('invoice') : T('invoices')} in another currency ${one ? 'is' : 'are'} not listed here: a batch payment is in ${escapeHtml(home)}, so pay ${one ? 'it' : 'each'} on its own.</p>`;
         }
-        html += `<div id="batch-total" style="margin-top:12px;font-size:16px;font-weight:700;color:var(--qb-navy);">Total: $0.00</div>
+        html += `<div id="batch-total" style="margin-top:12px;font-size:16px;font-weight:700;color:var(--qb-navy);">Total: ${formatCurrency(0)}</div>
             <div class="form-actions" data-write>
                 <button type="submit" class="btn btn-primary">Apply Batch Payment</button>
             </div></form>`;

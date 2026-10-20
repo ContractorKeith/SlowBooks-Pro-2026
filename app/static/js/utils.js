@@ -1,13 +1,42 @@
 /**
  * Shared formatting + DOM helpers. Negative currency prints with the
- * minus before the dollar sign ("-$10.00"), as the printed documents do.
+ * minus before the symbol ("-$10.00"), as the printed documents do.
  */
 
 function $(sel, parent = document) { return parent.querySelector(sel); }
 function $$(sel, parent = document) { return [...parent.querySelectorAll(sel)]; }
 
-function formatCurrency(amount) {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
+// Narrow symbols, as Intl prints them. The server's twin is SYMBOLS in
+// app/services/money.py; a test keeps the two tables the same (#125).
+const CURRENCY_SYMBOLS = {
+    AUD: '$', BRL: 'R$', CAD: '$', CHF: 'CHF', CNY: '¥', CZK: 'Kč', DKK: 'kr',
+    EUR: '€', GBP: '£', HKD: '$', HUF: 'Ft', IDR: 'Rp', ILS: '₪', INR: '₹',
+    JPY: '¥', KES: 'KSh', KRW: '₩', MXN: '$', MYR: 'RM', NGN: '₦', NOK: 'kr',
+    NZD: '$', PHP: '₱', PLN: 'zł', RUB: '₽', SEK: 'kr', SGD: '$', THB: '฿',
+    TRY: '₺', TWD: '$', USD: '$', VND: '₫', ZAR: 'R',
+};
+
+// The company's home currency, from the settings the shell loads at boot.
+function homeCurrency() {
+    const code = (typeof App !== 'undefined' && App.settings && App.settings.home_currency) || 'USD';
+    return String(code).trim().toUpperCase() || 'USD';
+}
+
+// Money as the documents print it (app/services/money.py is the server's
+// twin, and the PDFs read the same). In the home currency the symbol leads
+// ("$1,234.50", "-R10.00"); a currency with no symbol here, or an amount in
+// a currency that is not the home one, carries its ISO code ("ZAR 1,234.50",
+// "EUR -10.00"). Two places, or up to `places` when the amount has them
+// (a unit price of $0.045). An amount that rounds to nothing has no sign.
+function formatCurrency(amount, currency, places = 2) {
+    const n = Number(amount) || 0;
+    const home = homeCurrency();
+    const code = String(currency || '').trim().toUpperCase();
+    const body = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: places });
+    const sign = n < 0 && /[1-9]/.test(body) ? '-' : '';
+    if (code && code !== home) return `${code} ${sign}${body}`;
+    const symbol = CURRENCY_SYMBOLS[home];
+    return symbol === undefined ? `${home} ${sign}${body}` : `${sign}${symbol}${body}`;
 }
 
 // A file's size for a person: "18 bytes", "4.2 KB", "1.3 MB". Everything
@@ -1232,13 +1261,63 @@ function jobIdFromForm(form) {
 // Selecting a foreign currency prefills the rate from /api/fx/rate
 // (Bank of Canada feed); the operator can always override.
 // ---------------------------------------------------------------------------
-const CURRENCIES = ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN', 'INR', 'CNY'];
+// ISO 4217 codes, named: the pickers (a document's currency, the home
+// currency under Settings) carried ten and ZAR was not among them (#125).
+const CURRENCIES = [
+    ['AED', 'UAE Dirham'], ['AFN', 'Afghan Afghani'], ['ALL', 'Albanian Lek'], ['AMD', 'Armenian Dram'],
+    ['ANG', 'Netherlands Antillean Guilder'], ['AOA', 'Angolan Kwanza'], ['ARS', 'Argentine Peso'],
+    ['AUD', 'Australian Dollar'], ['AWG', 'Aruban Florin'], ['AZN', 'Azerbaijani Manat'],
+    ['BAM', 'Bosnia-Herzegovina Convertible Mark'], ['BBD', 'Barbadian Dollar'], ['BDT', 'Bangladeshi Taka'],
+    ['BGN', 'Bulgarian Lev'], ['BHD', 'Bahraini Dinar'], ['BIF', 'Burundian Franc'], ['BMD', 'Bermudian Dollar'],
+    ['BND', 'Brunei Dollar'], ['BOB', 'Bolivian Boliviano'], ['BRL', 'Brazilian Real'], ['BSD', 'Bahamian Dollar'],
+    ['BTN', 'Bhutanese Ngultrum'], ['BWP', 'Botswana Pula'], ['BYN', 'Belarusian Ruble'], ['BZD', 'Belize Dollar'],
+    ['CAD', 'Canadian Dollar'], ['CDF', 'Congolese Franc'], ['CHF', 'Swiss Franc'], ['CLP', 'Chilean Peso'],
+    ['CNY', 'Chinese Yuan'], ['COP', 'Colombian Peso'], ['CRC', 'Costa Rican Colón'], ['CUP', 'Cuban Peso'],
+    ['CVE', 'Cape Verdean Escudo'], ['CZK', 'Czech Koruna'], ['DJF', 'Djiboutian Franc'], ['DKK', 'Danish Krone'],
+    ['DOP', 'Dominican Peso'], ['DZD', 'Algerian Dinar'], ['EGP', 'Egyptian Pound'], ['ERN', 'Eritrean Nakfa'],
+    ['ETB', 'Ethiopian Birr'], ['EUR', 'Euro'], ['FJD', 'Fijian Dollar'], ['FKP', 'Falkland Islands Pound'],
+    ['GBP', 'British Pound'], ['GEL', 'Georgian Lari'], ['GHS', 'Ghanaian Cedi'], ['GIP', 'Gibraltar Pound'],
+    ['GMD', 'Gambian Dalasi'], ['GNF', 'Guinean Franc'], ['GTQ', 'Guatemalan Quetzal'], ['GYD', 'Guyanese Dollar'],
+    ['HKD', 'Hong Kong Dollar'], ['HNL', 'Honduran Lempira'], ['HTG', 'Haitian Gourde'], ['HUF', 'Hungarian Forint'],
+    ['IDR', 'Indonesian Rupiah'], ['ILS', 'Israeli New Shekel'], ['INR', 'Indian Rupee'], ['IQD', 'Iraqi Dinar'],
+    ['IRR', 'Iranian Rial'], ['ISK', 'Icelandic Króna'], ['JMD', 'Jamaican Dollar'], ['JOD', 'Jordanian Dinar'],
+    ['JPY', 'Japanese Yen'], ['KES', 'Kenyan Shilling'], ['KGS', 'Kyrgyzstani Som'], ['KHR', 'Cambodian Riel'],
+    ['KMF', 'Comorian Franc'], ['KRW', 'South Korean Won'], ['KWD', 'Kuwaiti Dinar'], ['KYD', 'Cayman Islands Dollar'],
+    ['KZT', 'Kazakhstani Tenge'], ['LAK', 'Lao Kip'], ['LBP', 'Lebanese Pound'], ['LKR', 'Sri Lankan Rupee'],
+    ['LRD', 'Liberian Dollar'], ['LSL', 'Lesotho Loti'], ['LYD', 'Libyan Dinar'], ['MAD', 'Moroccan Dirham'],
+    ['MDL', 'Moldovan Leu'], ['MGA', 'Malagasy Ariary'], ['MKD', 'Macedonian Denar'], ['MMK', 'Myanmar Kyat'],
+    ['MNT', 'Mongolian Tögrög'], ['MOP', 'Macanese Pataca'], ['MRU', 'Mauritanian Ouguiya'], ['MUR', 'Mauritian Rupee'],
+    ['MVR', 'Maldivian Rufiyaa'], ['MWK', 'Malawian Kwacha'], ['MXN', 'Mexican Peso'], ['MYR', 'Malaysian Ringgit'],
+    ['MZN', 'Mozambican Metical'], ['NAD', 'Namibian Dollar'], ['NGN', 'Nigerian Naira'], ['NIO', 'Nicaraguan Córdoba'],
+    ['NOK', 'Norwegian Krone'], ['NPR', 'Nepalese Rupee'], ['NZD', 'New Zealand Dollar'], ['OMR', 'Omani Rial'],
+    ['PAB', 'Panamanian Balboa'], ['PEN', 'Peruvian Sol'], ['PGK', 'Papua New Guinean Kina'], ['PHP', 'Philippine Peso'],
+    ['PKR', 'Pakistani Rupee'], ['PLN', 'Polish Złoty'], ['PYG', 'Paraguayan Guaraní'], ['QAR', 'Qatari Riyal'],
+    ['RON', 'Romanian Leu'], ['RSD', 'Serbian Dinar'], ['RUB', 'Russian Ruble'], ['RWF', 'Rwandan Franc'],
+    ['SAR', 'Saudi Riyal'], ['SBD', 'Solomon Islands Dollar'], ['SCR', 'Seychellois Rupee'], ['SDG', 'Sudanese Pound'],
+    ['SEK', 'Swedish Krona'], ['SGD', 'Singapore Dollar'], ['SHP', 'Saint Helena Pound'], ['SLE', 'Sierra Leonean Leone'],
+    ['SOS', 'Somali Shilling'], ['SRD', 'Surinamese Dollar'], ['SSP', 'South Sudanese Pound'], ['STN', 'São Tomé and Príncipe Dobra'],
+    ['SVC', 'Salvadoran Colón'], ['SYP', 'Syrian Pound'], ['SZL', 'Swazi Lilangeni'], ['THB', 'Thai Baht'],
+    ['TJS', 'Tajikistani Somoni'], ['TMT', 'Turkmenistani Manat'], ['TND', 'Tunisian Dinar'], ['TOP', 'Tongan Paʻanga'],
+    ['TRY', 'Turkish Lira'], ['TTD', 'Trinidad and Tobago Dollar'], ['TWD', 'New Taiwan Dollar'], ['TZS', 'Tanzanian Shilling'],
+    ['UAH', 'Ukrainian Hryvnia'], ['UGX', 'Ugandan Shilling'], ['USD', 'US Dollar'], ['UYU', 'Uruguayan Peso'],
+    ['UZS', 'Uzbekistani Som'], ['VES', 'Venezuelan Bolívar'], ['VND', 'Vietnamese Đồng'], ['VUV', 'Vanuatu Vatu'],
+    ['WST', 'Samoan Tālā'], ['XAF', 'Central African CFA Franc'], ['XCD', 'East Caribbean Dollar'],
+    ['XOF', 'West African CFA Franc'], ['XPF', 'CFP Franc'], ['YER', 'Yemeni Rial'], ['ZAR', 'South African Rand'],
+    ['ZMW', 'Zambian Kwacha'], ['ZWG', 'Zimbabwe Gold'],
+];
+
+// <option>s for a currency picker: the home currency first, then the rest
+// by code; each reads "ZAR — South African Rand".
+function currencyOptionsHtml(selected) {
+    const sel = String(selected || homeCurrency()).toUpperCase();
+    const home = homeCurrency();
+    const rows = [...CURRENCIES].sort((a, b) => (a[0] === home ? -1 : b[0] === home ? 1 : a[0] < b[0] ? -1 : 1));
+    return rows.map(([c, name]) => `<option value="${c}" ${c === sel ? 'selected' : ''}>${c} — ${escapeHtml(name)}</option>`).join('');
+}
 
 function currencyFormGroupsHtml(selected, rate) {
-    const sel = (selected || 'USD').toUpperCase();
-    const opts = CURRENCIES.map(c => `<option ${c === sel ? 'selected' : ''}>${c}</option>`).join('');
     return `<div class="form-group"><label>Currency</label>
-            <select name="currency" onchange="prefillFxRate(this)">${opts}</select></div>
+            <select name="currency" onchange="prefillFxRate(this)">${currencyOptionsHtml(selected)}</select></div>
         <div class="form-group"><label>Exchange Rate</label>
             <input name="exchange_rate" type="number" step="0.00000001" value="${rate || 1}"></div>`;
 }

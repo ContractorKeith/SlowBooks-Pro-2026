@@ -50,11 +50,11 @@ def check_amounts(purchase_price, salvage_value) -> None:
     if price <= 0:
         raise HTTPException(
             status_code=400,
-            detail="Enter the purchase price: it must be more than $0.00.",
+            detail=f"Enter the purchase price: it must be more than {money_text(0)}.",
         )
     if salvage < 0:
         raise HTTPException(
-            status_code=400, detail="Salvage value can't be less than $0.00."
+            status_code=400, detail=f"Salvage value can't be less than {money_text(0)}."
         )
     if salvage > price:
         raise HTTPException(
@@ -679,7 +679,7 @@ def post_acquisition(db: Session, asset: FixedAsset, acq):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Depreciation already taken must be between $0.00 and "
+                    f"Depreciation already taken must be between {money_text(0)} and "
                     f"{money_text(depreciable)} (the cost less the salvage value)."
                 ),
             )

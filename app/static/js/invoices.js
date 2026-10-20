@@ -113,15 +113,7 @@ const SalesLines = {
     // foreign document carries its ISO code ("EUR 850.00"), so a euro
     // invoice never reads as $850.00 (W-M2). Matches the PDF's filter.
     money(amount, currency, places = 2) {
-        const home = ((typeof App !== 'undefined' && App.settings && App.settings.home_currency) || 'USD').toUpperCase();
-        const code = String(currency || '').trim().toUpperCase();
-        const n = Number(amount) || 0;
-        if (!code || code === home) {
-            if (places === 2) return formatCurrency(amount);
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: home, minimumFractionDigits: 2, maximumFractionDigits: places }).format(n);
-        }
-        const digits = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: places });
-        return `${code} ${digits}`;
+        return formatCurrency(amount, currency, places);
     },
 
     // A unit price: two places, or up to four when it has them ($0.045).
@@ -683,9 +675,9 @@ const InvoicesPage = {
                 </table>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="InvoicesPage.addLine()">+ Add Line</button>
                 <div class="invoice-totals" id="inv-totals">
-                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="inv-subtotal">$0.00</span></div>
-                    <div class="total-row"><span class="label">Tax</span><span class="value" id="inv-tax">$0.00</span></div>
-                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="inv-total">$0.00</span></div>
+                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="inv-subtotal">${formatCurrency(0)}</span></div>
+                    <div class="total-row"><span class="label">Tax</span><span class="value" id="inv-tax">${formatCurrency(0)}</span></div>
+                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="inv-total">${formatCurrency(0)}</span></div>
                 </div>
                 <div class="form-group" style="margin-top:12px;"><label>Notes</label>
                     <textarea name="notes">${escapeHtml(inv.notes || '')}</textarea></div>

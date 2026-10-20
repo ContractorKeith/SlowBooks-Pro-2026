@@ -22,6 +22,7 @@ from app.schemas.purchase_orders import (
     POUpdate,
 )
 from app.services.accounting import _q, compute_line_totals
+from app.services.money import money_text
 from app.services.numbering import next_po_number
 from app.services.request_utils import content_disposition
 from app.services.purchase_posting import (
@@ -281,7 +282,7 @@ def convert_to_bill(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"{po.po_number} comes to $0.00, so there is nothing to bill. "
+                f"{po.po_number} comes to {money_text(0)}, so there is nothing to bill. "
                 "Enter the prices on its lines, then turn it into a bill."
             ),
         )

@@ -25,6 +25,7 @@ const ctx = {
   T: (s) => s,
   Terms: { text: (s) => s },
   escapeHtml,
+  currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
   formatFileSize: (n) => `${n} bytes`,
   toast: (msg, kind) => toasts.push([msg, kind || 'ok']),
   confirm: (msg) => { confirms.push(msg); return true; },

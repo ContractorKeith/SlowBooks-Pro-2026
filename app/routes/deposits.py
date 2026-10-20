@@ -29,6 +29,7 @@ from app.services.accounting import _q, create_journal_entry, get_undeposited_fu
 from app.services.bank_posting import void_document
 from app.services.closing_date import check_closing_date
 from app.services.donor_documents import document_label
+from app.services.money import money_text
 from app.services.terminology import document_reference, terms_from_db
 from app.services.undeposited_funds import (
     dead_transaction_ids,
@@ -290,8 +291,8 @@ def create_deposit(data: DepositCreate, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"The payments ticked add up to ${total:,.2f}, not "
-                    f"${_q(data.total):,.2f}. Reload Make Deposits and try again."
+                    f"The payments ticked add up to {money_text(total)}, not "
+                    f"{money_text(_q(data.total))}. Reload Make Deposits and try again."
                 ),
             )
     else:

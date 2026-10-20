@@ -5,6 +5,31 @@ Notable changes between releases. Format roughly follows
 used during development is captured here so the README can stay focused
 on what the software does, not on what sprint shipped what.
 
+### Unreleased — The home currency reaches the screen
+
+**Every figure prints in the company's home currency** (#125, from
+discussion #112). `home_currency` drove the accounting and nothing a person
+read: the pages formatted every amount as US dollars, the PDFs wrote a
+literal `$`, and so did the sentences an error comes back with. A company
+whose books are in rand now reads "R1,234.50" on every page, list, report
+and PDF, in the invoice email and in a refusal ("This invoice adds up to
+R0.00"); a document in another currency carries that currency's code
+("USD 850.00"), as foreign documents always did, and so does a home
+currency with no symbol in the table ("BWP 1,234.50"). One formatter does
+it on the server (`app/services/money.py`) and one on the screen
+(`formatCurrency`), with the same symbol table, kept the same by a test.
+
+**Home Currency is on the Settings page**, with the whole ISO 4217 list;
+the document currency picker carries the same list, so ZAR, NGN, KES and
+the rest can be chosen at all (it offered ten). The setting is refused
+once the ledger has postings: every amount is booked in the home currency,
+so changing it under them would relabel the books, not convert them. Set
+it in a new company first.
+
+Not changed: digit grouping and the decimal point stay as they were
+("1,234.50"); a decimal comma or a space group is a locale setting of its
+own, and the payroll and tax-form modules remain United States specific.
+
 ### v2.24.0 — Working with your accountant
 
 **An Accountant role** (#340). Settings → Users offers Accountant: a sign-in

@@ -18,6 +18,7 @@ from app.models.bills import BillPayment
 from app.models.contacts import Customer, Vendor
 from app.models.payments import Payment
 from app.models.transactions import Transaction, TransactionLine
+from app.services.money import money_text as _money_text
 
 DEBIT_NORMAL = {AccountType.ASSET, AccountType.EXPENSE, AccountType.COGS}
 
@@ -29,9 +30,9 @@ def is_debit_normal(account: Account) -> bool:
 
 
 def money_text(value) -> str:
-    """$1,234.56 / -$1,234.56 — money as a sentence shows it."""
-    amount = Decimal(str(value or 0))
-    return f"{'-' if amount < 0 else ''}${abs(amount):,.2f}"
+    """$1,234.56 / -$1,234.56 — money as a sentence shows it, in the home
+    currency's symbol (app.services.money)."""
+    return _money_text(value)
 
 
 def date_text(value: date) -> str:

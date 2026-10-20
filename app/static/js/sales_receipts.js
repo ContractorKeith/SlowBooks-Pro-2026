@@ -197,9 +197,9 @@ const SalesReceiptsPage = {
                 </table>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="SalesReceiptsPage.addLine()">+ Add Line</button>
                 <div class="invoice-totals" id="sr-totals">
-                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="sr-subtotal">$0.00</span></div>
-                    <div class="total-row"><span class="label">Tax</span><span class="value" id="sr-tax">$0.00</span></div>
-                    <div class="total-row grand-total"><span class="label">Total Received</span><span class="value" id="sr-total">$0.00</span></div>
+                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="sr-subtotal">${formatCurrency(0)}</span></div>
+                    <div class="total-row"><span class="label">Tax</span><span class="value" id="sr-tax">${formatCurrency(0)}</span></div>
+                    <div class="total-row grand-total"><span class="label">Total Received</span><span class="value" id="sr-total">${formatCurrency(0)}</span></div>
                 </div>
                 <div class="form-group" style="margin-top:12px;"><label>Notes</label>
                     <textarea name="notes"></textarea></div>

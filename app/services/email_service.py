@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.email_log import EmailLog
 from app.models.settings import Settings
+from app.services.money import money_text, using_home_currency
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +299,10 @@ def invoice_email_context(invoice, company_settings: dict, pay_url: str = None) 
     return {
         "invoice": invoice,
         "inv": invoice,  # the file template's name for it
+        # The money as the document prints it, in the home currency's symbol
+        # or the document's own code (#125: the email wrote "$").
+        "total_text": _email_money(invoice, company_settings, "total"),
+        "amount_due_text": _email_money(invoice, company_settings, "balance_due"),
         # GHSA-c3v4-f43f-4wqm. The `invoice_email` template is operator-
         # editable and, since #140, actually rendered — so `{{ company }}`
         # would dump every decrypted credential into an email addressed to
@@ -390,6 +395,14 @@ def render_invoice_email(
     )[1]
 
 
+def _email_money(invoice, company_settings: dict, field: str) -> str:
+    from app.services.pdf_service import document_currency_code
+
+    code = document_currency_code(invoice, company_settings)
+    with using_home_currency((company_settings or {}).get("home_currency")):
+        return money_text(getattr(invoice, field, None), code or None)
+
+
 def _fallback_invoice_body(invoice, company_settings: dict, ctx: dict) -> str:
     """Last resort when neither a saved nor a file template renders.
 
@@ -409,7 +422,7 @@ def _fallback_invoice_body(invoice, company_settings: dict, ctx: dict) -> str:
     )
     return f"""<html><body>
         <p>Dear {customer_name},</p>
-        <p>Please find attached {doc_label} #{invoice_number} for ${float(invoice.total):,.2f}.</p>
+        <p>Please find attached {doc_label} #{invoice_number} for {ctx["total_text"]}.</p>
         <p>Payment is due by {invoice.due_date}.</p>
         <p>{thanks}</p>
         <p>{company_name}</p>

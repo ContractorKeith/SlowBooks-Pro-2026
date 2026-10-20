@@ -119,9 +119,9 @@ const PurchaseOrdersPage = {
                 </table>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="PurchaseOrdersPage.addLine()">+ Add Line</button>
                 <div class="invoice-totals" id="po-totals">
-                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="po-subtotal">$0.00</span></div>
-                    <div class="total-row"><span class="label">Tax</span><span class="value" id="po-tax">$0.00</span></div>
-                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="po-total">$0.00</span></div>
+                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="po-subtotal">${formatCurrency(0)}</span></div>
+                    <div class="total-row"><span class="label">Tax</span><span class="value" id="po-tax">${formatCurrency(0)}</span></div>
+                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="po-total">${formatCurrency(0)}</span></div>
                 </div>
                 <div class="form-group" style="margin-top:12px;"><label>Notes</label>
                     <textarea name="notes">${escapeHtml(po.notes || '')}</textarea></div>

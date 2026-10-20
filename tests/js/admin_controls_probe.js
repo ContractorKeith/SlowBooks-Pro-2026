@@ -316,6 +316,7 @@ function newWindow(role, answers = {}) {
     Terms: { text: s => s, isNonprofit: () => false },
     formatDate: s => s,
     formatCurrency: n => `$${Number(n).toFixed(2)}`,
+    currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
     toast() {},
     closeModal() {},
     copyToClipboard() {},

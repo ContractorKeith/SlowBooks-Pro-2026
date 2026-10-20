@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Optional
 
 from app.services.accounting import _q
+from app.services.money import money_text, using_home_currency
 from app.services.terminology import Terms, terms_for
 
 NO_GOODS = "No goods or services were provided in exchange for this contribution."
@@ -22,8 +23,7 @@ RETAIN = "Please retain this acknowledgment for your tax records."
 
 
 def _money(v) -> str:
-    v = _q(Decimal(str(v or 0)))
-    return f"${v:,.2f}"
+    return money_text(_q(Decimal(str(v or 0))))
 
 
 def irs_statement(
@@ -39,6 +39,19 @@ def irs_statement(
     fair_value_amount    value of goods/services the donor received back
     in_kind_descriptions the property given, when the gift is not cash
     """
+    with using_home_currency((company or {}).get("home_currency")):
+        return _irs_statement(
+            company,
+            amount,
+            fair_value_amount,
+            fair_value_description,
+            in_kind_descriptions,
+        )
+
+
+def _irs_statement(
+    company, amount, fair_value_amount, fair_value_description, in_kind_descriptions
+) -> dict:
     name = (company or {}).get("company_name") or "the organization"
     ein = (company or {}).get("company_tax_id") or ""
     tail = f" {name}" + (f" (EIN {ein})" if ein else "") + f". {RETAIN}"

@@ -28,6 +28,7 @@ const ctx = {
   location: { hash: '#/settings' },
   history: { replaceState: (_s, _t, url) => { replaced.push(url); ctx.location.hash = url; } },
   confirm: (msg) => { confirms.push(msg); return confirmAnswer; },
+  currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
   App: { navigate: async (hash) => { navigated.push(hash); }, stayPut: () => { stayed.push(ctx.location.hash); ctx.location.hash = '#/settings'; } },
 };
 vm.createContext(ctx);

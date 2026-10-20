@@ -164,7 +164,7 @@ def session(db: Session, recon: Reconciliation) -> dict:
 def out_of_balance_text(difference: Decimal) -> str:
     return (
         f"Not finished: the difference is {money_text(difference)}, and it must be "
-        "$0.00. Tick the lines that are on your statement, or check the "
+        f"{money_text(0)}. Tick the lines that are on your statement, or check the "
         "statement's ending balance."
     )
 

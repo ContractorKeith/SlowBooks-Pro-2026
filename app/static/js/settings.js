@@ -129,6 +129,10 @@ const SettingsPage = {
                             <input name="company_website" value="${escapeHtml(s.company_website || '')}"></div>
                         <div class="form-group"><label>Tax ID / EIN</label>
                             <input name="company_tax_id" value="${escapeHtml(s.company_tax_id || '')}"></div>
+                        <div class="form-group full-width"><label for="home-currency">Home Currency</label>
+                            <select id="home-currency" name="home_currency">${currencyOptionsHtml(s.home_currency || 'USD')}</select>
+                            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">The currency the books are kept in: every screen, report and PDF prints its symbol, and a document in another currency carries that currency's code. Set it before anything is posted; the ledger books every amount in it, so it cannot change once there are postings.</div>
+                        </div>
                         <div class="form-group full-width"><label for="company-type">Company Type</label>
                             <select id="company-type" name="company_type" onchange="SettingsPage.changeCompanyType(this)">
                                 <option value="business" ${s.company_type !== 'nonprofit' ? 'selected' : ''}>Business</option>

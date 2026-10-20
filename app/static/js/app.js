@@ -1588,13 +1588,13 @@ const App = {
                             <td><input class="line-desc" value=""></td>
                             <td><input class="line-qty" type="number" step="0.01" value="1" oninput="App.qeRecalc()"></td>
                             <td><input class="line-rate" type="number" step="0.01" value="0" oninput="App.qeRecalc()"></td>
-                            <td class="col-amount line-amount">$0.00</td>
+                            <td class="col-amount line-amount">${formatCurrency(0)}</td>
                         </tr>
                     </tbody>
                 </table>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="App.qeAddLine()">+ Add Line</button>
                 <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
-                    <div id="qe-total" style="font-size:16px; font-weight:700; color:var(--qb-navy);">Total: $0.00</div>
+                    <div id="qe-total" style="font-size:16px; font-weight:700; color:var(--qb-navy);">Total: ${formatCurrency(0)}</div>
                     <div class="form-actions" style="margin:0;">
                         <button type="submit" class="btn btn-primary" data-write>Save & Next (Ctrl+Enter)</button>
                     </div>
@@ -1613,7 +1613,7 @@ const App = {
                 <td><input class="line-desc" value=""></td>
                 <td><input class="line-qty" type="number" step="0.01" value="1" oninput="App.qeRecalc()"></td>
                 <td><input class="line-rate" type="number" step="0.01" value="0" oninput="App.qeRecalc()"></td>
-                <td class="col-amount line-amount">$0.00</td>
+                <td class="col-amount line-amount">${formatCurrency(0)}</td>
             </tr>`);
     },
 
@@ -1684,7 +1684,7 @@ const App = {
                     <td><input class="line-desc" value=""></td>
                     <td><input class="line-qty" type="number" step="0.01" value="1" oninput="App.qeRecalc()"></td>
                     <td><input class="line-rate" type="number" step="0.01" value="0" oninput="App.qeRecalc()"></td>
-                    <td class="col-amount line-amount">$0.00</td>
+                    <td class="col-amount line-amount">${formatCurrency(0)}</td>
                 </tr>`;
             App._qeLineCount = 1;
             App.qeRecalc();

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.transactions import Transaction, TransactionLine
 from app.models.accounts import Account, AccountType
 from app.services import control_accounts
+from app.services.money import money_text
 from app.services.safe_errors import DataProblem
 
 CENT = Decimal("0.01")
@@ -234,7 +235,7 @@ def create_journal_entry(
         # (the journal form's own live wording, not "debits=5000, ...").
         raise DataProblem(
             "Debits and credits must be equal: this entry is out of balance "
-            f"by ${abs(total_debit - total_credit):,.2f}"
+            f"by {money_text(abs(total_debit - total_credit))}"
         )
 
     # Invoice edits retain their header identity after removing old splits.

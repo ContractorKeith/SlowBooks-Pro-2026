@@ -104,9 +104,9 @@ const VendorCreditsPage = {
                 </table>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="VendorCreditsPage.addLine()">+ Add Line</button>
                 <div class="invoice-totals">
-                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="vc-subtotal">$0.00</span></div>
-                    <div class="total-row"><span class="label">Tax</span><span class="value" id="vc-tax">$0.00</span></div>
-                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="vc-total">$0.00</span></div>
+                    <div class="total-row"><span class="label">Subtotal</span><span class="value" id="vc-subtotal">${formatCurrency(0)}</span></div>
+                    <div class="total-row"><span class="label">Tax</span><span class="value" id="vc-tax">${formatCurrency(0)}</span></div>
+                    <div class="total-row grand-total"><span class="label">Total</span><span class="value" id="vc-total">${formatCurrency(0)}</span></div>
                 </div>
                 <div class="form-group" style="margin-top:12px;"><label>Notes</label>
                     <textarea name="notes"></textarea></div>
@@ -126,7 +126,7 @@ const VendorCreditsPage = {
                 <td><input class="line-desc"></td>
                 <td><input class="line-qty" type="number" step="0.0001" value="1" oninput="VendorCreditsPage.recalc()"></td>
                 <td><input class="line-rate" type="number" step="0.0001" value="0" oninput="VendorCreditsPage.recalc()"></td>
-                <td class="col-amount line-amount">$0.00</td>
+                <td class="col-amount line-amount">${formatCurrency(0)}</td>
             </tr>`;
     },
 

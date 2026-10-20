@@ -6,6 +6,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from app.services.money import money_body, using_home_currency
+
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _jinja_env = Environment(autoescape=True, loader=FileSystemLoader(str(TEMPLATE_DIR)))
 
@@ -107,16 +109,17 @@ def render_pdf(html_str: str) -> bytes:
 
 def _money(body: str, negative: bool, code=None) -> str:
     """An amount's digits with its sign and currency: "-$10.00", the minus
-    before the dollar sign (a discount line printed "$-10.00"), or with an
-    ISO `code` "EUR -10.00". An amount that rounds to nothing has no sign."""
-    sign = "-" if negative and body.strip("0.,") else ""
-    return f"{code} {sign}{body}" if code else f"{sign}${body}"
+    before the symbol (a discount line printed "$-10.00"), or with an ISO
+    `code` "EUR -10.00". The symbol is the home currency's (#125): a ZAR
+    company's documents print "R1,234.50". An amount that rounds to nothing
+    has no sign."""
+    return money_body(body, negative, code)
 
 
 def _format_currency(value, code=None):
-    """Dollars ("$1,234.50", "-$10.00"), or with an ISO `code` "EUR
-    1,234.50". A document in a foreign currency passes its code, so a euro
-    invoice never prints as dollars (2.17.3 exploratory W-M2)."""
+    """Home-currency money ("$1,234.50", "-$10.00"), or with an ISO `code`
+    "EUR 1,234.50". A document in a foreign currency passes its code, so a
+    euro invoice never prints as dollars (2.17.3 exploratory W-M2)."""
     try:
         v = float(value or 0)
     except (TypeError, ValueError):
@@ -214,9 +217,12 @@ def _render(template_name: str, company_settings: dict, **context) -> str:
     # #108: only the analytics PDF and the new-hire report ever received it).
     if "company_logo_data_uri" not in context:
         context["company_logo_data_uri"] = _company_logo_data_uri(company_settings)
-    return template.render(
-        company=company_settings, terms=terms_for(company_settings), **context
-    )
+    # The money filters print the home currency's symbol for this render,
+    # also when the PDF is made outside a request (a scheduled email).
+    with using_home_currency((company_settings or {}).get("home_currency")):
+        return template.render(
+            company=company_settings, terms=terms_for(company_settings), **context
+        )
 
 
 def render_invoice_html(invoice, company_settings: dict) -> str:

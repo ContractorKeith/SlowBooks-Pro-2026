@@ -47,7 +47,8 @@ const ctx = {
   Terms: { text: (s) => s },
   escapeHtml: (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'),
   formatDate: (s) => s,
-  formatCurrency: (n) => '$' + (Number(n) || 0).toFixed(2),
+  // the real formatter: SalesLines.money is it (#125), and the EUR note needs its code
+  formatCurrency: (() => { const u = { App: { settings: { home_currency: 'USD' } }, window: {}, document: { addEventListener() {} } }; vm.createContext(u); vm.runInContext(fs.readFileSync('app/static/js/utils.js', 'utf8') + '\nthis.formatCurrency = formatCurrency;', u); return u.formatCurrency; })(),
   toast: (msg, kind) => { toasts.push([msg, kind || 'ok']); },
   closeModal: () => { modal = null; },
   openModal: (title, html) => { modal = { title, html }; fakeInputs = inputs(); },

@@ -12,6 +12,7 @@ const ctx = {
   T: (s) => s,
   Terms: { text: (s) => s },
   escapeHtml: (s) => String(s == null ? '' : s),
+  currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
   API: { get: async (path) => (path === '/settings' ? settings : path === '/uploads/logo' ? logo : {}) },
   App: { role: 'admin' },
 };

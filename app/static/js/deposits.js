@@ -65,7 +65,7 @@ const DepositsPage = {
             html += `</tbody></table></div>
                 <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;" data-write>
                     <div id="deposit-total" style="font-size:16px; font-weight:700; color:var(--qb-navy);">
-                        Selected: $0.00 (0 items)
+                        Selected: ${formatCurrency(0)} (0 items)
                     </div>
                     <button class="btn btn-primary" onclick="DepositsPage.makeDeposit()">Make Deposit</button>
                 </div>`;

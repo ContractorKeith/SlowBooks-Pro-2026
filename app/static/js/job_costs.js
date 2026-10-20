@@ -82,7 +82,7 @@ const JobCostsPage = {
                     <tbody id="jc-lines">${JobCostsPage.lineHtml(0)}</tbody>
                 </table></div>
                 <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="JobCostsPage.addLine()">+ Add Line</button>
-                <div style="margin-top:8px;text-align:right;font-weight:700" id="jc-total">Total: $0.00</div>
+                <div style="margin-top:8px;text-align:right;font-weight:700" id="jc-total">Total: ${formatCurrency(0)}</div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Post ${T('Job')} Cost</button>
@@ -105,7 +105,7 @@ const JobCostsPage = {
             <td><select class="jc-who" style="min-width:160px" onchange="JobCostsPage.whoChanged(this)">${who}</select></td>
             <td><input class="jc-qty" type="number" step="0.01" value="1" oninput="JobCostsPage.recalc()"></td>
             <td><input class="jc-rate" type="number" step="0.0001" value="0" oninput="JobCostsPage.recalc()"></td>
-            <td class="col-amount jc-amount">$0.00</td>
+            <td class="col-amount jc-amount">${formatCurrency(0)}</td>
             <td><select class="jc-debit" style="min-width:140px;max-width:170px">${acctOpts}</select></td>
             <td><select class="jc-credit" style="min-width:140px;max-width:170px">${acctOpts}</select></td>
             <td style="text-align:center"><input type="checkbox" class="jc-billable"></td>

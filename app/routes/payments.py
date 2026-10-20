@@ -24,6 +24,7 @@ from app.services.accounting import (
     void_line_memo,
 )
 from app.services.closing_date import check_closing_date
+from app.services.money import money_text
 from app.services import request_keys
 from app.services.audit import _actor
 
@@ -321,8 +322,8 @@ def apply_payment(payment_id: int, data: PaymentApply, db: Session = Depends(get
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Only ${unapplied:,.2f} of this payment is not applied yet; "
-                f"lower the amounts (they add up to ${wanted:,.2f})."
+                f"Only {money_text(unapplied)} of this payment is not applied yet; "
+                f"lower the amounts (they add up to {money_text(wanted)})."
             ),
         )
 
@@ -360,7 +361,7 @@ def apply_payment(payment_id: int, data: PaymentApply, db: Session = Depends(get
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"${amount:,.2f} is more than the ${invoice.balance_due:,.2f} "
+                    f"{money_text(amount)} is more than the {money_text(invoice.balance_due)} "
                     f"still due on invoice {invoice.invoice_number}."
                 ),
             )

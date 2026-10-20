@@ -32,6 +32,7 @@ const ctx = {
   $: (sel) => els[sel] || null,
   $$: () => [],
   escapeHtml: (s) => String(s ?? ''),
+  currencyOptionsHtml: () => '<option value="USD">USD — US Dollar</option>',
   toast: () => {},
   openModal: (_title, html) => { modal = html; },
   closeModal: () => {},
