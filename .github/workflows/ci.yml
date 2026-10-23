@@ -194,7 +194,11 @@ jobs:
           # tests/test_account_detail_types_migration.py also needs Postgres
           # 130 with sub-accounts on the chart (#416): its browser module,
           # skipped here like the other Playwright modules
-          MAX_SKIPS: "130"
+          # 145 at the 2.27.0 integration: the real count from the merged tree's
+
+          # Windows run (fork CI, 2026-10-23), every branch's skips together.
+
+          MAX_SKIPS: "145"
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
