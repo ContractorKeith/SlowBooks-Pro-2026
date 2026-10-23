@@ -58,8 +58,8 @@ class MissingControlAccount(LookupError):
         if purpose:
             detail += f" It is used for {purpose}."
         detail += (
-            " Restore it with that exact number (Chart of Accounts → New "
-            "Account), then try again. Nothing was posted."
+            " Restore it with that exact number and name (Chart of Accounts → "
+            "New Account), then try again. Nothing was posted."
         )
         super().__init__(detail)
         # This sentence is for the operator: safe_message passes it on
@@ -75,10 +75,14 @@ class MissingControlAccount(LookupError):
 #
 # The TYPE is load-bearing too. A number is only a control account when the
 # account also carries the type the posting code expects: Opening Balance
-# Equity is resolved as an EQUITY 3900, so an imported chart's expense "3900
-# Miscellaneous Expense" is an ordinary account, not a control one — it must
-# not be flagged, locked, or refused a renumber. The resolvers, the route
-# guard and the chart importer all match on number AND type (see is_control).
+# Equity is resolved as an EQUITY 3900 and inventory write-offs as an EXPENSE
+# 5900, so an imported chart's expense "3900 Miscellaneous Expense" or income
+# "5900" is an ordinary account, not a control one — it must not be flagged,
+# locked, or refused a renumber. The resolvers, the route guard and the chart
+# importer all match on number AND type (see is_control), and reserving the
+# slot (the route guard and the chart importer) only refuses a FOREIGN
+# account — the control account itself, with the registry's name and type,
+# restores an empty slot.
 CONTROL_ACCOUNTS: dict[str, tuple[str, str, str]] = {
     "1000": ("Checking", "asset", "the default bank account for deposits and payments"),
     "1100": (
@@ -150,7 +154,8 @@ def is_control_number(number: str | None) -> bool:
     the seeded-gap boot check, the registry tripwire test. The user-facing
     paths (the route guard, the response flag, the chart importer) call
     `is_control`, which also matches the type, so an imported 3900 expense is
-    not mistaken for Opening Balance Equity.
+    not mistaken for Opening Balance Equity, nor a 5900 income for Inventory
+    Adjustments.
     """
     return bool(number) and str(number) in CONTROL_ACCOUNTS
 
@@ -160,8 +165,9 @@ def is_control(number: str | None, account_type) -> bool:
     the posting code expects for it.
 
     The registry is keyed on number, but the posting code finds, e.g.,
-    Opening Balance Equity by an EQUITY 3900. An account numbered 3900 that
-    is an expense is an ordinary account the registry does not govern: it is
+    Opening Balance Equity by an EQUITY 3900 and inventory adjustments by an
+    EXPENSE 5900. An account numbered 3900 that is an expense, or 5900 that
+    is income, is an ordinary account the registry does not govern: it is
     not flagged, not type-locked on import, and can be renumbered or deleted.
     """
     entry = CONTROL_ACCOUNTS.get(str(number)) if number else None
@@ -180,6 +186,43 @@ def describe(number: str) -> tuple[str, str]:
     """(name, purpose) for a control number; ("", "") if it is not one."""
     entry = CONTROL_ACCOUNTS.get(str(number))
     return (entry[0], entry[2]) if entry else ("", "")
+
+
+def restore_conflict(number, name, account_type) -> str:
+    """Why a new account of this number/name/type may not take a control-account
+    slot — "" when it is allowed.
+
+    Allowed means either the number is not a control number at all, or the row
+    IS the control account the slot is reserved for (its registry name,
+    case-insensitively, and its expected type): that restores an empty slot,
+    which is what MissingControlAccount tells the operator to do. Everything
+    else is a foreign account landing on a reserved number, which would
+    silently become where that posting path resolves.
+
+    Returns one of two reasons so a caller can pick a status code: a name
+    mismatch ("reserved …") or a right-name/wrong-type mismatch ("… must be a
+    <type> account"). Shared by the accounts API and the chart importer so
+    both refuse the same thing for the same reason.
+    """
+    entry = CONTROL_ACCOUNTS.get(str(number)) if number else None
+    if entry is None:
+        return ""
+    control_name, control_type, purpose = entry
+    name_ok = bool(name) and name.strip().casefold() == control_name.casefold()
+    type_ok = _type_value(account_type) == control_type
+    if name_ok and type_ok:
+        return ""
+    if name_ok and not type_ok:
+        return (
+            f"{number} {control_name} must be a {control_type} account — the "
+            f"software posts to it by number for {purpose}. Give it that type, "
+            f"or use a different number."
+        )
+    return (
+        f"Account number {number} is reserved for {control_name} — the software "
+        f"posts to it by number for {purpose}, so another account cannot use "
+        f"it. Choose a different number."
+    )
 
 
 def resolve(db: Session, number: str) -> int:
