@@ -181,6 +181,11 @@ jobs:
           # 128 with the giving-statement message kind migration (#415): its
           # Postgres run in tests/test_giving_statement_message.py needs a
           # Postgres server, like the other Postgres-only tests
+          # 128 with the Possible Duplicates report (#414): its browser
+          # module, skipped like the other Playwright modules, and its PDF
+          # test, skipped with the other PDF tests (no WeasyPrint stack)
+          # 129 with the review follow-up: the chunked id-query test in
+          # tests/test_possible_duplicates.py needs a Postgres server
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
