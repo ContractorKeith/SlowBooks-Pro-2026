@@ -191,6 +191,10 @@ jobs:
           # (no SLOWBOOKS_TEST_POSTGRES_URL here)
           # 129 with the review follow-up: the backfill migration test in
           # tests/test_account_detail_types_migration.py also needs Postgres
+          # 129 with the review follow-up on #428: the backfill migration test in
+          # tests/test_account_detail_types_migration.py also needs Postgres
+          # 130 with sub-accounts on the chart (#416): its browser module,
+          # skipped here like the other Playwright modules
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified

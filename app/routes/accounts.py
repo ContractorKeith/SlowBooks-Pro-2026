@@ -18,7 +18,15 @@ from app.models.accounts import (
     detail_type_problem,
 )
 from app.services import control_accounts
-from app.services.account_tree import loop_message, loop_through
+from app.services.account_tree import (
+    BASE_WORDS,
+    MAX_DEPTH,
+    chain_depth,
+    depth_message,
+    loop_message,
+    loop_through,
+    takes_no_new_parent,
+)
 from app.models.transactions import TransactionLine
 from app.schemas.accounts import AccountCreate, AccountUpdate, AccountResponse
 from app.routes._helpers import get_or_404, reject_null_updates
@@ -101,11 +109,25 @@ def _reject_reserved_number(number, name=None, account_type=None) -> None:
 _BANK_KIND_FOR_TYPE = {"bank": "asset", "credit_card": "liability"}
 
 
-def _check_parent_exists(db: Session, parent_id) -> None:
-    """A parent id must name an account (SQLite does not enforce the FK)."""
-    if parent_id is not None and db.get(Account, parent_id) is None:
+def _check_parent_usable(db: Session, parent_id) -> None:
+    """A parent id must name an account that can take sub-accounts (#416):
+    it exists (SQLite does not enforce the FK) and is active. The form hides
+    inactive accounts from the picker; refuse one sent straight to the API,
+    so the two agree."""
+    if parent_id is None:
+        return
+    parent = db.get(Account, parent_id)
+    if parent is None:
         raise HTTPException(
             status_code=400, detail="That parent account does not exist."
+        )
+    if not parent.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{_named(parent)} is inactive and cannot take sub-accounts. "
+                f"Reactivate it, or choose another parent."
+            ),
         )
 
 
@@ -198,9 +220,47 @@ def _move_out_first(child: Account, parent: Account) -> str:
     each other: base types are not cascaded."""
     return (
         f" Move {_named(child) or 'the sub-account'} out from under "
-        f"{_named(parent)} first (set its parent to none), change the types, "
-        f"then put it back."
+        f"{_named(parent)} first (Parent account: none, on its form), change "
+        f"the types, then put it back."
     )
+
+
+def _check_pinned_parent_base(
+    parent: Account | None, atype, child: Account | None = None
+) -> None:
+    """Under 1100, 2000, a bank or a card a sub-account keeps its own detail
+    type, but not another base type (#416): an expense under a bank account
+    would be listed, and later totalled, under a parent in another section
+    of the statements. Other parents already refuse it (_sub_account_refusal)."""
+    if parent is None or parent.detail_type not in PINNED_DETAIL_TYPES:
+        return
+    want = getattr(parent.account_type, "value", parent.account_type)
+    if getattr(atype, "value", atype) == want:
+        return
+    detail = (
+        f"a sub-account of {_named(parent)} ({detail_label(parent.detail_type)}) "
+        f"must be {BASE_WORDS[want]} too"
+    )
+    if child is not None:
+        detail += "." + _move_out_first(child, parent)
+    raise HTTPException(status_code=400, detail=detail)
+
+
+def _check_children_base(account: Account, atype) -> None:
+    """A parent whose type changes would leave a sub-account of the old type
+    under it; the shared-detail-type ones are refused by the cascade, this
+    catches the rest (a pinned parent's own-type sub-accounts)."""
+    have = getattr(atype, "value", atype)
+    for child in account.children:
+        if getattr(child.account_type, "value", child.account_type) != have:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"its sub-account {_named(child)} is "
+                    f"{BASE_WORDS[getattr(child.account_type, 'value', child.account_type)]}."
+                    + _move_out_first(child, account)
+                ),
+            )
 
 
 def _sub_account_refusal(
@@ -260,8 +320,24 @@ def _create_detail_type(db: Session, data: AccountCreate) -> str:
 def _cascade_detail_type(account: Account, old: str, new: str, seen: set) -> None:
     """A parent's new detail type goes down to the sub-accounts that shared
     the old one; one that cannot take it refuses the change."""
-    if old in PINNED_DETAIL_TYPES or new in PINNED_DETAIL_TYPES:
-        return  # nothing shares a pinned detail type by inheritance
+    if new in PINNED_DETAIL_TYPES:
+        return  # under a pinned detail type each sub-account stands alone
+    if old in PINNED_DETAIL_TYPES:
+        # Nothing shared the pinned one; under a plain parent every
+        # sub-account must share the new one (#416), so one that does not
+        # would be a pair the API refuses everywhere else.
+        for child in account.children:
+            if child.detail_type != new:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"its sub-account {_named(child)} is "
+                        f"{detail_label(child.detail_type)}, and under "
+                        f"{detail_label(new)} it would have to be "
+                        f"{detail_label(new)} too." + _move_out_first(child, account)
+                    ),
+                )
+        return
     for child in account.children:
         if child.id in seen or child.detail_type != old:
             continue
@@ -502,8 +578,19 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     data.detail_type = _create_detail_type(db, data)
     _check_account_number(data.account_number)
     _reject_duplicate_number(db, data.account_number)
-    _check_parent_exists(db, data.parent_id)
+    _check_parent_usable(db, data.parent_id)
     _reject_reserved_number(data.account_number, data.name, data.account_type)
+    # Refuse past MAX_DEPTH on create too (#416): a chain built this deep
+    # with POST could not be re-parented onto, and the loop guard's message
+    # would read as a loop. Beside the parent check, before the account is
+    # built.
+    if data.parent_id is not None:
+        depth = chain_depth(db, Account, data.parent_id) + 1
+        if depth > MAX_DEPTH:
+            raise HTTPException(status_code=400, detail=depth_message(data.name, depth))
+    _check_pinned_parent_base(
+        db.get(Account, data.parent_id) if data.parent_id else None, data.account_type
+    )
     account = Account(**data.model_dump())
     # Restoring a SEEDED control account (the guard above let it through as
     # the registry's name and type) brings it back is_system=True, as the seed
@@ -531,6 +618,11 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
 def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(get_db)):
     account = get_or_404(db, Account, account_id)
     fields = reject_null_updates(Account, data.model_dump(exclude_unset=True))
+    # A full-object PUT resends the parent it has: that is no move, and must
+    # not set off the sub-account checks on a pair saved before (#416)
+    if "parent_id" in fields and fields["parent_id"] == account.parent_id:
+        del fields["parent_id"]
+    moved = "parent_id" in fields
 
     # Issue #119: the posting code resolves these accounts BY NUMBER, so
     # renumbering one makes every later document skip its journal entry —
@@ -569,7 +661,15 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
             status_code=400, detail="An account cannot be its own parent."
         )
     if fields.get("parent_id") is not None:
-        _check_parent_exists(db, fields["parent_id"])
+        _check_parent_usable(db, fields["parent_id"])
+        # Refuse past MAX_DEPTH before the loop guard (#416), so loop_message
+        # is only ever a real loop and never a too-deep chain.
+        depth = chain_depth(db, Account, fields["parent_id"]) + 1
+        if depth > MAX_DEPTH:
+            raise HTTPException(
+                status_code=400,
+                detail=depth_message(fields.get("name", account.name), depth),
+            )
         # Testing #101: A under B, then B under A, was accepted, and every
         # walk up the tree went round forever.
         through = loop_through(db, account_id, fields["parent_id"])
@@ -585,6 +685,33 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         )
     _check_bank_kind_kept(db, account, fields)
     _update_detail_type(db, account, fields)
+    # 1100, 2000 and the other control accounts are found by number and
+    # stand alone: they take no new parent (#416); out from under one they
+    # have is still allowed. After the detail-type checks, whose sentence
+    # says more under a plain parent.
+    if fields.get("parent_id") is not None and takes_no_new_parent(
+        account.detail_type, account.account_number
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{_named(account)} is found by its number when the books "
+                f"post, so it stays a top-level account."
+            ),
+        )
+    # only on a move or a real type change: the form sends the type on
+    # every save, and a chart imported with a mixed pair stays editable
+    atype = fields.get("account_type", account.account_type)
+    retyped = getattr(atype, "value", atype) != account.account_type.value
+    if moved or retyped:
+        parent_id = fields.get("parent_id", account.parent_id)
+        _check_pinned_parent_base(
+            db.get(Account, parent_id) if parent_id else None,
+            atype,
+            None if moved else account,
+        )
+    if retyped:
+        _check_children_base(account, atype)
 
     for key, val in fields.items():
         setattr(account, key, val)
