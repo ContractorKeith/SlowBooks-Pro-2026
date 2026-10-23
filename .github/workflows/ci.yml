@@ -167,7 +167,6 @@ jobs:
           # 126 with atomic account balances: the concurrent-postings race
           # in tests/test_atomic_account_balance.py needs a Postgres server
           # (SLOWBOOKS_TEST_POSTGRES_URL), like the other Postgres-only tests
-          MAX_SKIPS: "130"
           # 127 with the register's quick add: tests/test_browser_register_quick_add.py
           # skips as a module where playwright's Chromium is not installed
           # 128 with editing a register entry (#388): its Postgres test in
@@ -195,6 +194,7 @@ jobs:
           # tests/test_account_detail_types_migration.py also needs Postgres
           # 130 with sub-accounts on the chart (#416): its browser module,
           # skipped here like the other Playwright modules
+          MAX_SKIPS: "130"
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
