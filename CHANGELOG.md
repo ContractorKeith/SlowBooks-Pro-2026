@@ -29,6 +29,23 @@ first: they need not — each line comes in as a statement line with its
 payee as text, and waits in the account's To review list to match or
 categorize unless it matches one entry already in the books, which it is
 matched to on import.
+**Reclassify Transactions filters by payee** (#394, from a bookkeeper's
+notes). An unrecognized vendor is parked in Other expenses until the
+client says what it was, and the tool found lines by account and period
+only, so moving that vendor's meant picking them out of everything else
+parked there. A Payee text box and a vendor select beside the account and
+period list one payee's lines, ready to tick and move in one pass, both
+riding on the address like the account does. Each row now names its payee
+the way the bank register does (reusing `payees_for`): a bill's or
+expense's vendor, else the payee read off a bank entry, check or card
+charge — so an IIF card charge with no "CC Charge:" prefix reads the same
+in both places; a journal entry has none. `GET /api/reclassify/lines`
+takes `vendor_id`, matched as whole words anywhere in a row's payee,
+ignoring case (so bank-feed spellings like `HOME DEPOT #4521 JOLIET IL` and check
+memos like `Check 1042 - Home Depot` come along with vendor "Home Depot", while vendor "Ace" doesn't take
+"Space Coast Supply"),
+and `payee`, a case-insensitive part of the name; each row carries
+`vendor_id` and `payee`.
 
 ### v2.26.0 — Direct deposit from the page, and last year beside this one
 
