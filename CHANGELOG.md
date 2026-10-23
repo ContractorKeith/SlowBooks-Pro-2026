@@ -98,6 +98,25 @@ with "Could not find base64 encoded ticket" or "Record not found" (three of
 the four 2.26.0 sign jobs; each passed on rerun). The staple and validate pair
 is retried, up to six attempts over about five minutes, and the final error
 names the attempts. Any other staple error stops the run on the first try.
+**The statement's ending balance can be corrected while reconciling**
+(#389, from a bookkeeper's notes). The ending balance was typed once, at
+the start; a transposed digit meant abandoning the reconciliation and
+ticking every line again. The reconcile screen's Statement Balance card
+has a **Change…** button now, for the balance and the statement date
+(`PUT /api/banking/reconciliations/{id}`, either field optional). The
+ticks stay and the difference is refigured from them. A date moved later
+brings the lines up to it onto the session; one moved earlier leaves the
+lines after it off the session with their ticks kept, as Abandon keeps
+them. The ticks an earlier move leaves behind — lines that were in reach
+of the old date but fall after the new one — are reported back as a count,
+with a note that they carry to the next reconciliation still ticked, in the
+change response and on the reconcile screen, since completing this session
+won't stamp them. The count is only those lines: a deposit cleared by a
+bank-feed match or a register clear, dated after a date that never moved,
+is not among them, so a fresh reconciliation of a feed-linked account
+reports none. A date on or before the last completed
+statement is refused as a fresh start is, and a completed reconciliation
+refuses the change. The change leaves an `UPDATE` row in the audit trail.
 
 ### v2.26.0 — Direct deposit from the page, and last year beside this one
 
