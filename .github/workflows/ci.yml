@@ -168,6 +168,8 @@ jobs:
           # in tests/test_atomic_account_balance.py needs a Postgres server
           # (SLOWBOOKS_TEST_POSTGRES_URL), like the other Postgres-only tests
           MAX_SKIPS: "130"
+          # 127 with the register's quick add: tests/test_browser_register_quick_add.py
+          # skips as a module where playwright's Chromium is not installed
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
