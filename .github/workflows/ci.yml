@@ -176,6 +176,11 @@ jobs:
           # 130 with the register quick add (#386) merged in: its
           # tests/test_browser_register_quick_add.py, another Playwright module.
           # The real merged total is reconciled in the integration pass.
+          # 127 with the invoice Message browser test (#392), one more
+          # Playwright module skipped here without Chromium
+          # 128 with the giving-statement message kind migration (#415): its
+          # Postgres run in tests/test_giving_statement_message.py needs a
+          # Postgres server, like the other Postgres-only tests
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
