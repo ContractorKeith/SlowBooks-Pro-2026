@@ -19,6 +19,16 @@ rows name each other as parents leaves the closing link off with that
 sentence as the row's note, shown in the dry-run preview and when applied
 alike. The report paths and IIF names stop at a loop saved before this
 release. The same one walk now guards the cost-code tree too.
+**The Interoperability page says where a bank statement goes** (#396, from
+a bookkeeper's notes). Its CSV imports take lists and reports; a bank or
+credit card statement (CSV, OFX, QFX) is imported from the account itself,
+under Banking → the account → Import file, and the Report CSV section now
+says so with a link, as does the QuickBooks migration guide. The guide also
+answers whether the vendors and accounts on a statement must be entered
+first: they need not — each line comes in as a statement line with its
+payee as text, and waits in the account's To review list to match or
+categorize unless it matches one entry already in the books, which it is
+matched to on import.
 
 ### v2.26.0 — Direct deposit from the page, and last year beside this one
 
