@@ -117,6 +117,26 @@ is not among them, so a fresh reconciliation of a feed-linked account
 reports none. A date on or before the last completed
 statement is refused as a fresh start is, and a completed reconciliation
 refuses the change. The change leaves an `UPDATE` row in the audit trail.
+**A bill line can be an amount alone** (#391, from a bookkeeper's notes).
+A utility bill or a pest-control bill has an amount, not a quantity and a
+rate, and Enter Bill asked for both on every line. Qty and Rate now start
+blank and the Amount cell is a box: type what the bill says and the line
+is that amount; type a quantity or a rate and the amount is worked from
+them as before. Typing a quantity on an amount-alone line seeds the rate
+from that amount, so the line prices at quantity x amount (and clearing the
+quantity brings the amount back) rather than multiplying a blank rate to
+zero. Typing the amount after a quantity reads the amount as the line total,
+so the rate is amount / quantity — Qty 3 then Amount 30 gives Rate 10 and
+posts 3 x 10, instead of dropping the quantity and posting 1 x 30. A stock
+item is shown with the quantity 1 it is received as, both when it is drawn
+from a stored line and as soon as it is picked on a new line, not as a bare
+amount or a blank Qty box. On the API a line may send `amount` by itself; it
+is stored as
+quantity 1 at that rate, so the journal, job costing, the PDF and the
+exports read it as they always have, and a bill opened for editing draws
+such a line as an amount. An `amount` sent with a quantity and rate must
+agree to the cent or the line is refused (422); the strict model used to
+refuse any `amount` field outright, also with a 422.
 
 ### v2.26.0 — Direct deposit from the page, and last year beside this one
 
