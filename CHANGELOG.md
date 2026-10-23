@@ -312,6 +312,18 @@ sends it; `PUT /api/items/{id}` never sets it. The Balance Sheet now rounds
 its current-period net income and total equity to the cent the same way the
 Profit & Loss does, so the two reports agree and no 777.4000000000001 sits
 beside the P&L's 777.40.
+- The vendor payments CSV (`/api/vendors/{id}/payments/csv`) now goes through
+  the shared export helpers: a vendor, method, check number, account or note
+  that begins with `=`, `+`, `-` or `@` is written as text with the same
+  leading apostrophe as every other export (it was written raw, so a vendor
+  named `=HYPERLINK(...)` was a live formula), and the file starts with the
+  UTF-8 byte-order mark so Excel reads accented names correctly. Amounts stay
+  numbers. The download's file name goes through the shared
+  `content_disposition` helper, so a vendor whose name Latin-1 can't carry
+  (`Łódź Supply`) no longer fails the download with a 500 in the
+  Content-Disposition header: the header sends an ASCII fallback
+  (`Payments_Lodz-Supply.csv`) plus `filename*=UTF-8''…` with the exact name.
+  The desktop shim's inline header is honored too.
 
 ### v2.26.0 — Direct deposit from the page, and last year beside this one
 
