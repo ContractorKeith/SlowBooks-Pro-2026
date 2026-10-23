@@ -207,7 +207,9 @@ def test_a_backup_from_a_newer_version_is_refused(books, client):
 def _older_revision():
     _cfg, script = backup_service._migration_script()
     head = script.get_current_head()
-    return script.get_revision(head).down_revision
+    down = script.get_revision(head).down_revision
+    # a merge point's parents are a tuple; any one of them is older
+    return down[0] if isinstance(down, tuple) else down
 
 
 def test_an_older_backup_is_brought_up_to_date(books, client, monkeypatch):

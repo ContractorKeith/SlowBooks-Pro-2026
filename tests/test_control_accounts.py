@@ -325,21 +325,23 @@ def test_resolve_wants_the_expected_type_not_just_the_number(db_session, seed_ac
         control_accounts.resolve(db_session, "1100")
 
 
-def test_a_non_equity_3900_is_not_a_control_account(client, seed_accounts):
+def test_a_non_equity_3900_is_not_a_control_account(client, db_session, seed_accounts):
     """The review's repro: an imported chart's expense '3900 Miscellaneous
     Expense' must not come back is_control, must be renumberable, and must be
     deletable — it is never where Opening Balance Equity resolves (that is an
-    equity 3900). 3900 is not seeded, so the slot is free to create here."""
-    r = client.post(
-        "/api/accounts",
-        json={
-            "name": "Miscellaneous Expense",
-            "account_number": "3900",
-            "account_type": "expense",
-        },
+    equity 3900). Such an account arrives by import or migration: the API
+    itself refuses a foreign account on a control number (2.27.0, #425), so
+    the row is made here as an importer would make it."""
+    from app.models.accounts import Account, AccountType as AT
+
+    misc = Account(
+        name="Miscellaneous Expense", account_number="3900", account_type=AT.EXPENSE
     )
-    assert r.status_code == 201, r.text
-    acct_id = r.json()["id"]
+    db_session.add(misc)
+    db_session.commit()
+    acct_id = misc.id
+    r = client.get(f"/api/accounts/{acct_id}")
+    assert r.status_code == 200, r.text
     assert r.json()["is_control"] is False
     assert r.json()["control_purpose"] is None
 
@@ -374,18 +376,20 @@ def test_an_equity_3900_is_a_control_account(client, db_session):
     assert "3900" in rn.json()["detail"] and "control account" in rn.json()["detail"]
 
 
-def test_a_wrong_type_on_another_control_number_is_not_flagged(client, seed_accounts):
+def test_a_wrong_type_on_another_control_number_is_not_flagged(
+    client, db_session, seed_accounts
+):
     """Not just 3900: a '4800' booked as an expense (its slot is empty — Late
-    Fee Income is created on demand as income) is an ordinary account too."""
-    r = client.post(
-        "/api/accounts",
-        json={
-            "name": "Some Expense",
-            "account_number": "4800",
-            "account_type": "expense",
-        },
-    )
-    assert r.status_code == 201, r.text
+    Fee Income is created on demand as income) is an ordinary account too.
+    Made in the database as an importer would: the API refuses the POST
+    (#425)."""
+    from app.models.accounts import Account, AccountType as AT
+
+    some = Account(name="Some Expense", account_number="4800", account_type=AT.EXPENSE)
+    db_session.add(some)
+    db_session.commit()
+    r = client.get(f"/api/accounts/{some.id}")
+    assert r.status_code == 200, r.text
     assert r.json()["is_control"] is False
     # renumbering the ordinary 4800 is allowed
     rn = client.put(f"/api/accounts/{r.json()['id']}", json={"account_number": "4850"})
