@@ -5,6 +5,9 @@
   redraws the report without navigating away and back;
 - with "Refresh reports automatically" off, the same post leaves the report
   as it was;
+- a stored off preference is honoured on a fresh page load;
+- a report closed and left behind does not re-run on a later write, nor push
+  its address back onto the bar;
 - the Refresh button on the toolbar runs it again on demand.
 
 Skipped, as one module, where playwright or its Chromium is not installed,
@@ -23,6 +26,7 @@ from tests.test_theme_contrast import (  # noqa: E402,F401  (the fixtures)
     browser_fixture,
     company_fixture,
     settle,
+    _visit,
 )
 
 CONTENT = "() => document.getElementById('report-content').textContent"
@@ -92,5 +96,57 @@ def test_an_open_report_redraws_after_an_edit_and_refresh_runs_it_again(
             timeout=5000,
         )
         assert page.evaluate(CONTENT) != after_auto
+    finally:
+        page.close()
+
+
+def test_a_stored_off_preference_is_honoured_on_a_fresh_load(browser, company, books):
+    expense_id, cash_id = _accounts(company)
+    # the preference stored off before the page ever loads
+    company.put(
+        "/api/preferences/report_auto_refresh", json={"value": {"enabled": False}}
+    )
+    page, handled = _open_at(browser, company, PL_URL)
+    try:
+        page.wait_for_selector("#report-content table")
+        before = page.evaluate(CONTENT)
+        _post_journal(page, expense_id, cash_id, 300)
+        page.wait_for_timeout(700)  # past the debounce
+        assert page.evaluate(CONTENT) == before  # off: the write does not redraw
+        # the Refresh button still runs it on demand
+        page.click("#report-refresh-btn")
+        page.wait_for_function(
+            "(prev) => document.getElementById('report-content').textContent !== prev"
+            " && document.getElementById('report-content').querySelector('table')",
+            arg=before,
+            timeout=5000,
+        )
+        assert page.evaluate(CONTENT) != before
+    finally:
+        page.close()
+
+
+def test_a_closed_report_does_not_redraw_or_push_its_address(browser, company, books):
+    expense_id, cash_id = _accounts(company)
+    page, handled = _open_at(browser, company, PL_URL)
+    try:
+        page.wait_for_selector("#report-content table")
+        # close the P&L and go to another page
+        page.click("#modal-overlay .form-actions button:has-text('Close')")
+        page.wait_for_function(
+            "() => document.getElementById('modal-overlay').classList.contains('hidden')"
+        )
+        _visit(page, handled, "#/invoices")
+        page.wait_for_function("() => location.hash === '#/invoices'")
+        length = page.evaluate("() => history.length")
+        # a write from elsewhere must not re-run the closed report nor push
+        # #/reports/profit-loss back onto the address bar (the CRITICAL bug)
+        _post_journal(page, expense_id, cash_id, 250)
+        page.wait_for_timeout(700)
+        assert page.evaluate("() => location.hash") == "#/invoices"
+        assert page.evaluate("() => history.length") == length
+        assert page.evaluate(
+            "() => document.getElementById('modal-overlay').classList.contains('hidden')"
+        )
     finally:
         page.close()

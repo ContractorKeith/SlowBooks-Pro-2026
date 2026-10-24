@@ -667,18 +667,24 @@ const SettingsPage = {
                     <button type="button" class="btn btn-primary" onclick="SettingsPage.createApiToken()">Create Token</button>
                 </div>
 
-                <!-- A per-user preference (report_auto_refresh), not a company
-                     setting: it has no name, so the admin form never sends it
-                     and a bookkeeper keeps it; data-write disables it for a
-                     read-only sign-in. Last of the sections so Tab clears it
-                     over the save bar like the rest (#482). -->
+                <!-- A per-user preference (report_auto_refresh), saved on its
+                     own the moment it is ticked. Inside the form but with no
+                     name, so it is never one of the admin fields the form
+                     sends (adminPass leaves a nameless input alone and a
+                     bookkeeper keeps it) while lockForms / data-write still
+                     disable it for a read-only or accountant sign-in, whom the
+                     server refuses the write. Last of the sections so Tab
+                     clears it over the save bar like the rest (#482). The
+                     label names it and the help text is tied with
+                     aria-describedby. -->
                 <div class="settings-section" id="settings-reports" role="group" aria-labelledby="settings-h-reports">
                     <h3 id="settings-h-reports">Reports</h3>
-                    <label style="font-weight:normal;">
-                        <input type="checkbox" id="report-auto-refresh" data-write style="width:auto; vertical-align:middle; margin-right:6px;"
+                    <label style="font-weight:normal;" for="report-auto-refresh">
+                        <input type="checkbox" id="report-auto-refresh" data-write
+                            aria-describedby="report-auto-refresh-help" style="width:auto; vertical-align:middle; margin-right:6px;"
                             onchange="SettingsPage.saveAutoRefresh(this.checked)" checked>
                         Refresh reports automatically</label>
-                    <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">
+                    <div id="report-auto-refresh-help" style="font-size:10px; color:var(--text-muted); margin-top:4px;">
                         An open report redraws itself after you post or edit something, and when you come back to the window.
                         Turn this off to redraw only with the Refresh button.</div>
                 </div>

@@ -1125,7 +1125,7 @@ const ReportsPage = {
             </div>
             <div class="form-actions">
                 ${opts.actions || ''}
-                <button type="button" class="btn btn-sm btn-secondary" id="report-refresh-btn" onclick="ReportsPage.refresh()" title="Run the report again">Refresh</button>
+                <button type="button" class="btn btn-secondary" id="report-refresh-btn" onclick="ReportsPage.refresh()" title="Run the report again">Refresh</button>
                 ${saveBtn}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>`, { wide: !!opts.wide });
@@ -1158,7 +1158,13 @@ const ReportsPage = {
         // already filtered to the customer has no one row to pick out.
         let first = true;
 
-        const render = async () => {
+        const render = async (ropts = {}) => {
+            // An automatic redraw (#482) keeps the current body up until the
+            // new HTML is ready — no "Loading…" flash — and puts the scroll
+            // and the focused row back; a render token drops an older render
+            // an overlapping trigger left in flight.
+            const silent = !!ropts.silent;
+            const token = ++ReportsPage._renderToken;
             ReportsPage.toggleCustomRange();
             const custom = select.value === 'custom';
             if (!useAsOfOnly && custom) {
@@ -1169,15 +1175,20 @@ const ReportsPage = {
                     if (lastRange) return;  // the report on it is already showing
                 }
             }
-            content.innerHTML = `<div style="font-size:11px; color:var(--gray-500);">Loading report...</div>`;
+            const modal = (silent && typeof document !== 'undefined') ? document.getElementById('modal') : null;
+            const scrollTop = modal ? modal.scrollTop : 0;
+            // note the focused row so _refocusRow can put it back after the swap
+            if (silent) ReportsPage._leaveFrom();
+            else content.innerHTML = `<div style="font-size:11px; color:var(--gray-500);">Loading report...</div>`;
             try {
+                let html;
                 if (useAsOfOnly) {
                     const asOfDate = ReportsPage.getAsOfDate(select.value, endInput.value || todayISO());
                     // the box shows the date the report runs on (NEW-24)
                     if (custom && endInput.value !== asOfDate) endInput.value = asOfDate;
                     currentParams = { period: select.value, as_of_date: asOfDate };
                     if (view) ReportsPage.setAddress(view, { ...params(), ...currentParams });
-                    content.innerHTML = await loadContent(select.value, { as_of_date: asOfDate }, params());
+                    html = await loadContent(select.value, { as_of_date: asOfDate }, params());
                 } else {
                     const range = ReportsPage.getDateRange(select.value, startInput.value, endInput.value);
                     // the boxes show the dates the report runs on: a date the
@@ -1187,15 +1198,20 @@ const ReportsPage = {
                     lastRange = range;
                     currentParams = { period: select.value, start_date: range.start, end_date: range.end };
                     if (view) ReportsPage.setAddress(view, { ...params(), ...currentParams });
-                    content.innerHTML = await loadContent(select.value, range, params());
+                    html = await loadContent(select.value, range, params());
                 }
+                if (token !== ReportsPage._renderToken) return;  // a newer render won
+                content.innerHTML = html;
                 const restored = ReportsPage._refocusRow(content);
                 if (opts.spotlight !== false) ReportsPage._spotlight(content, params(), first && !restored);
                 if (typeof opts.afterRender === 'function') opts.afterRender(content, first);
+                if (modal) modal.scrollTop = scrollTop;
             } catch (err) {
+                if (token !== ReportsPage._renderToken) return;
                 content.innerHTML = `<div class="empty-state"><p>${escapeHtml(err.message)}</p></div>`;
             }
             first = false;
+            ReportsPage._lastRenderAt = Date.now();
         };
         // Previous / Next period: the dates in use moved by the period's
         // own length (a fiscal year on a fiscal preset, #444), shown as a
@@ -1249,52 +1265,90 @@ const ReportsPage = {
     },
 
     // Redraw the open report on its current period and params: what a
-    // toolbar control does after changing something.
-    refresh() {
-        if (ReportsPage._live) ReportsPage._live.render();
+    // toolbar control does after changing something. ropts.silent swaps the
+    // new body in without the "Loading…" flash (an automatic redraw).
+    refresh(ropts) {
+        if (ReportsPage._live) ReportsPage._live.render(ropts);
     },
 
     // "Refresh reports automatically" (#482): after any write, or when the
-    // window regains focus, redraw the open report so a fix made from a
+    // tab becomes visible again, redraw the open report so a fix made from a
     // drill-down shows at once instead of waiting for a re-run. The
     // preference report_auto_refresh ({enabled}) is on by default; a failed
     // read leaves it on. Read once, the first time a report opens (the user
     // is signed in by then), and kept in step by the Settings checkbox.
     _autoRefresh: true,
     _autoRefreshLoaded: false,
-    async _loadAutoRefresh() {
-        if (ReportsPage._autoRefreshLoaded) return;
-        ReportsPage._autoRefreshLoaded = true;
-        try {
-            const pref = await API.get('/preferences/report_auto_refresh');
-            if (pref && pref.value && typeof pref.value.enabled === 'boolean') {
-                ReportsPage._autoRefresh = pref.value.enabled;
-            }
-        } catch (e) { /* default on */ }
+    _renderToken: 0,
+    _lastRenderAt: 0,
+    // Read the preference once. The flag is set only after the GET resolves
+    // (the promise is cached so parallel callers share the one read), so a
+    // debounced redraw can await this and see the real value instead of the
+    // default — a user who turned it off is not redrawn in the race before
+    // the read lands.
+    _loadAutoRefresh() {
+        if (ReportsPage._autoRefreshLoaded) return Promise.resolve();
+        if (!ReportsPage._autoRefreshPromise) {
+            ReportsPage._autoRefreshPromise = (async () => {
+                try {
+                    const pref = await API.get('/preferences/report_auto_refresh');
+                    if (pref && pref.value && typeof pref.value.enabled === 'boolean') {
+                        ReportsPage._autoRefresh = pref.value.enabled;
+                    }
+                } catch (e) { /* default on */ }
+                ReportsPage._autoRefreshLoaded = true;
+            })();
+        }
+        return ReportsPage._autoRefreshPromise;
     },
     // A write to one of these paths changes no figures, so it never triggers
-    // an automatic redraw: the per-user preferences store (including this
-    // preference itself), and saving/renaming a saved report.
-    _AUTO_REFRESH_IGNORE: ['/preferences/', '/saved-reports'],
-    // A report is on screen now (not just last opened): closeModal leaves
-    // _live set, so check the dialog's own #report-content is in the page
-    // before an automatic redraw runs a closed report in the background.
+    // an automatic redraw: the per-user preferences store (this preference
+    // included) and saving a report; and the POSTs that are really reads or
+    // notifications (a template preview, the AI model list and tests, a test
+    // email, the statement/collection-letter mailers).
+    _AUTO_REFRESH_IGNORE: [
+        '/preferences/', '/saved-reports',
+        '/email-templates/preview', '/analytics/ai-models', '/analytics/ai-config/test',
+        '/settings/test-email', '/reports/batch-email-statements', '/reports/collection-letters',
+    ],
+    // A report is on screen now (not just last opened): closeModal hides the
+    // overlay rather than emptying the body, so check the overlay is open
+    // and the dialog's own #report-content is inside #modal-body before an
+    // automatic redraw runs — otherwise a closed report would re-run on
+    // every write, from any page, and push its address back onto the bar.
     _reportOnScreen() {
-        return typeof document !== 'undefined' && !!document.getElementById('report-content');
+        if (typeof document === 'undefined') return false;
+        const overlay = document.getElementById('modal-overlay');
+        if (!overlay || overlay.classList.contains('hidden')) return false;
+        const body = document.getElementById('modal-body');
+        const content = document.getElementById('report-content');
+        return !!(body && content && body.contains(content));
     },
-    // Redraw the open report after a write or a window focus, debounced so a
-    // burst of writes (a batch, a reclassify) redraws once. Off when the
-    // preference is off, no report is live, or the report has been closed.
+    // Redraw the open report after a write, debounced so a burst of writes (a
+    // batch, a reclassify) redraws once. The preference is re-read and
+    // re-checked inside the callback, and a closed report is skipped.
     _autoRefreshAfter(path) {
-        if (!ReportsPage._live || !ReportsPage._autoRefresh || !ReportsPage._reportOnScreen()) return;
+        if (!ReportsPage._live || !ReportsPage._reportOnScreen()) return;
         if (path && ReportsPage._AUTO_REFRESH_IGNORE.some(p => path.startsWith(p))) return;
         clearTimeout(ReportsPage._autoRefreshTimer);
-        ReportsPage._autoRefreshTimer = setTimeout(() => {
-            if (ReportsPage._live && ReportsPage._reportOnScreen()) ReportsPage.refresh();
+        ReportsPage._autoRefreshTimer = setTimeout(async () => {
+            await ReportsPage._loadAutoRefresh();
+            if (!ReportsPage._autoRefresh || !ReportsPage._live || !ReportsPage._reportOnScreen()) return;
+            ReportsPage.refresh({ silent: true });
         }, 300);
     },
-    // Install the write/focus listeners once. Guarded for the node probes
-    // that load reports.js with a stub document/window that has no
+    // The tab became visible again (not window 'focus', which also fires
+    // returning from the address bar, the find bar or devtools and made the
+    // dialog-focus tests flaky): redraw, but at most once every few seconds,
+    // since nothing may have changed while away.
+    _VISIBILITY_MIN_MS: 5000,
+    _autoRefreshOnVisible() {
+        if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+        if (Date.now() - (ReportsPage._lastRenderAt || 0) < ReportsPage._VISIBILITY_MIN_MS) return;
+        ReportsPage._autoRefreshAfter(null);
+    },
+    // Install the write/visibility listeners once. Guarded for the node
+    // probes that load reports.js with a stub document that has no
     // addEventListener; the dialog-open path installs them for real.
     _installAutoRefresh() {
         if (ReportsPage._autoRefreshInstalled) return;
@@ -1303,9 +1357,7 @@ const ReportsPage = {
         document.addEventListener('slowbooks:write', (e) => {
             ReportsPage._autoRefreshAfter(e && e.detail ? e.detail.path : null);
         });
-        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-            window.addEventListener('focus', () => ReportsPage._autoRefreshAfter(null));
-        }
+        document.addEventListener('visibilitychange', () => ReportsPage._autoRefreshOnVisible());
     },
 
     // Set one of the open report's params (a class, a job, a column

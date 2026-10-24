@@ -7,7 +7,13 @@ on what the software does, not on what sprint shipped what.
 
 ### Unreleased
 
-- Reports redraw after an edit, and a Refresh button (#482, @ContractorKeith). An open report runs itself again after any successful write and when the window regains focus, so a fix made from a drill-down shows at once instead of waiting for a re-run; a Refresh button on the report toolbar runs it on demand. Automatic redraw is a per-user preference, "Refresh reports automatically" in Settings → Reports, on by default.
+**Reports redraw after an edit, and a Refresh control** (#482, @ContractorKeith).
+An open report now runs itself again after any successful write and when the tab
+becomes visible again, so a fix made from a drill-down shows at once instead of
+waiting for a re-run; the automatic redraw keeps the scroll and the focused row
+in place. A Refresh button on the report toolbar runs it on demand, read-only
+sign-ins included. Automatic redraw is a per-user preference, "Refresh reports
+automatically" in Settings → Reports, on by default.
 
 ### v2.29.0 — A mid-year payroll switch, the fiscal year, and reports by item
 

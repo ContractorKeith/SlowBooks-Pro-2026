@@ -632,6 +632,9 @@ function closeModal(opts) {
     overlay.classList.add('hidden');
     $('#modal').classList.remove('modal--wide');
     delete $('#modal').dataset.address;
+    // A closed report is no longer live: drop it so an automatic redraw
+    // (#482) does not re-run it in the background after it is gone.
+    if (window.ReportsPage) window.ReportsPage._live = null;
     if (window.App && typeof window.App.syncBack === 'function') window.App.syncBack();
     const opener = _modalOpener;
     _modalOpener = null;

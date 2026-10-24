@@ -77,16 +77,23 @@ test('a failed write fires nothing', async () => {
     assert.deepEqual(fired, []);
 });
 
-function loadReports() {
+function loadReports(prefValue) {
     const document = eventTarget();
-    // a report is on screen: #report-content is in the page (guards against
-    // redrawing a closed report)
-    document.getElementById = (id) => (id === 'report-content' ? {} : null);
+    // Model a real open report dialog the way closeModal leaves it: the
+    // overlay is shown (closeModal hides it, it does not empty the body) and
+    // #report-content lives inside #modal-body.
+    const content = {};
+    const body = { contains: (n) => n === content };
+    const modal = { scrollTop: 0 };
+    const overlay = { _hidden: false, classList: { contains: (c) => c === 'hidden' && overlay._hidden } };
+    const els = { 'modal-overlay': overlay, 'modal-body': body, 'report-content': content, modal };
+    document.getElementById = (id) => (id in els ? els[id] : null);
+    document.visibilityState = 'visible';
     const win = eventTarget();
     const ctx = {
-        console, JSON, Promise, setTimeout, clearTimeout,
+        console, JSON, Promise, setTimeout, clearTimeout, Date,
         CustomEvent, document, window: win,
-        API: { get: async () => ({ value: null }) },
+        API: { get: async () => ({ value: prefValue === undefined ? null : prefValue }) },
         T: (s) => s,
         Terms: { text: (s) => s, isNonprofit: () => false },
     };
@@ -96,10 +103,11 @@ function loadReports() {
     let renders = 0;
     RP._live = { render: () => { renders += 1; } };
     RP._autoRefresh = true;
-    const wait = () => new Promise((r) => setTimeout(r, 360));  // past the 300ms debounce
+    const wait = () => new Promise((r) => setTimeout(r, 380));  // past the 300ms debounce
     const write = (p) => document.dispatchEvent(new CustomEvent('slowbooks:write', { detail: { method: 'POST', path: p } }));
-    const focus = () => win.dispatchEvent({ type: 'focus' });
-    return { RP, renders: () => renders, wait, write, focus };
+    const visible = () => document.dispatchEvent({ type: 'visibilitychange' });
+    const close = () => { overlay._hidden = true; };  // closeModal hides the overlay
+    return { RP, renders: () => renders, wait, write, visible, close };
 }
 
 test('a burst of two writes redraws the live report once', async () => {
@@ -110,9 +118,19 @@ test('a burst of two writes redraws the live report once', async () => {
     assert.equal(t.renders(), 1);
 });
 
-test('the preference off means no automatic redraw', async () => {
+test('the preference off (set) means no automatic redraw', async () => {
     const t = loadReports();
     t.RP._autoRefresh = false;
+    t.RP._autoRefreshLoaded = true;
+    t.write('/invoices');
+    await t.wait();
+    assert.equal(t.renders(), 0);
+});
+
+test('a stored {enabled:false} preference is honoured on the first write', async () => {
+    // the pref has not been read yet; the debounced callback awaits the read
+    // and sees false before redrawing
+    const t = loadReports({ enabled: false });
     t.write('/invoices');
     await t.wait();
     assert.equal(t.renders(), 0);
@@ -134,16 +152,17 @@ test('no live report means no redraw', async () => {
     assert.equal(t.renders(), 0);
 });
 
-test('regaining the window focus redraws the live report', async () => {
+test('the tab becoming visible again redraws the live report', async () => {
     const t = loadReports();
-    t.focus();
+    t.visible();
     await t.wait();
     assert.equal(t.renders(), 1);
 });
 
-test('a closed report (no #report-content) is not redrawn in the background', async () => {
+test('a closed report is not redrawn in the background', async () => {
+    // closeModal hides the overlay but leaves _live set and the body in place
     const t = loadReports();
-    t.RP._reportOnScreen = () => false;  // the dialog was closed, _live still set
+    t.close();
     t.write('/invoices');
     await t.wait();
     assert.equal(t.renders(), 0);
