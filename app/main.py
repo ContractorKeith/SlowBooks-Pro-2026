@@ -79,6 +79,7 @@ from app.routes import preferences as preferences_routes
 from app.routes import cost_codes as cost_codes_routes
 from app.routes import job_costing as job_costing_routes
 from app.routes import nonprofit as nonprofit_routes
+from app.routes import construction as construction_routes
 from app.routes import donors as donors_routes
 from app.routes import in_kind as in_kind_routes
 from app.routes import fx as fx_routes
@@ -1301,6 +1302,7 @@ app.include_router(job_costing_routes.cost_types_router)
 app.include_router(job_costing_routes.equipment_router)
 app.include_router(job_costing_routes.job_costs_router)
 app.include_router(nonprofit_routes.router)
+app.include_router(construction_routes.router)
 app.include_router(donors_routes.router)
 app.include_router(in_kind_routes.router)
 app.include_router(fx_routes.router)

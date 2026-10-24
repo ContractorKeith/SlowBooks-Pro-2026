@@ -12,6 +12,9 @@ const ctx = {
   console,
   window: {},
   escapeHtml: (s) => String(s ?? ''),
+  // business mode: the construction-only Subcontractor section stays hidden
+  Terms: { isConstruction: () => false, isNonprofit: () => false },
+  T: (s) => s,
   countryOptions: () => '<option>US</option>',
   openModal: (_title, html) => { modalHtml = html; },
   API: {

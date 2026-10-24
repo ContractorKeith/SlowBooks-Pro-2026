@@ -41,7 +41,7 @@ const ctx = {
   escapeHtml: (s) => String(s ?? ''),
   toast: (msg) => calls.push(['toast', String(msg)]),
   T: (s) => s,
-  Terms: { text: (s) => s, isNonprofit: () => nonprofit },
+  Terms: { text: (s) => s, isNonprofit: () => nonprofit, isConstruction: () => false },
 };
 // every page object app.js names gets a recording stub
 for (const name of new Set(src.match(/\b[A-Z][A-Za-z]*Page\b/g) || [])) ctx[name] = stub(name);

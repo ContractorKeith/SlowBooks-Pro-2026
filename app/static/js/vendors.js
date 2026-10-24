@@ -295,10 +295,15 @@ const VendorsPage = {
     },
 
     async showForm(id = null) {
+        // A new vendor in construction mode is a 1099 vendor by default (a
+        // contractor's bills are mostly reportable); W-9 on file is a fact,
+        // not a default, so it stays No (#431).
         let v = { name:'', company:'', email:'', phone:'', fax:'', website:'',
             address1:'', address2:'', city:'', state:'', zip:'', country:'US',
             terms:'Net 30', tax_id:'', account_number:'', default_expense_account_id:'',
-            is_1099_vendor:false, vendor_1099_type:'', w9_on_file:false, notes:'' };
+            is_1099_vendor: Terms.isConstruction(), vendor_1099_type:'', w9_on_file:false,
+            vendor_type:'', license_number:'', coi_carrier:'', coi_policy_number:'', coi_expires:'',
+            notes:'' };
         if (id) v = await API.get(`/vendors/${id}`);
 
         // Cost of goods too: a flour mill or a panel supplier is bought
@@ -376,6 +381,23 @@ const VendorsPage = {
                     <div class="form-group full-width"><label>Notes</label>
                         <textarea name="notes">${escapeHtml(v.notes || '')}</textarea></div>
                 </div>
+                ${(Terms.isConstruction() || v.vendor_type) ? `
+                <h3 style="margin:16px 0 8px; font-size:14px; color:var(--gray-600);">${T('Subcontractor')}</h3>
+                <div class="form-grid">
+                    <div class="form-group"><label>${T('Subcontractor')}</label>
+                        <select name="vendor_type" onchange="VendorsPage.toggleSubFields(this)" title="A subcontractor carries a trade license and a certificate of insurance">
+                            <option value="" ${v.vendor_type !== 'sub' ? 'selected' : ''}>No</option>
+                            <option value="sub" ${v.vendor_type === 'sub' ? 'selected' : ''}>Yes</option>
+                        </select></div>
+                    <div class="form-group sub-field" ${v.vendor_type === 'sub' ? '' : 'hidden'}><label>License #</label>
+                        <input name="license_number" maxlength="100" value="${escapeHtml(v.license_number || '')}"></div>
+                    <div class="form-group sub-field" ${v.vendor_type === 'sub' ? '' : 'hidden'}><label>Insurance Carrier</label>
+                        <input name="coi_carrier" maxlength="200" value="${escapeHtml(v.coi_carrier || '')}"></div>
+                    <div class="form-group sub-field" ${v.vendor_type === 'sub' ? '' : 'hidden'}><label>Policy #</label>
+                        <input name="coi_policy_number" maxlength="100" value="${escapeHtml(v.coi_policy_number || '')}"></div>
+                    <div class="form-group sub-field" ${v.vendor_type === 'sub' ? '' : 'hidden'}><label>Insurance Expires</label>
+                        <input name="coi_expires" type="date" value="${escapeHtml(v.coi_expires || '')}"></div>
+                </div>` : ''}
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'} Vendor</button>
@@ -394,6 +416,15 @@ const VendorsPage = {
         if (!on) type.value = '';
     },
 
+    // The license and COI fields describe a subcontractor only: they show
+    // under "Yes" and hide (their values kept) otherwise (#431).
+    toggleSubFields(select) {
+        const on = select.value === 'sub';
+        const form = select.form;
+        if (!form) return;
+        form.querySelectorAll('.sub-field').forEach(el => { el.hidden = !on; });
+    },
+
     async save(e, id, force) {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.target).entries());
@@ -402,6 +433,9 @@ const VendorsPage = {
         data.vendor_1099_type = data.vendor_1099_type || null;
         if ('w9_on_file' in data) data.w9_on_file = data.w9_on_file === 'true';
         if ('is_active' in data) data.is_active = data.is_active === 'true';
+        // Sub fields: a blank select or date is cleared, not "" (#431).
+        if ('vendor_type' in data) data.vendor_type = data.vendor_type || null;
+        if ('coi_expires' in data) data.coi_expires = data.coi_expires || null;
         try {
             if (id) {
                 await API.put(`/vendors/${id}`, data);
