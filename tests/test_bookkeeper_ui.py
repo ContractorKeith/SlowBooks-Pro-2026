@@ -119,6 +119,16 @@ SETTINGS_KEPT = {
     "Equipment › Deactivate": [
         ("PUT", "/api/equipment/{equipment}", {"is_active": False}, 200)
     ],
+    # "Refresh reports automatically" is a per-user preference (#482), not a
+    # company setting: a bookkeeper keeps it, saved on its own when ticked.
+    "Reports › #report-auto-refresh": [
+        (
+            "PUT",
+            "/api/preferences/report_auto_refresh",
+            {"value": {"enabled": True}},
+            200,
+        )
+    ],
 }
 # The page's own reads: what it shows loads for a bookkeeper
 SETTINGS_READS = [

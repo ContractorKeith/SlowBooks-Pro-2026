@@ -102,6 +102,7 @@ const SettingsPage = {
             SettingsPage.loadUsers();
             SettingsPage.loadApiTokens();
             SettingsPage.loadSignInPref();
+            SettingsPage.loadReportAutoRefresh();
             SettingsPage.loadOcrStatus();
             SettingsPage.loadOcrEnginePref();
             SettingsPage.loadUnreadableSecrets();
@@ -666,6 +667,22 @@ const SettingsPage = {
                     <button type="button" class="btn btn-primary" onclick="SettingsPage.createApiToken()">Create Token</button>
                 </div>
 
+                <!-- A per-user preference (report_auto_refresh), not a company
+                     setting: it has no name, so the admin form never sends it
+                     and a bookkeeper keeps it; data-write disables it for a
+                     read-only sign-in. Last of the sections so Tab clears it
+                     over the save bar like the rest (#482). -->
+                <div class="settings-section" id="settings-reports" role="group" aria-labelledby="settings-h-reports">
+                    <h3 id="settings-h-reports">Reports</h3>
+                    <label style="font-weight:normal;">
+                        <input type="checkbox" id="report-auto-refresh" data-write style="width:auto; vertical-align:middle; margin-right:6px;"
+                            onchange="SettingsPage.saveAutoRefresh(this.checked)" checked>
+                        Refresh reports automatically</label>
+                    <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">
+                        An open report redraws itself after you post or edit something, and when you come back to the window.
+                        Turn this off to redraw only with the Refresh button.</div>
+                </div>
+
                 <!-- Always in reach: the one Save for the settings above sat at
                      the very bottom, after 25 other buttons, and the first
                      "Save" on the page was AI Insights' (explore 2.17.3, L16). -->
@@ -1054,6 +1071,36 @@ const SettingsPage = {
             const sys = await API.get('/system');
             if (sys && sys.desktop) section.hidden = false;
         } catch (e) { /* stays hidden */ }
+    },
+
+    // "Refresh reports automatically" (#482): the per-user preference
+    // report_auto_refresh ({enabled}), on by default. Reflect it in the box,
+    // and keep ReportsPage's live cache in step so a toggle here takes effect
+    // without a reload. A failed read leaves the box as shipped (on).
+    async loadReportAutoRefresh() {
+        const box = $('#report-auto-refresh');
+        if (!box) return;
+        try {
+            const pref = await API.get('/preferences/report_auto_refresh');
+            const on = !(pref && pref.value && pref.value.enabled === false);
+            box.checked = on;
+            if (typeof ReportsPage !== 'undefined') ReportsPage._autoRefresh = on;
+        } catch (e) { /* the box stays on */ }
+    },
+
+    async saveAutoRefresh(enabled) {
+        try {
+            await API.put('/preferences/report_auto_refresh', { value: { enabled: !!enabled } });
+            if (typeof ReportsPage !== 'undefined') {
+                ReportsPage._autoRefresh = !!enabled;
+                ReportsPage._autoRefreshLoaded = true;
+            }
+            toast(enabled ? 'Reports will refresh automatically' : 'Automatic refresh off');
+        } catch (err) {
+            const box = $('#report-auto-refresh');
+            if (box) box.checked = !enabled;  // put it back
+            toast(err.message, 'error');
+        }
     },
 
     // ------------------------------------------------------------------

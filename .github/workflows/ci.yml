@@ -184,7 +184,10 @@ jobs:
           # skipped): tests/test_past_customers.py's five-line label test
           # renders the labels PDF, which skips here with the other PDF tests
           # (no WeasyPrint stack on the runner).
-          MAX_SKIPS: "154"
+          # 155 with #482's report-refresh browser test
+          # (tests/test_browser_report_refresh.py), a Playwright module that
+          # skips here with its siblings (no Playwright's Chromium).
+          MAX_SKIPS: "155"
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified

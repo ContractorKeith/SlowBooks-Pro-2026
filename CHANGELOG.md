@@ -5,6 +5,10 @@ Notable changes between releases. Format roughly follows
 used during development is captured here so the README can stay focused
 on what the software does, not on what sprint shipped what.
 
+### Unreleased
+
+- Reports redraw after an edit, and a Refresh button (#482, @ContractorKeith). An open report runs itself again after any successful write and when the window regains focus, so a fix made from a drill-down shows at once instead of waiting for a re-run; a Refresh button on the report toolbar runs it on demand. Automatic redraw is a per-user preference, "Refresh reports automatically" in Settings → Reports, on by default.
+
 ### v2.29.0 — A mid-year payroll switch, the fiscal year, and reports by item
 
 **A company whose fiscal year does not start in January can say so** (#444, @ContractorKeith).

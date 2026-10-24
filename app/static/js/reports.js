@@ -1125,6 +1125,7 @@ const ReportsPage = {
             </div>
             <div class="form-actions">
                 ${opts.actions || ''}
+                <button type="button" class="btn btn-sm btn-secondary" id="report-refresh-btn" onclick="ReportsPage.refresh()" title="Run the report again">Refresh</button>
                 ${saveBtn}
                 <button class="btn btn-secondary" onclick="closeModal()">Close</button>
             </div>`, { wide: !!opts.wide });
@@ -1228,6 +1229,10 @@ const ReportsPage = {
         // The open report, for its toolbar's controls (ReportsPage.setParam,
         // ReportsPage.refresh): one period dialog is open at a time.
         ReportsPage._live = { view, params: paramsObj, render, select, step };
+        // Read the auto-refresh preference the first time a report opens, and
+        // make sure the write/focus listeners are in place (#482).
+        ReportsPage._loadAutoRefresh();
+        ReportsPage._installAutoRefresh();
 
         select.addEventListener("change", () => { stepUnit = null; render(); });
         startInput.addEventListener("change", () => { stepUnit = null; if (select.value === "custom" && !useAsOfOnly) render(); });
@@ -1247,6 +1252,59 @@ const ReportsPage = {
     // toolbar control does after changing something.
     refresh() {
         if (ReportsPage._live) ReportsPage._live.render();
+    },
+
+    // "Refresh reports automatically" (#482): after any write, or when the
+    // window regains focus, redraw the open report so a fix made from a
+    // drill-down shows at once instead of waiting for a re-run. The
+    // preference report_auto_refresh ({enabled}) is on by default; a failed
+    // read leaves it on. Read once, the first time a report opens (the user
+    // is signed in by then), and kept in step by the Settings checkbox.
+    _autoRefresh: true,
+    _autoRefreshLoaded: false,
+    async _loadAutoRefresh() {
+        if (ReportsPage._autoRefreshLoaded) return;
+        ReportsPage._autoRefreshLoaded = true;
+        try {
+            const pref = await API.get('/preferences/report_auto_refresh');
+            if (pref && pref.value && typeof pref.value.enabled === 'boolean') {
+                ReportsPage._autoRefresh = pref.value.enabled;
+            }
+        } catch (e) { /* default on */ }
+    },
+    // A write to one of these paths changes no figures, so it never triggers
+    // an automatic redraw: the per-user preferences store (including this
+    // preference itself), and saving/renaming a saved report.
+    _AUTO_REFRESH_IGNORE: ['/preferences/', '/saved-reports'],
+    // A report is on screen now (not just last opened): closeModal leaves
+    // _live set, so check the dialog's own #report-content is in the page
+    // before an automatic redraw runs a closed report in the background.
+    _reportOnScreen() {
+        return typeof document !== 'undefined' && !!document.getElementById('report-content');
+    },
+    // Redraw the open report after a write or a window focus, debounced so a
+    // burst of writes (a batch, a reclassify) redraws once. Off when the
+    // preference is off, no report is live, or the report has been closed.
+    _autoRefreshAfter(path) {
+        if (!ReportsPage._live || !ReportsPage._autoRefresh || !ReportsPage._reportOnScreen()) return;
+        if (path && ReportsPage._AUTO_REFRESH_IGNORE.some(p => path.startsWith(p))) return;
+        clearTimeout(ReportsPage._autoRefreshTimer);
+        ReportsPage._autoRefreshTimer = setTimeout(() => {
+            if (ReportsPage._live && ReportsPage._reportOnScreen()) ReportsPage.refresh();
+        }, 300);
+    },
+    // Install the write/focus listeners once. Guarded for the node probes
+    // that load reports.js without a document or window.
+    _installAutoRefresh() {
+        if (ReportsPage._autoRefreshInstalled) return;
+        if (typeof document === 'undefined') return;
+        ReportsPage._autoRefreshInstalled = true;
+        document.addEventListener('slowbooks:write', (e) => {
+            ReportsPage._autoRefreshAfter(e && e.detail ? e.detail.path : null);
+        });
+        if (typeof window !== 'undefined') {
+            window.addEventListener('focus', () => ReportsPage._autoRefreshAfter(null));
+        }
     },
 
     // Set one of the open report's params (a class, a job, a column
@@ -3614,3 +3672,8 @@ ReportsPage.functionalExpenses = async function (prefill) {
             </table></div>${programs}`;
     }, "Dates", false, { reportType: 'functional_expenses', view: 'functional-expenses', prefill });
 };
+
+// Listen for writes and window focus from the moment the script loads, so an
+// open report can redraw itself automatically (#482). Guarded for the node
+// probes that load reports.js without a document.
+ReportsPage._installAutoRefresh();

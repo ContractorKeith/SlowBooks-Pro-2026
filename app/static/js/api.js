@@ -75,6 +75,13 @@ const API = {
                 err.body = errBody;
                 throw err;
             }
+            // A write went through: let an open report redraw itself, and
+            // anything else listening for a change, know (#482). GETs change
+            // nothing, so they are quiet. Guarded for the node test probes,
+            // which load api.js without a document.
+            if (method !== 'GET' && typeof document !== 'undefined') {
+                document.dispatchEvent(new CustomEvent('slowbooks:write', { detail: { method, path } }));
+            }
             return res.json();
         }
     },
