@@ -18,12 +18,13 @@ if missing, its number yielding to a chart that already owns it, and placed
 on the balance sheet as an Other Current asset or liability (the job-cost
 accounts as Cost of Goods Sold). The switch also loads the 26 standard CSI
 MasterFormat cost codes (the same list the Cost Codes page loads) and the
-labor / material / subcontract / equipment / other cost types they use.
-Vocabulary is light — a contractor keeps Customer, Invoice, Estimate and Job;
-the one word that changes is "Subcontractor", shown as "Sub". Vendors gain a
-Subcontractor type with a trade license and a certificate of insurance
-(carrier, policy number, expiry), and a new vendor in construction mode is a
-1099 vendor by default. The Report Center leads with the contractor reports
+labor / material / subcontract / equipment / other cost types they use —
+but only into a company that has no cost codes of its own yet, so a custom
+chart is left alone. Vocabulary is light — a contractor keeps Customer,
+Invoice, Estimate and Job; the one word that changes is "Subcontractor",
+shown as "Sub". Vendors gain a Sub type with a trade license and a
+certificate of insurance (carrier, policy number, expiry); marking a vendor
+a Sub turns on 1099-NEC. The Report Center leads with the contractor reports
 that already exist — Job Profitability, Job Budget vs Actual, P&L by Job.
 
 Not yet: no first-run "what kind of company is this?" prompt (company_type

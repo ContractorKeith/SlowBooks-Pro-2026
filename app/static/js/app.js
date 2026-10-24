@@ -2188,6 +2188,8 @@ const App = {
         const con = Terms.isConstruction();
         $$('[data-nonprofit]').forEach(el => { el.hidden = !np; });
         $$('[data-construction]').forEach(el => { el.hidden = !con; });
+        // [data-business-only] means "not nonprofit": a contractor is a
+        // business, so construction keeps these too — hide only for nonprofit.
         $$('[data-business-only]').forEach(el => { el.hidden = np; });
     },
 

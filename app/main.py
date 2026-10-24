@@ -606,7 +606,7 @@ async def _method_not_allowed_handler(request: Request, exc: StarletteHTTPExcept
     it (scripts/audit/vocab_walk.py)."""
     if isinstance(exc.detail, str) and exc.detail and exc.status_code != 405:
         terms = _company_terms()
-        if terms.is_nonprofit:
+        if terms.has_words:
             worded = terms.text(exc.detail)
             if worded != exc.detail:
                 return JSONResponse(
@@ -717,7 +717,7 @@ async def _request_validation_handler(request: Request, exc: RequestValidationEr
     from app.services.validation_messages import with_messages
 
     terms = _company_terms()
-    wording = terms.text if terms.is_nonprofit else None
+    wording = terms.text if terms.has_words else None
     errors = _json_safe(jsonable_encoder(exc.errors()))
     return JSONResponse(
         status_code=422,

@@ -504,6 +504,18 @@ def get_net_assets_without_restriction_id(db: Session) -> int:
     return ensure_nonprofit_accounts(db)["3300"].id
 
 
+def get_net_assets_with_restriction_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["3400"].id
+
+
+def get_in_kind_income_account_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["4400"].id
+
+
+def get_bad_debt_account_id(db: Session) -> int:
+    return ensure_nonprofit_accounts(db)["6960"].id
+
+
 # Construction accounts, created on demand (Settings -> Company Type, or the
 # /api/construction/setup route). Retainage and customer-deposit balances
 # and the use-tax a contractor self-assesses sit beside the seed chart's
@@ -531,15 +543,3 @@ def ensure_construction_accounts(db: Session) -> dict[str, Account]:
         number: ensure_account(db, number, name, atype, detail)
         for number, name, atype, detail in CONSTRUCTION_ACCOUNTS
     }
-
-
-def get_net_assets_with_restriction_id(db: Session) -> int:
-    return ensure_nonprofit_accounts(db)["3400"].id
-
-
-def get_in_kind_income_account_id(db: Session) -> int:
-    return ensure_nonprofit_accounts(db)["4400"].id
-
-
-def get_bad_debt_account_id(db: Session) -> int:
-    return ensure_nonprofit_accounts(db)["6960"].id

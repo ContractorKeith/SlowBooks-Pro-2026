@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, Field
 
@@ -152,8 +152,9 @@ class VendorCreate(StrictModel):
     # it until 2.22.2 (#257), so every form said No.
     w9_on_file: bool = False
     # Construction mode (#431): "sub" marks a subcontractor, with its trade
-    # license and certificate of insurance. Blank on an ordinary vendor.
-    vendor_type: Optional[str] = Field(None, max_length=20)
+    # license and certificate of insurance. Blank on an ordinary vendor;
+    # "sub" is the only value for now.
+    vendor_type: Optional[Literal["sub"]] = None
     license_number: Optional[str] = Field(None, max_length=100)
     coi_carrier: Optional[str] = Field(None, max_length=200)
     coi_policy_number: Optional[str] = Field(None, max_length=100)
@@ -181,7 +182,7 @@ class VendorUpdate(StrictModel):
     is_1099_vendor: Optional[bool] = None
     vendor_1099_type: Optional[str] = Field(None, max_length=10)
     w9_on_file: Optional[bool] = None
-    vendor_type: Optional[str] = Field(None, max_length=20)
+    vendor_type: Optional[Literal["sub"]] = None
     license_number: Optional[str] = Field(None, max_length=100)
     coi_carrier: Optional[str] = Field(None, max_length=200)
     coi_policy_number: Optional[str] = Field(None, max_length=100)

@@ -337,9 +337,3 @@ def is_nonprofit(db: Session) -> bool:
     """True when the company file is set to nonprofit mode (Settings ->
     company_type). Gates the nonprofit documents, reports and vocabulary."""
     return get_setting_raw(db, "company_type") == "nonprofit"
-
-
-def is_construction(db: Session) -> bool:
-    """True when the company file is set to construction mode (Settings ->
-    company_type). Gates the contractor accounts, cost codes and vocabulary."""
-    return get_setting_raw(db, "company_type") == "construction"
