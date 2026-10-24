@@ -184,7 +184,9 @@ jobs:
           # skipped): tests/test_past_customers.py's five-line label test
           # renders the labels PDF, which skips here with the other PDF tests
           # (no WeasyPrint stack on the runner).
-          MAX_SKIPS: "154"
+          # 155 with #485: tests/test_browser_bill_account_quick_add.py, one new
+          # Playwright module (the bill line's Add-account panel).
+          MAX_SKIPS: "155"
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified

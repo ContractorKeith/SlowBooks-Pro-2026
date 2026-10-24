@@ -317,9 +317,14 @@ const BillsPage = {
         const rate = line && !amountOnly ? Number(l.rate) : '';
         const amount = line ? Number(l.amount).toFixed(2) : '';
         const acctOpts = PurchaseAccounts.options(BillsPage._accounts, stock ? null : (l.account_id || BillsPage._defaultExpenseAccountId));
+        // Add a chart account beside the Account cell (#485): expense and COGS
+        // only, and not for a stock line (its Inventory account is not a
+        // choice). The panel goes in the cell; nothing in it is `required`.
+        const sid = `bill-acct-${idx}`;
+        if (!stock) BillsPage._wireAccountAdd(sid);
         return `<tr data-billline="${idx}">
                 <td><select class="line-item" onchange="BillsPage.itemSelected(this)">${ItemQuickAdd.options(BillsPage._items, l.item_id)}</select></td>
-                <td><select class="line-account"${stock ? ' disabled title="Stock items are recorded in Inventory"' : ''}><option value="">Choose...</option>${acctOpts}</select></td>
+                <td><span style="display:inline-flex; gap:2px; align-items:center;"><select ${stock ? '' : `id="${sid}"`} class="line-account"${stock ? ' disabled title="Stock items are recorded in Inventory"' : ''}><option value="">Choose...</option>${acctOpts}</select>${stock ? '' : AccountQuickAdd.button(sid)}</span>${stock ? '' : AccountQuickAdd.panel(sid)}</td>
                 <td><input class="line-desc" value="${escapeHtml(l.description || '')}"></td>
                 ${CostCodes.cellHtml('line-cost-code', l.cost_code_id)}${Nonprofit.cellHtml('line-function', l.function, l.class_id)}
                 <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"${l.is_billable ? ' checked' : ''}></td>
@@ -558,6 +563,10 @@ const BillsPage = {
             clone.querySelector('.line-rate').value = Number(ln.amount).toFixed(2);
             const fund = clone.querySelector('.line-function-fund'); if (fund) fund.value = ln.class_id || '';
             const fn = clone.querySelector('.line-function'); if (fn) fn.value = ln.function || '';
+            // the clone keeps the account value, but not the original's ids:
+            // drop its Add button and panel so no two lines share an id (#485)
+            clone.querySelectorAll('[id^="bill-acct-"]').forEach(el =>
+                (el.id.endsWith('-add') || el.id.endsWith('-new')) ? el.remove() : el.removeAttribute('id'));
             anchor.insertAdjacentElement('afterend', clone);
             anchor = clone;
         });
@@ -568,6 +577,24 @@ const BillsPage = {
     addLine(line = null) {
         const idx = BillsPage.lineCount++;
         $('#bill-lines').insertAdjacentHTML('beforeend', BillsPage.lineHtml(idx, line));
+    },
+
+    // Wire the shared Add-account panel for one line's Account cell (#485):
+    // expense and COGS only, and a new account goes into every line's Account
+    // select and the page's cached chart, so a later line offers it.
+    _wireAccountAdd(selectId) {
+        AccountQuickAdd.register(selectId, {
+            types: ['expense', 'cogs'],
+            accounts: () => BillsPage._accounts,
+            onAdded: (made, fromId) => {
+                BillsPage._accounts.push(made);
+                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
+                document.querySelectorAll('#bill-lines .line-account').forEach(s => {
+                    if (s.id !== fromId && !s.querySelector(`option[value="${made.id}"]`)) s.insertAdjacentHTML('beforeend', opt);
+                });
+            },
+            next: () => document.querySelector(`#${selectId}`)?.closest('tr')?.querySelector('.line-desc'),
+        });
     },
 
     async save(e, id = null) {

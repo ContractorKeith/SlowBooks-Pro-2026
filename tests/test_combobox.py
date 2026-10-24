@@ -115,17 +115,24 @@ def test_a_bill_line_finds_its_account_by_number(browser, company, books):
                 return li.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
                     && li.closest('.cbx-popup').parentElement === document.body; }"""
         )
-        page.keyboard.press("Tab")  # Tab takes it too, and moves on
+        # Tab takes the match and moves on — now to the line's Add-account
+        # button beside the picker (#485), then the description cell
+        page.keyboard.press("Tab")
         chosen = page.evaluate(
             """() => { const s = document.querySelector('#modal tbody tr select.line-account');
                 return [s.options[s.selectedIndex].textContent,
                         s.closest('.cbx').querySelector('.cbx-input').value,
-                        document.activeElement.classList.contains('line-desc')]; }"""
+                        document.activeElement.id]; }"""
+        )
+        page.keyboard.press("Tab")
+        on_desc = page.evaluate(
+            "() => document.activeElement.classList.contains('line-desc')"
         )
     finally:
         page.close()
     assert shown == [["6500 - Rent or Lease", "Expenses"]] and reachable
-    assert chosen == ["6500 - Rent or Lease", "6500 - Rent or Lease", True]
+    assert chosen == ["6500 - Rent or Lease", "6500 - Rent or Lease", "bill-acct-0-add"]
+    assert on_desc
 
 
 def test_a_name_not_in_the_list_opens_the_quick_add_with_it(browser, company, books):

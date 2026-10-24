@@ -119,9 +119,13 @@ const VendorCreditsPage = {
 
     lineHtml(idx) {
         const acctOpts = PurchaseAccounts.options(VendorCreditsPage._accounts);
+        // Add a chart account beside the Account cell (#485): expense and COGS
+        // only; the panel goes in the cell with nothing `required`.
+        const sid = `vc-acct-${idx}`;
+        VendorCreditsPage._wireAccountAdd(sid);
         return `<tr data-vcline="${idx}">
                 <td><select class="line-item" onchange="VendorCreditsPage.itemSelected(this)">${ItemQuickAdd.options(VendorCreditsPage._items)}</select></td>
-                <td><select class="line-account" title="Blank: the item's expense account, else the vendor's default"><option value="">Item / vendor default</option>${acctOpts}</select></td>
+                <td><span style="display:inline-flex; gap:2px; align-items:center;"><select id="${sid}" class="line-account" title="Blank: the item's expense account, else the vendor's default"><option value="">Item / vendor default</option>${acctOpts}</select>${AccountQuickAdd.button(sid)}</span>${AccountQuickAdd.panel(sid)}</td>
                 <td><input class="line-desc"></td>
                 <td><input class="line-qty" type="number" step="0.0001" value="1" oninput="VendorCreditsPage.recalc()"></td>
                 <td><input class="line-rate" type="number" step="0.0001" value="0" oninput="VendorCreditsPage.recalc()"></td>
@@ -131,6 +135,24 @@ const VendorCreditsPage = {
 
     addLine() {
         $('#vc-lines').insertAdjacentHTML('beforeend', VendorCreditsPage.lineHtml(VendorCreditsPage.lineCount++));
+    },
+
+    // Wire the shared Add-account panel for one line's Account cell (#485):
+    // expense and COGS only; a new account goes into every line's select and
+    // the page's cached chart, so a later line offers it.
+    _wireAccountAdd(selectId) {
+        AccountQuickAdd.register(selectId, {
+            types: ['expense', 'cogs'],
+            accounts: () => VendorCreditsPage._accounts,
+            onAdded: (made, fromId) => {
+                VendorCreditsPage._accounts.push(made);
+                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
+                document.querySelectorAll('#vc-lines .line-account').forEach(s => {
+                    if (s.id !== fromId && !s.querySelector(`option[value="${made.id}"]`)) s.insertAdjacentHTML('beforeend', opt);
+                });
+            },
+            next: () => document.querySelector(`#${selectId}`)?.closest('tr')?.querySelector('.line-desc'),
+        });
     },
 
     // Picking an item fills what it cost (the rate stayed 0 — W-M1).

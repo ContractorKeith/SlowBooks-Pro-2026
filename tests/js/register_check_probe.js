@@ -53,6 +53,8 @@ const ctx = {
   },
 };
 vm.createContext(ctx);
+// the shared Add-account helper (#485), referenced by banking.js and expenses.js
+vm.runInContext(fs.readFileSync('app/static/js/account_quick_add.js', 'utf8') + '\nthis.AccountQuickAdd = AccountQuickAdd;', ctx);
 for (const f of ['banking.js', 'expenses.js']) {
   vm.runInContext(fs.readFileSync(`app/static/js/${f}`, 'utf8'), ctx, { filename: f });
 }

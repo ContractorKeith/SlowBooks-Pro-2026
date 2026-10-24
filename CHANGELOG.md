@@ -5,6 +5,17 @@ Notable changes between releases. Format roughly follows
 used during development is captured here so the README can stay focused
 on what the software does, not on what sprint shipped what.
 
+### Unreleased
+
+**Add a chart account from a bill, expense, purchase order or vendor credit line** (#485).
+The Account picker on an Enter Bill line, the Expense form, a purchase order's
+To Bill screen and a vendor credit line now has an Add button beside it that
+opens a small panel — name, type, an optional parent and number — makes the
+account and picks it on the line, without leaving the form. It offers expense
+and cost-of-goods accounts only, and the new account joins the other lines and
+a later line's picker. This is the register's inline new-account panel (#386),
+now shared across the purchase forms.
+
 ### v2.29.0 — A mid-year payroll switch, the fiscal year, and reports by item
 
 **A company whose fiscal year does not start in January can say so** (#444, @ContractorKeith).

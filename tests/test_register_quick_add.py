@@ -22,6 +22,9 @@ from pathlib import Path
 JS_DIR = Path(__file__).resolve().parents[1] / "app/static/js"
 BANKING_JS = (JS_DIR / "banking.js").read_text(encoding="utf-8")
 UTILS_JS = (JS_DIR / "utils.js").read_text(encoding="utf-8")
+# the panel is the shared AccountQuickAdd helper now (#485); the register
+# wires it and keeps its method names as thin wrappers
+ACCOUNT_JS = (JS_DIR / "account_quick_add.js").read_text(encoding="utf-8")
 
 
 def _select(html_id):
@@ -45,8 +48,8 @@ def test_the_category_pickers_are_plain_selects_with_an_add_button():
 
 
 def test_the_panel_asks_for_name_type_parent_and_number():
-    panel = BANKING_JS[BANKING_JS.index("_newAccountPanel(selectId, accountId) {") :]
-    panel = panel[: panel.index("openNewAccount(selectId, accountId) {")]
+    panel = ACCOUNT_JS[ACCOUNT_JS.index("panel(selectId) {") :]
+    panel = panel[: panel.index("open(selectId) {")]
     for part in ("-name", "-type", "-parent", "-number"):
         assert f'id="${{id}}{part}"' in panel, part
     # the name is required by the script, not the attribute: a hidden
@@ -54,7 +57,14 @@ def test_the_panel_asks_for_name_type_parent_and_number():
     assert 'aria-required="true"' in panel and "required " not in panel.replace(
         "aria-required", ""
     )
-    assert "BankingPage.CATEGORY_TYPES" in panel
+    # the types come from the picker's registration, the six by default; the
+    # register passes its own six
+    assert "AccountQuickAdd.TYPES" in panel
+    assert (
+        "TYPES: ['expense', 'income', 'cogs', 'asset', 'liability', 'equity']"
+        in ACCOUNT_JS
+    )
+    assert "types: BankingPage.CATEGORY_TYPES" in BANKING_JS
     assert (
         "CATEGORY_TYPES: ['expense', 'income', 'cogs', 'asset', 'liability', 'equity']"
         in BANKING_JS
@@ -65,20 +75,24 @@ def test_the_parent_list_leaves_out_control_accounts():
     # a control account (1100, 1200, 2000, 2200, 3200 …) is found by number
     # when a document posts, so it is never offered as a new account's parent
     assert (
-        "a.account_type === type && a.id !== accountId && !a.bank_kind && !a.is_control"
-        in BANKING_JS
+        "a.account_type === type && a.id !== opts.excludeId && !a.bank_kind && !a.is_control"
+        in ACCOUNT_JS
     )
 
 
 def test_the_new_account_goes_into_every_picker_and_is_chosen():
-    save = BANKING_JS[BANKING_JS.index("async saveNewAccount(selectId, accountId) {") :]
+    save = ACCOUNT_JS[ACCOUNT_JS.index("async save(selectId) {") :]
     assert "await API.post('/accounts', {" in save
     assert "account_number: f('number').value.trim() || null" in save
-    assert "for (const id of ['qe-category', 'entry-category'])" in save
-    assert "if (BankingPage._splitCats) BankingPage._splitCats += opt;" in save
-    assert "document.getElementById(selectId).value = String(made.id);" in save
-    assert "document.getElementById('qe-out')" in save
-    assert 'input[name="description"]' in save
+    assert "sel.value = String(made.id);" in save
+    # the register's wrapper puts it into both pickers and the split list, and
+    # moves the cursor on to the amount in the row or the memo in the form
+    reg = BANKING_JS[BANKING_JS.index("_newAccountPanel(selectId, accountId) {") :]
+    reg = reg[: reg.index("openNewAccount(selectId)")]
+    assert "for (const id of ['qe-category', 'entry-category'])" in reg
+    assert "BankingPage._splitCats += opt" in reg
+    assert "document.getElementById('qe-out')" in reg
+    assert 'input[name="description"]' in reg
 
 
 def test_the_payee_is_offered_by_the_money_side_and_checks_both_lists():

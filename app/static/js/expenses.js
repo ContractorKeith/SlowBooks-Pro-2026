@@ -70,6 +70,14 @@ const ExpensesPage = {
         const paidFrom = ExpensesPage.paidFromAccounts(accounts);
         const acctOpt = a => `<option value="${a.id}">${accountLabel(a)}</option>`;
         const checking = paidFrom.find(a => /checking/i.test(a.name || '')) || paidFrom[0];
+        // Add a chart account beside the Expense Account cell (#485): expense
+        // and COGS only; the new account joins the page's cached chart.
+        AccountQuickAdd.register('expense-acct', {
+            types: ['expense', 'cogs'],
+            accounts: () => ExpensesPage._accounts,
+            onAdded: (made) => ExpensesPage._accounts.push(made),
+            next: () => document.querySelector('#expense-form [name="amount"]'),
+        });
 
         openModal('Enter Expense', `
             <form id="expense-form" onsubmit="ExpensesPage.save(event)">
@@ -80,7 +88,8 @@ const ExpensesPage = {
                     <div class="form-group"><label>Date *</label>
                         <input name="date" type="date" required value="${todayISO()}"></div>
                     <div class="form-group"><label>Expense Account *</label>
-                        <select name="expense_account_id" required><option value="">Select...</option>${PurchaseAccounts.options(expenseAccts)}</select></div>
+                        <span style="display:flex; gap:2px; align-items:center;"><select name="expense_account_id" id="expense-acct" required style="flex:1;"><option value="">Select...</option>${PurchaseAccounts.options(expenseAccts)}</select>${AccountQuickAdd.button('expense-acct')}</span>
+                        ${AccountQuickAdd.panel('expense-acct')}</div>
                     <div class="form-group"><label>Paid From *</label>
                         <select name="paid_from_account_id" required>${paidFrom.map(acctOpt).join('')}</select></div>
                     <div class="form-group"><label>Amount *</label>
