@@ -842,10 +842,14 @@ const BankingPage = {
     _wireReviewAccountAdd(line, selectId, accountId) {
         const lineId = line.id;
         const who = (line.payee || line.description || '').trim();
+        // names the line, so neither the Add button nor the panel's fields are
+        // identical across the queue's rows or the register's own panel (#492)
+        const scope = `${who ? who + ', ' : ''}${formatDate(line.date)}`;
         AccountQuickAdd.register(selectId, {
             types: BankingPage.CATEGORY_TYPES,
             excludeId: accountId,
-            ariaLabel: `Add a chart account for ${who ? who + ', ' : ''}${formatDate(line.date)}`,
+            ariaLabel: `Add a chart account for ${scope}`,
+            labelScope: scope,
             accounts: () => BankingPage._accounts || [],
             onAdded: (made, fromId) => {
                 (BankingPage._accounts = BankingPage._accounts || []).push(made);

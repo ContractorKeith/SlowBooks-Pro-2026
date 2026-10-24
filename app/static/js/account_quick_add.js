@@ -79,6 +79,16 @@ const AccountQuickAdd = {
         const id = `${selectId}-new`;
         const types = (AccountQuickAdd._opts(selectId).types || AccountQuickAdd.TYPES)
             .map(t => `<option value="${t}">${AccountQuickAdd._cap(t)}</option>`).join('');
+        // A host with more than one panel on a page (the bank-feed review has
+        // one per line) passes `labelScope` so no two panels share a field
+        // name a screen reader can't tell apart (#492, #198). The scope goes in
+        // each field's aria-label, not the visible label text — a review row's
+        // category cell is filtered by payee text elsewhere (the Mercury review
+        // screen), so the scope must not land in the cell's text. The register
+        // and rule form pass nothing and keep the plain labels.
+        const scope = AccountQuickAdd._opts(selectId).labelScope;
+        const s = scope ? ` (${escapeHtml(scope)})` : '';
+        const al = (base) => (s ? ` aria-label="${base}${s}"` : '');
         // Enter inside the panel saves the account, never the host form (a
         // bill, expense or bank rule is a form; Enter on a bare select used to
         // submit it and lose the panel). On the two text boxes Enter saves; on
@@ -88,13 +98,13 @@ const AccountQuickAdd = {
         return `<div id="${id}" style="display:none; padding:8px; border:1px solid var(--gray-300); border-radius:4px; margin-top:4px; min-width:220px;">
             <div class="form-grid">
                 <div class="form-group"><label for="${id}-name">Account name *</label>
-                    <input id="${id}-name" aria-label="New account name" aria-required="true" ${key}></div>
+                    <input id="${id}-name" aria-label="New account name${s}" aria-required="true" ${key}></div>
                 <div class="form-group"><label for="${id}-type">Type</label>
-                    <select id="${id}-type" data-no-search onchange="AccountQuickAdd.typeChanged('${selectId}')" ${keySel}>${types}</select></div>
+                    <select id="${id}-type" data-no-search${al('Type')} onchange="AccountQuickAdd.typeChanged('${selectId}')" ${keySel}>${types}</select></div>
                 <div class="form-group"><label for="${id}-parent">Sub-account of</label>
-                    <select id="${id}-parent" data-no-search ${keySel}><option value="">None</option></select></div>
+                    <select id="${id}-parent" data-no-search${al('Sub-account of')} ${keySel}><option value="">None</option></select></div>
                 <div class="form-group"><label for="${id}-number">Number <span style="font-weight:normal; color:var(--gray-500);">(optional)</span></label>
-                    <input id="${id}-number" maxlength="20" placeholder="e.g. 6150, or leave blank" ${key}></div>
+                    <input id="${id}-number" maxlength="20"${al('Number, optional')} placeholder="e.g. 6150, or leave blank" ${key}></div>
             </div>
             <div style="display:flex; gap:8px; margin-top:6px;">
                 <button type="button" class="btn btn-sm btn-primary" onclick="AccountQuickAdd.save('${selectId}')">Add account</button>
