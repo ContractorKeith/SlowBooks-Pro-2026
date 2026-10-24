@@ -7,6 +7,16 @@ on what the software does, not on what sprint shipped what.
 
 ### Unreleased
 
+**Add a chart account from the bank-feed review and a bank rule** (#492).
+The "Pick a category" select on a line in To review and the Category Account
+select on the Bank Rule form now each have an Add button beside them that opens
+the same small panel, makes the account and uses it on the spot — on a review
+line it is set as the line's category straight away (and joins every other
+review row's picker), and on the rule form it is selected. It offers the chart's
+six category types; the feed's own bank account and the control accounts are
+kept out of the parents. This is the shared inline new-account panel (#485, the
+register's #386), now beside the two bank-feed pickers that lacked it.
+
 **Add a chart account from a bill, expense, purchase order or vendor credit line** (#485).
 The Account picker on an Enter Bill line, the Expense form, a purchase order's
 To Bill screen and a vendor credit line now has an Add button beside it that

@@ -66,6 +66,15 @@ const BankRulesPage = {
             .filter(a => ['expense','income','asset','liability','cogs'].includes(a.account_type))
             .map(a => `<option value="${a.id}" ${rule.account_id==a.id?'selected':''}>${accountLabel(a)}</option>`).join('');
 
+        // an Add button beside the Category Account select (#492): the chart's
+        // six types, no excluded account. The helper appends the new account
+        // to the select and picks it; onAdded keeps it for the parent list.
+        AccountQuickAdd.register('rule-account', {
+            types: AccountQuickAdd.TYPES,
+            accounts: () => accounts,
+            onAdded: (made) => accounts.push(made),
+        });
+
         openModal(id ? 'Edit Bank Rule' : 'New Bank Rule', `
             <form onsubmit="BankRulesPage.save(event, ${id})">
                 <div class="form-grid">
@@ -80,8 +89,9 @@ const BankRulesPage = {
                             <option value="starts_with" ${rule.rule_type==='starts_with'?'selected':''}>Starts With</option>
                             <option value="exact" ${rule.rule_type==='exact'?'selected':''}>Exact Match</option>
                         </select></div>
-                    <div class="form-group"><label>Category Account</label>
-                        <select name="account_id"><option value="">-- None --</option>${acctOpts}</select></div>
+                    <div class="form-group"><label for="rule-account">Category Account</label>
+                        <span style="display:inline-flex; gap:4px; align-items:center;"><select id="rule-account" name="account_id"><option value="">-- None --</option>${acctOpts}</select>${AccountQuickAdd.button('rule-account')}</span>
+                        ${AccountQuickAdd.panel('rule-account')}</div>
                     <div class="form-group"><label>Priority</label>
                         <input name="priority" type="number" value="${rule.priority}" title="Higher = checked first"></div>
                     <div class="form-group"><label>Active</label>

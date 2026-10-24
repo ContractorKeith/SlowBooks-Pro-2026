@@ -795,19 +795,25 @@ const BankingPage = {
     _reviewPanel(review, feedId, accountId, kind) {
         // the lines by id, for "Rule…" (the payee and the category chosen)
         BankingPage._reviewLines = Object.fromEntries(review.map(t => [t.id, t]));
-        const rows = review.map(t => `
+        const rows = review.map(t => {
+            const sid = `cat-${t.id}`;
+            // an Add button beside the row's category select: a new chart
+            // account joins every review row's picker and is set on this line
+            BankingPage._wireReviewAccountAdd(t.id, sid, accountId);
+            return `
             <tr>
                 <td>${formatDate(t.date)}</td>
                 <td>${escapeHtml(t.payee || '')}<div style="font-size:10px; color:var(--gray-400);">${escapeHtml(t.description || '')}</div></td>
                 <td class="amount" style="${t.amount >= 0 ? 'color:var(--text-success)' : 'color:var(--text-danger)'}">${formatCurrency(t.amount)}</td>
-                <td><select id="cat-${t.id}" class="review-cat" data-write data-current="${t.category_account_id || ''}" aria-label="Category" onchange="BankingPage.setCategory(${t.id}, this)"><option value="">${t.category_name ? escapeHtml(t.category_name) : 'Pick a category…'}</option></select></td>
+                <td><span style="display:inline-flex; gap:2px; align-items:center;"><select id="${sid}" class="review-cat" data-write data-current="${t.category_account_id || ''}" aria-label="Category" onchange="BankingPage.setCategory(${t.id}, this)"><option value="">${t.category_name ? escapeHtml(t.category_name) : 'Pick a category…'}</option></select>${AccountQuickAdd.button(sid, '+')}</span>${AccountQuickAdd.panel(sid)}</td>
                 <td style="white-space:nowrap;" data-write>
                     <button class="btn btn-sm btn-primary" onclick="BankingPage.addLine(${t.id}, ${accountId})">Add</button>
                     <button class="btn btn-sm btn-secondary" onclick="BankingPage.showMatch(${t.id}, ${accountId})">Match</button>
                     <button class="btn btn-sm btn-secondary" onclick="BankingPage.excludeLine(${t.id}, ${accountId})">Exclude</button>
                     <button class="btn btn-sm btn-secondary" onclick="BankingPage.ruleFromLine(${t.id}, ${accountId})" title="A bank rule from this payee and the category chosen">Rule…</button>
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
         setTimeout(() => BankingPage._fillCategorySelects(kind), 0);
         return `<div class="card" style="margin-bottom:16px; border-left:4px solid var(--qb-gold);">
             <div class="card-header">To review — ${review.length} statement line${review.length === 1 ? '' : 's'} not in the books
@@ -824,6 +830,28 @@ const BankingPage = {
                 A ${kind === 'credit_card' ? 'card payment' : 'transfer'} is a line whose category is another bank or card account.
             </div>
         </div>`;
+    },
+
+    // Wire the shared Add-account panel beside one review row's category
+    // select (#492): the chart's six category types, the feed's own bank
+    // account kept out of the parents. A new account joins every review-cat
+    // select on the page and the cached chart, and is set on this line (a
+    // PATCH, as picking a category is) so the line is categorised at once.
+    _wireReviewAccountAdd(lineId, selectId, accountId) {
+        AccountQuickAdd.register(selectId, {
+            types: BankingPage.CATEGORY_TYPES,
+            excludeId: accountId,
+            accounts: () => BankingPage._accounts || [],
+            onAdded: (made, fromId) => {
+                (BankingPage._accounts = BankingPage._accounts || []).push(made);
+                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
+                document.querySelectorAll('select.review-cat').forEach(s => {
+                    if (s.id !== fromId && !s.querySelector(`option[value="${made.id}"]`)) s.insertAdjacentHTML('beforeend', opt);
+                });
+                const sel = document.getElementById(fromId);
+                if (sel) { sel.value = String(made.id); BankingPage.setCategory(lineId, sel); }
+            },
+        });
     },
 
     async _fillCategorySelects(kind) {
