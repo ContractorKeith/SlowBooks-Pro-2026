@@ -1294,15 +1294,16 @@ const ReportsPage = {
         }, 300);
     },
     // Install the write/focus listeners once. Guarded for the node probes
-    // that load reports.js without a document or window.
+    // that load reports.js with a stub document/window that has no
+    // addEventListener; the dialog-open path installs them for real.
     _installAutoRefresh() {
         if (ReportsPage._autoRefreshInstalled) return;
-        if (typeof document === 'undefined') return;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
         ReportsPage._autoRefreshInstalled = true;
         document.addEventListener('slowbooks:write', (e) => {
             ReportsPage._autoRefreshAfter(e && e.detail ? e.detail.path : null);
         });
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
             window.addEventListener('focus', () => ReportsPage._autoRefreshAfter(null));
         }
     },
