@@ -5,6 +5,20 @@ Notable changes between releases. Format roughly follows
 used during development is captured here so the README can stay focused
 on what the software does, not on what sprint shipped what.
 
+### Unreleased
+
+**Reclassify moves the stored balance too** (#490). Reclassifying a line to
+another account moved the line but left `Account.balance` where it was, so
+the P&L and General Ledger (which read the lines) were right while the Chart
+of Accounts Balance column, the accounts CSV export and the AI tools' totals
+(which read the stored balance) still showed the amount on the old account
+and nothing on the new one. The move now takes the line off its old account
+and onto the new one the same way a posting does — in each account's natural
+direction — so an undo (reclassifying back) nets to zero and a dry run still
+changes nothing. The upgrade rebuilds every stored balance from the lines
+(`49a0b2c7e1d3`), so a book reclassified before this fix comes right on
+upgrade; the lines were always correct.
+
 ### v2.28.0 — Account types and sub-accounts
 
 **Account detail types** (#390, from Kim Morden Bookkeeping's notes). Every

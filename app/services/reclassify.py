@@ -548,9 +548,27 @@ def reclassify(
     for day in sorted({m["_line"].transaction.date for m in moved}):
         check_closing_date(db, day)
 
+    # A move changes which account carries the line, so the stored
+    # Account.balance has to follow it off the old account and onto the new
+    # one (#490): take the line off its old account in that account's natural
+    # direction and put it on the new one in the new account's, aggregated per
+    # account and applied as one atomic update apiece — the same convention
+    # create_journal_entry posts with, so an undo (reclassifying back) nets to
+    # zero. Only the account changes a balance; a class move does not.
+    balance_deltas: dict = {}
     for m in moved:
         line, bill_line = m["_line"], m["_bill_line"]
         if to_account is not None and line.account_id != to_account.id:
+            from_account = line.account
+            amount = Decimal(line.debit or 0) - Decimal(line.credit or 0)
+            for acct, sign in ((from_account, -1), (to_account, 1)):
+                if acct.account_type.value in ("asset", "expense", "cogs"):
+                    delta = amount
+                else:
+                    delta = -amount
+                balance_deltas[acct.id] = (
+                    balance_deltas.get(acct.id, Decimal("0")) + sign * delta
+                )
             line.account_id = to_account.id
             if bill_line is not None:
                 bill_line.account_id = to_account.id
@@ -562,6 +580,10 @@ def reclassify(
             line.class_id = to_class.id
             if bill_line is not None:
                 bill_line.class_id = to_class.id
+
+    from app.services.accounting import apply_balance_deltas
+
+    apply_balance_deltas(db, balance_deltas)
     db.flush()
 
     # One event for the move, every line named, beside the change the

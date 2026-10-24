@@ -3,6 +3,7 @@ move and why not; a dry run that changes nothing; the move itself, as one
 audited change naming every line, the bill's own line following; the
 closing date respected; the accountant role allowed, read-only not."""
 
+from decimal import Decimal
 from urllib.parse import quote
 
 from app.models.bills import BillLine
@@ -583,3 +584,157 @@ def test_a_vendor_name_inside_another_word_does_not_match(
         )
     )
     assert [ln["payee"] for ln in found["lines"]] == ["ACE HARDWARE #12"]
+
+
+# ---------------------------------------------------------------------------
+# The stored Chart-of-Accounts balance follows the line (#490): the P&L and
+# GL read the lines and were always right, but Account.balance (the Balance
+# column, the accounts CSV, the AI totals) stayed on the old account.
+# ---------------------------------------------------------------------------
+
+
+def _expense(client, name, number):
+    return _ok(
+        client.post(
+            "/api/accounts",
+            json={"name": name, "account_number": number, "account_type": "expense"},
+        )
+    )
+
+
+def _balance(client, account_id):
+    """The stored balance /api/accounts reports for one account."""
+    for a in _ok(client.get("/api/accounts")):
+        if a["id"] == account_id:
+            return Decimal(str(a["balance"]))
+    raise AssertionError(f"account {account_id} not listed")
+
+
+def _swipe(client, accounts, category_id, amount, day="2026-03-12", **extra):
+    return _ok(
+        client.post(
+            "/api/banking/transactions",
+            json={
+                "account_id": accounts["1000"].id,
+                "date": day,
+                "amount": amount,
+                "category_account_id": category_id,
+                "payee": "Acme ISP",
+                "description": "Internet, miscoded",
+                **extra,
+            },
+        )
+    )
+
+
+def test_the_stored_balance_moves_with_the_line(client, db_session, seed_accounts):
+    accounts = seed_accounts
+    interest = _expense(client, "Interest Expense", "6910")
+    internet = _expense(client, "Internet", "6710")
+    _swipe(client, accounts, interest["id"], "-32.15")
+    assert _balance(client, interest["id"]) == Decimal("32.15")
+    assert _balance(client, internet["id"]) == Decimal("0.00")
+
+    ids = _line_ids_for(db_session, interest["id"])
+    assert len(ids) == 1
+    done = _ok(
+        client.post(
+            "/api/reclassify",
+            json={"line_ids": ids, "account_id": internet["id"], "dry_run": False},
+        )
+    )
+    assert done["count"] == 1
+    # off the old account, onto the new one — not left on Interest
+    assert _balance(client, interest["id"]) == Decimal("0.00")
+    assert _balance(client, internet["id"]) == Decimal("32.15")
+
+
+def test_the_balance_comes_back_when_the_move_is_undone(
+    client, db_session, seed_accounts
+):
+    """Undo is reclassifying back; the stored balance nets to zero."""
+    accounts = seed_accounts
+    interest = _expense(client, "Interest Expense", "6910")
+    internet = _expense(client, "Internet", "6710")
+    _swipe(client, accounts, interest["id"], "-32.15")
+    ids = _line_ids_for(db_session, interest["id"])
+    _ok(
+        client.post(
+            "/api/reclassify",
+            json={"line_ids": ids, "account_id": internet["id"], "dry_run": False},
+        )
+    )
+    _ok(
+        client.post(
+            "/api/reclassify",
+            json={"line_ids": ids, "account_id": interest["id"], "dry_run": False},
+        )
+    )
+    assert _balance(client, interest["id"]) == Decimal("32.15")
+    assert _balance(client, internet["id"]) == Decimal("0.00")
+
+
+def test_a_dry_run_leaves_the_stored_balances_alone(client, db_session, seed_accounts):
+    accounts = seed_accounts
+    interest = _expense(client, "Interest Expense", "6910")
+    internet = _expense(client, "Internet", "6710")
+    _swipe(client, accounts, interest["id"], "-32.15")
+    ids = _line_ids_for(db_session, interest["id"])
+    plan = _ok(
+        client.post(
+            "/api/reclassify",
+            json={"line_ids": ids, "account_id": internet["id"]},
+        )
+    )
+    assert plan["dry_run"] is True
+    assert _balance(client, interest["id"]) == Decimal("32.15")
+    assert _balance(client, internet["id"]) == Decimal("0.00")
+
+
+def test_the_balance_moves_with_a_class_and_job_on_the_line(
+    client, db_session, seed_accounts, seed_customer
+):
+    accounts = seed_accounts
+    interest = _expense(client, "Interest Expense", "6910")
+    internet = _expense(client, "Internet", "6710")
+    klass = _ok(client.post("/api/classes", json={"name": "Shop"}))
+    job = _ok(
+        client.post("/api/jobs", json={"customer_id": seed_customer.id, "name": "Reno"})
+    )
+    _swipe(
+        client,
+        accounts,
+        interest["id"],
+        "-32.15",
+        class_id=klass["id"],
+        job_id=job["id"],
+    )
+    ids = _line_ids_for(db_session, interest["id"])
+    _ok(
+        client.post(
+            "/api/reclassify",
+            json={
+                "line_ids": ids,
+                "account_id": internet["id"],
+                "class_id": klass["id"],
+                "dry_run": False,
+            },
+        )
+    )
+    assert _balance(client, interest["id"]) == Decimal("0.00")
+    assert _balance(client, internet["id"]) == Decimal("32.15")
+    # the dimensions on the line survive the move
+    db_session.expire_all()
+    line = db_session.query(TransactionLine).filter(TransactionLine.id == ids[0]).one()
+    assert line.account_id == internet["id"]
+    assert line.class_id == klass["id"] and line.job_id == job["id"]
+
+
+def _line_ids_for(db, account_id):
+    return [
+        ln.id
+        for ln in db.query(TransactionLine)
+        .filter(TransactionLine.account_id == account_id)
+        .order_by(TransactionLine.id)
+        .all()
+    ]
