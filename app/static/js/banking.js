@@ -1457,95 +1457,41 @@ const BankingPage = {
     // that type, an optional number. Hidden until the Add button beside the
     // picker opens it; nothing in it is `required`, so the entry form still
     // submits while it is hidden.
+    // The register's two category pickers (qe-category, entry-category) wire
+    // the shared AccountQuickAdd (app/static/js/account_quick_add.js, #485):
+    // the register offers the chart's six types, keeps its own account out of
+    // the parents, and puts a new account into both pickers, the split lines'
+    // list and its own cached chart. These methods stay as thin wrappers so
+    // the Add button HTML and the register's browser test (ids qe-category-new
+    // …) are unchanged.
     _newAccountPanel(selectId, accountId) {
-        const id = `${selectId}-new`;
-        const key = `onkeydown="if (event.key === 'Enter') { event.preventDefault(); BankingPage.saveNewAccount('${selectId}', ${accountId}); }"`;
-        const types = BankingPage.CATEGORY_TYPES
-            .map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('');
-        return `<div id="${id}" style="display:none; padding:8px; border:1px solid var(--gray-300); border-radius:4px; margin-top:4px;">
-            <div class="form-grid">
-                <div class="form-group"><label for="${id}-name">Account name *</label>
-                    <input id="${id}-name" aria-label="New account name" aria-required="true" ${key}></div>
-                <div class="form-group"><label for="${id}-type">Type</label>
-                    <select id="${id}-type" data-no-search onchange="BankingPage.newAccountTypeChanged('${selectId}', ${accountId})">${types}</select></div>
-                <div class="form-group"><label for="${id}-parent">Sub-account of</label>
-                    <select id="${id}-parent" data-no-search><option value="">None</option></select></div>
-                <div class="form-group"><label for="${id}-number">Number <span style="font-weight:normal; color:var(--gray-500);">(optional)</span></label>
-                    <input id="${id}-number" maxlength="20" placeholder="e.g. 6150, or leave blank" ${key}></div>
-            </div>
-            <div style="display:flex; gap:8px; margin-top:6px;">
-                <button type="button" class="btn btn-sm btn-primary" onclick="BankingPage.saveNewAccount('${selectId}', ${accountId})">Add account</button>
-                <button type="button" class="btn btn-sm btn-secondary" onclick="BankingPage.cancelNewAccount('${selectId}')">Cancel</button>
-            </div>
-        </div>`;
+        AccountQuickAdd.register(selectId, {
+            types: BankingPage.CATEGORY_TYPES,
+            excludeId: accountId,
+            accounts: () => BankingPage._accounts || [],
+            // the new account goes into every category picker on the page (the
+            // split lines' list too) and the register's own cached chart
+            onAdded: (made, fromId) => {
+                (BankingPage._accounts = BankingPage._accounts || []).push(made);
+                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
+                for (const id of ['qe-category', 'entry-category']) {
+                    const s = id !== fromId && document.getElementById(id);
+                    if (s) s.insertAdjacentHTML('beforeend', opt);
+                }
+                if (BankingPage._splitCats) BankingPage._splitCats += opt;
+            },
+            // the cursor moves on, to the amount in the row or the memo in the form
+            next: () => selectId === 'qe-category'
+                ? document.getElementById('qe-out')
+                : document.querySelector('#modal-body input[name="description"]'),
+        });
+        return AccountQuickAdd.panel(selectId);
     },
 
-    // Opened by the Add button beside a category picker, never by the
-    // select itself: arrowing through the categories must not spring the
-    // panel open (#386 review — a native select with "+ Add…" on it trapped
-    // the keyboard one ArrowDown from the top).
-    openNewAccount(selectId, accountId) {
-        const panel = document.getElementById(`${selectId}-new`);
-        if (!panel) return;
-        panel.style.display = '';
-        BankingPage.newAccountTypeChanged(selectId, accountId);
-        focusFor(document.getElementById(`${selectId}-new-name`), true);
-    },
-
-    // The parents offered are the accounts of the chosen type (a
-    // sub-account takes its parent's type), never the register's own
-    // account, another bank or card, or a control account the software
-    // posts to by number (#386 review: 1100, 1200, 2000, 2200, 3200 …).
-    newAccountTypeChanged(selectId, accountId) {
-        const type = document.getElementById(`${selectId}-new-type`).value;
-        const parent = document.getElementById(`${selectId}-new-parent`);
-        parent.innerHTML = '<option value="">None</option>' + (BankingPage._accounts || [])
-            .filter(a => a.account_type === type && a.id !== accountId && !a.bank_kind && !a.is_control)
-            .map(a => `<option value="${a.id}">${accountLabel(a)}</option>`).join('');
-    },
-
-    cancelNewAccount(selectId) {
-        // The panel opens from the Add button now, not from a "__new__"
-        // choice, so the picker keeps whatever was already chosen — cancel
-        // only closes the panel and gives the keyboard back to the select.
-        const sel = document.getElementById(selectId);
-        const panel = document.getElementById(`${selectId}-new`);
-        if (panel) panel.style.display = 'none';
-        if (sel) { focusFor(sel._cbx ? sel._cbx.box : sel, true); }
-    },
-
-    // POST /accounts, then the new account goes into every category picker
-    // on the page (the split lines' list too) and is the choice; the cursor
-    // moves on, to the amount in the row or the memo in the form.
-    async saveNewAccount(selectId, accountId) {
-        const f = (part) => document.getElementById(`${selectId}-new-${part}`);
-        const name = f('name').value.trim();
-        if (!name) { toast('Name the account', 'error'); focusFor(f('name'), true); return; }
-        let made;
-        try {
-            made = await API.post('/accounts', {
-                name,
-                account_type: f('type').value,
-                parent_id: f('parent').value ? parseInt(f('parent').value, 10) : null,
-                account_number: f('number').value.trim() || null,
-            });
-        } catch (err) { toast(err.message, 'error'); return; }
-        (BankingPage._accounts = BankingPage._accounts || []).push(made);
-        const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
-        for (const id of ['qe-category', 'entry-category']) {
-            const s = document.getElementById(id);
-            if (s) s.insertAdjacentHTML('beforeend', opt);
-        }
-        if (BankingPage._splitCats) BankingPage._splitCats += opt;
-        f('name').value = ''; f('number').value = ''; f('parent').value = '';
-        document.getElementById(`${selectId}-new`).style.display = 'none';
-        document.getElementById(selectId).value = String(made.id);
-        toast(`${made.account_number ? made.account_number + ' - ' : ''}${made.name} added to the chart`);
-        const next = selectId === 'qe-category'
-            ? document.getElementById('qe-out')
-            : document.querySelector('#modal-body input[name="description"]');
-        focusFor(next, true);
-    },
+    openNewAccount(selectId) { AccountQuickAdd.open(selectId); },
+    newAccountTypeChanged(selectId) { AccountQuickAdd.typeChanged(selectId); },
+    cancelNewAccount(selectId) { AccountQuickAdd.cancel(selectId); },
+    saveNewAccount(selectId) { return AccountQuickAdd.save(selectId); },
 
     async showTransferForm(fromId = null) {
         const accounts = await API.get('/accounts?bank=1&active_only=true');
