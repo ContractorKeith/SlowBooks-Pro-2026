@@ -3,6 +3,10 @@
  * Phase 10: Quick Wins + Medium Effort Features
  */
 const BankRulesPage = {
+    // The category types a rule can post to: the select filters to these and
+    // the inline Add panel offers the same, so a new account always shows.
+    RULE_TYPES: ['expense', 'income', 'asset', 'liability', 'cogs'],
+
     async render() {
         const rules = await API.get('/bank-rules');
         let html = `
@@ -61,16 +65,19 @@ const BankRulesPage = {
             BankRulesPage._afterSave = null;
         }
 
-        const accounts = await API.get('/accounts');
+        const accounts = await API.get('/accounts?active_only=true');
         const acctOpts = accounts
-            .filter(a => ['expense','income','asset','liability','cogs'].includes(a.account_type))
+            .filter(a => BankRulesPage.RULE_TYPES.includes(a.account_type))
             .map(a => `<option value="${a.id}" ${rule.account_id==a.id?'selected':''}>${accountLabel(a)}</option>`).join('');
 
-        // an Add button beside the Category Account select (#492): the chart's
-        // six types, no excluded account. The helper appends the new account
-        // to the select and picks it; onAdded keeps it for the parent list.
+        // an Add button beside the Category Account select (#492): the same
+        // category types the select already offers, no excluded account. The
+        // panel's types must match the select's filter, or an account made of
+        // a type the select cannot show would save on the rule and then vanish
+        // from it on Edit (saving null). The helper appends the new account to
+        // the select and picks it; onAdded keeps it for the parent list.
         AccountQuickAdd.register('rule-account', {
-            types: AccountQuickAdd.TYPES,
+            types: BankRulesPage.RULE_TYPES,
             accounts: () => accounts,
             onAdded: (made) => accounts.push(made),
         });

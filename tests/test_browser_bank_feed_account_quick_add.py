@@ -29,6 +29,19 @@ CHART = [
         "account_number": "6100",
         "account_type": "expense",
     },
+    {
+        "id": 3,
+        "name": "Accounts Payable",
+        "account_number": "2000",
+        "account_type": "liability",
+        "is_control": True,
+    },
+    {
+        "id": 4,
+        "name": "Prepaid Expenses",
+        "account_number": "1400",
+        "account_type": "asset",
+    },
 ]
 REGISTER = {
     "account_name": "Checking",
@@ -117,6 +130,20 @@ def test_add_account_from_a_review_line_categorises_the_line(browser):
             "Liability",
             "Equity",
         ]
+
+        # a Liability parent: Accounts Payable is a control account, so only
+        # None is offered
+        page.select_option("#cat-50-new-type", "liability")
+        assert page.locator("#cat-50-new-parent option").all_inner_texts() == ["None"]
+        # an Asset parent: Prepaid is offered, but the feed's own bank account
+        # (Checking, the excludeId) is not
+        page.select_option("#cat-50-new-type", "asset")
+        assert page.locator("#cat-50-new-parent option").all_inner_texts() == [
+            "None",
+            "1400 - Prepaid Expenses",
+        ]
+        page.select_option("#cat-50-new-type", "expense")
+
         page.fill("#cat-50-new-name", "Bank Charges")
         page.click("text=Add account")
         page.wait_for_function("() => document.getElementById('cat-50').value === '77'")
@@ -162,13 +189,14 @@ def test_add_account_from_the_bank_rule_form(browser):
         )
         page.click("#rule-account-add")
         page.wait_for_selector("#rule-account-new", state="visible")
+        # the rule form's category types: the select's five, never equity, so
+        # an account made here can always be shown and saved on the rule
         assert page.locator("#rule-account-new-type option").all_inner_texts() == [
             "Expense",
             "Income",
-            "Cogs",
             "Asset",
             "Liability",
-            "Equity",
+            "Cogs",
         ]
         page.fill("#rule-account-new-name", "Bank Fees")
         page.click("text=Add account")

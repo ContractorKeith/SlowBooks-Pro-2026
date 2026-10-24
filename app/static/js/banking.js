@@ -799,7 +799,7 @@ const BankingPage = {
             const sid = `cat-${t.id}`;
             // an Add button beside the row's category select: a new chart
             // account joins every review row's picker and is set on this line
-            BankingPage._wireReviewAccountAdd(t.id, sid, accountId);
+            BankingPage._wireReviewAccountAdd(t, sid, accountId);
             return `
             <tr>
                 <td>${formatDate(t.date)}</td>
@@ -837,10 +837,15 @@ const BankingPage = {
     // account kept out of the parents. A new account joins every review-cat
     // select on the page and the cached chart, and is set on this line (a
     // PATCH, as picking a category is) so the line is categorised at once.
-    _wireReviewAccountAdd(lineId, selectId, accountId) {
+    // The button's accessible name names the line (one per row, up to the
+    // whole queue), so the buttons are not 50 identically-named "Add"s.
+    _wireReviewAccountAdd(line, selectId, accountId) {
+        const lineId = line.id;
+        const who = (line.payee || line.description || '').trim();
         AccountQuickAdd.register(selectId, {
             types: BankingPage.CATEGORY_TYPES,
             excludeId: accountId,
+            ariaLabel: `Add a chart account for ${who ? who + ', ' : ''}${formatDate(line.date)}`,
             accounts: () => BankingPage._accounts || [],
             onAdded: (made, fromId) => {
                 (BankingPage._accounts = BankingPage._accounts || []).push(made);
@@ -856,7 +861,7 @@ const BankingPage = {
 
     async _fillCategorySelects(kind) {
         const accounts = await API.get('/accounts?active_only=true');
-        const usable = accounts.filter(a => ['expense', 'income', 'cogs', 'asset', 'liability', 'equity'].includes(a.account_type));
+        const usable = accounts.filter(a => BankingPage.CATEGORY_TYPES.includes(a.account_type));
         document.querySelectorAll('select.review-cat').forEach(sel => {
             const current = sel.dataset.current;
             sel.innerHTML = '<option value="">Pick a category…</option>' + usable.map(a =>

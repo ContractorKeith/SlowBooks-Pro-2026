@@ -79,7 +79,9 @@ test('the review row onAdded puts the new account on every review-cat and sets t
     ctx._selects.push(sel7, sel8);
 
     // wire row 7 (its line id 7, the feed's own bank account id 1)
-    ctx.BankingPage._wireReviewAccountAdd(7, 'cat-7', 1);
+    ctx.BankingPage._wireReviewAccountAdd({ id: 7, payee: 'OFFICE DEPOT', date: '2026-09-04' }, 'cat-7', 1);
+    // the button names the line, so 50 rows are not 50 identical "Add"s
+    assert.match(ctx.AccountQuickAdd.button('cat-7', '+'), /aria-label="Add a chart account for OFFICE DEPOT/);
     // the panel's hidden fields for the save
     ctx._makeSelect('cat-7-new'); // the panel container (style only)
     const nameEl = ctx._makeSelect('cat-7-new-name'); nameEl.value = 'Bank Charges';
@@ -104,7 +106,7 @@ test('the review row onAdded puts the new account on every review-cat and sets t
     assert.deepEqual(JSON.parse(JSON.stringify(patch[2])), { category_account_id: 99 });
 });
 
-test('the rule form registers rule-account with the six category types', async () => {
+test('the rule form registers rule-account with the select category types', async () => {
     const ctx = load();
     const accounts = [{ id: 2, name: 'Office', account_number: '6200', account_type: 'expense' }];
     ctx.API.get = async () => JSON.parse(JSON.stringify(accounts));
@@ -115,10 +117,10 @@ test('the rule form registers rule-account with the six category types', async (
     assert.match(btn, /id="rule-account-add"/);
     const panel = ctx.AccountQuickAdd.panel('rule-account');
     assert.match(panel, /id="rule-account-new"/);
-    // the six category types are offered
-    for (const t of ['Expense', 'Income', 'Cogs', 'Asset', 'Liability', 'Equity']) {
-        assert.ok(panel.includes(`>${t}</option>`), `type ${t} offered`);
-    }
+    // the panel offers exactly the types the select filters to (five, never
+    // equity), so an account made here can always be shown and saved
+    const types = (panel.match(/<option value="(\w+)">/g) || []).map(m => m.match(/"(\w+)"/)[1]);
+    assert.deepEqual(types, ['expense', 'income', 'asset', 'liability', 'cogs']);
 
     // saving a new account picks it on the rule-account select
     const sel = ctx._makeSelect('rule-account');

@@ -13,8 +13,9 @@ select on the Bank Rule form now each have an Add button beside them that opens
 the same small panel, makes the account and uses it on the spot — on a review
 line it is set as the line's category straight away (and joins every other
 review row's picker), and on the rule form it is selected. It offers the chart's
-six category types; the feed's own bank account and the control accounts are
-kept out of the parents. This is the shared inline new-account panel (#485, the
+category types (the review's six; the rule form's five, which never post to
+equity); the feed's own bank account and the control accounts are kept out of
+the parents. This is the shared inline new-account panel (#485, the
 register's #386), now beside the two bank-feed pickers that lacked it.
 
 **Add a chart account from a bill, expense, purchase order or vendor credit line** (#485).
