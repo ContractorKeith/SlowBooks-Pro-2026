@@ -122,7 +122,7 @@ const VendorCreditsPage = {
         // Add a chart account beside the Account cell (#485): expense and COGS
         // only; the panel goes in the cell with nothing `required`.
         const sid = `vc-acct-${idx}`;
-        VendorCreditsPage._wireAccountAdd(sid);
+        VendorCreditsPage._wireAccountAdd(sid, idx);
         return `<tr data-vcline="${idx}">
                 <td><select class="line-item" onchange="VendorCreditsPage.itemSelected(this)">${ItemQuickAdd.options(VendorCreditsPage._items)}</select></td>
                 <td><span style="display:inline-flex; gap:2px; align-items:center;"><select id="${sid}" class="line-account" title="Blank: the item's expense account, else the vendor's default"><option value="">Item / vendor default</option>${acctOpts}</select>${AccountQuickAdd.button(sid)}</span>${AccountQuickAdd.panel(sid)}</td>
@@ -140,15 +140,15 @@ const VendorCreditsPage = {
     // Wire the shared Add-account panel for one line's Account cell (#485):
     // expense and COGS only; a new account goes into every line's select and
     // the page's cached chart, so a later line offers it.
-    _wireAccountAdd(selectId) {
+    _wireAccountAdd(selectId, idx) {
         AccountQuickAdd.register(selectId, {
             types: ['expense', 'cogs'],
+            ariaLabel: `Add a new account for line ${idx + 1}`,
             accounts: () => VendorCreditsPage._accounts,
             onAdded: (made, fromId) => {
                 VendorCreditsPage._accounts.push(made);
-                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
                 document.querySelectorAll('#vc-lines .line-account').forEach(s => {
-                    if (s.id !== fromId && !s.querySelector(`option[value="${made.id}"]`)) s.insertAdjacentHTML('beforeend', opt);
+                    if (s.id !== fromId) AccountQuickAdd._addOption(s, made);
                 });
             },
             next: () => document.querySelector(`#${selectId}`)?.closest('tr')?.querySelector('.line-desc'),

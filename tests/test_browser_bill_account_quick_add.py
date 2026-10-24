@@ -104,3 +104,46 @@ def test_add_account_from_a_bill_line_keeps_the_bill(browser):
         )
     finally:
         page.close()
+
+
+def test_enter_in_the_panel_type_select_does_not_submit_the_bill(browser):
+    # the panel sits inside the bill form; Enter on a bare select used to
+    # submit it and lose the typed account (#485 review)
+    posted = []
+    page = _open_bill(browser, posted)
+    try:
+        page.click("#bill-acct-0-add")
+        page.wait_for_selector("#bill-acct-0-new", state="visible")
+        page.evaluate(
+            "() => { window.__submits = 0;"
+            " document.getElementById('bill-form').addEventListener('submit',"
+            " e => { e.preventDefault(); window.__submits++; }); }"
+        )
+        page.focus("#bill-acct-0-new-type")
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(100)
+        assert page.evaluate("() => window.__submits") == 0
+        assert page.is_visible("#bill-acct-0-new")
+    finally:
+        page.close()
+
+
+def test_a_new_account_name_is_escaped_not_rendered(browser):
+    # the cjs test stubs escapeHtml as identity, so only the real page can
+    # catch an escaping regression on the option it builds
+    posted = []
+    page = _open_bill(browser, posted)
+    try:
+        page.click("#bill-acct-0-add")
+        page.wait_for_selector("#bill-acct-0-new", state="visible")
+        xss = "<img src=x onerror=alert(1)>"
+        page.fill("#bill-acct-0-new-name", xss)
+        page.click("text=Add account")
+        page.wait_for_function(
+            "() => document.getElementById('bill-acct-0').value === '77'"
+        )
+        # the name is shown as text, not parsed into an element
+        assert page.locator("#bill-acct-0 option:checked").inner_text() == xss
+        assert page.locator("#bill-acct-0 img").count() == 0
+    finally:
+        page.close()

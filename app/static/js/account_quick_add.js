@@ -39,6 +39,8 @@ const AccountQuickAdd = {
     // The register's six (BankingPage.CATEGORY_TYPES); a purchase line passes
     // ['expense', 'cogs'] instead.
     TYPES: ['expense', 'income', 'cogs', 'asset', 'liability', 'equity'],
+    // register(selectId, opts) keeps each picker's wiring here, keyed by the
+    // select's id; the entries persist and a re-registration overwrites one.
     _registry: {},
 
     register(selectId, opts) {
@@ -56,10 +58,13 @@ const AccountQuickAdd = {
     },
 
     // The Add button beside the select. Hidden for a sign-in that cannot
-    // save, like ItemQuickAdd's "+ Add item".
+    // save, like ItemQuickAdd's "+ Add item". The accessible name comes from
+    // the picker's `ariaLabel` so each line's button reads distinctly (a line
+    // table has one per row); the default is "Add a new account".
     button(selectId, label = 'Add') {
         if (!AccountQuickAdd.canAdd()) return '';
-        return `<button type="button" id="${selectId}-add" class="btn btn-sm btn-secondary" aria-label="Add a new account" title="Add a new account" onclick="AccountQuickAdd.open('${selectId}')">${escapeHtml(label)}</button>`;
+        const name = AccountQuickAdd._opts(selectId).ariaLabel || 'Add a new account';
+        return `<button type="button" id="${selectId}-add" class="btn btn-sm btn-secondary" aria-label="${escapeHtml(name)}" title="${escapeHtml(name)}" onclick="AccountQuickAdd.open('${selectId}')">${escapeHtml(label)}</button>`;
     },
 
     _cap(t) {
@@ -70,18 +75,24 @@ const AccountQuickAdd = {
     // optional number. Nothing `required`, so the host form still submits
     // while it is hidden.
     panel(selectId) {
+        if (!AccountQuickAdd.canAdd()) return '';
         const id = `${selectId}-new`;
         const types = (AccountQuickAdd._opts(selectId).types || AccountQuickAdd.TYPES)
             .map(t => `<option value="${t}">${AccountQuickAdd._cap(t)}</option>`).join('');
+        // Enter inside the panel saves the account, never the host form (a
+        // bill, expense or bank rule is a form; Enter on a bare select used to
+        // submit it and lose the panel). On the two text boxes Enter saves; on
+        // the two selects it is only swallowed, so a choice is not a save.
         const key = `onkeydown="if (event.key === 'Enter') { event.preventDefault(); AccountQuickAdd.save('${selectId}'); }"`;
+        const keySel = `onkeydown="if (event.key === 'Enter') { event.preventDefault(); }"`;
         return `<div id="${id}" style="display:none; padding:8px; border:1px solid var(--gray-300); border-radius:4px; margin-top:4px; min-width:220px;">
             <div class="form-grid">
                 <div class="form-group"><label for="${id}-name">Account name *</label>
                     <input id="${id}-name" aria-label="New account name" aria-required="true" ${key}></div>
                 <div class="form-group"><label for="${id}-type">Type</label>
-                    <select id="${id}-type" data-no-search onchange="AccountQuickAdd.typeChanged('${selectId}')">${types}</select></div>
+                    <select id="${id}-type" data-no-search onchange="AccountQuickAdd.typeChanged('${selectId}')" ${keySel}>${types}</select></div>
                 <div class="form-group"><label for="${id}-parent">Sub-account of</label>
-                    <select id="${id}-parent" data-no-search><option value="">None</option></select></div>
+                    <select id="${id}-parent" data-no-search ${keySel}><option value="">None</option></select></div>
                 <div class="form-group"><label for="${id}-number">Number <span style="font-weight:normal; color:var(--gray-500);">(optional)</span></label>
                     <input id="${id}-number" maxlength="20" placeholder="e.g. 6150, or leave blank" ${key}></div>
             </div>
@@ -113,7 +124,7 @@ const AccountQuickAdd = {
         const type = typeEl.value;
         const list = (typeof opts.accounts === 'function' ? opts.accounts() : null) || [];
         parent.innerHTML = '<option value="">None</option>' + list
-            .filter(a => a.account_type === type && a.id !== opts.excludeId && !a.bank_kind && !a.is_control)
+            .filter(a => a.account_type === type && a.id !== opts.excludeId && !a.bank_kind && !a.is_control && a.is_active !== false)
             .map(a => `<option value="${a.id}">${accountLabel(a)}</option>`).join('');
     },
 
@@ -142,9 +153,7 @@ const AccountQuickAdd = {
         // this select gets the new account picked; the host puts it into its
         // own list and its other Account selects (onAdded)
         const sel = document.getElementById(selectId);
-        if (sel && !sel.querySelector(`option[value="${made.id}"]`)) {
-            sel.insertAdjacentHTML('beforeend', `<option value="${made.id}">${accountLabel(made)}</option>`);
-        }
+        AccountQuickAdd._addOption(sel, made);
         if (typeof opts.onAdded === 'function') opts.onAdded(made, selectId);
         if (sel) sel.value = String(made.id);
         f('name').value = ''; f('number').value = ''; f('parent').value = '';
@@ -152,6 +161,20 @@ const AccountQuickAdd = {
         toast(`${made.account_number ? made.account_number + ' - ' : ''}${made.name} added to the chart`);
         AccountQuickAdd._focus(typeof opts.next === 'function' ? opts.next() : sel);
         return made;
+    },
+
+    // Put a new account's option in the matching <optgroup> when the select
+    // has them (PurchaseAccounts.options groups COGS and Expenses, with Other
+    // for the rest), else at the end (the register's plain selects).
+    _addOption(sel, made) {
+        if (!sel || (sel.querySelector && sel.querySelector(`option[value="${made.id}"]`))) return;
+        const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
+        const label = { cogs: 'Cost of Goods Sold', expense: 'Expenses' }[made.account_type];
+        const groups = sel.querySelectorAll ? [...sel.querySelectorAll('optgroup')] : [];
+        const target = (label && groups.find(g => g.label === label))
+            || (groups.length && groups.find(g => g.label === 'Other'))
+            || null;
+        (target || sel).insertAdjacentHTML('beforeend', opt);
     },
 
     _focus(el) {

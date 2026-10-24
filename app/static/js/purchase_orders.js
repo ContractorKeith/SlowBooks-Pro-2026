@@ -240,7 +240,7 @@ const PurchaseOrdersPage = {
             } else {
                 const pick = (item && item.expense_account_id) || vendor.default_expense_account_id || '';
                 const sid = `po-acct-${l.id}`;
-                PurchaseOrdersPage._wireAccountAdd(sid);
+                PurchaseOrdersPage._wireAccountAdd(sid, n);
                 cell = `<span style="display:inline-flex; gap:2px; align-items:center;"><select id="${sid}" class="po-conv-account" data-line="${l.id}" aria-label="Account for line ${n + 1}">
                         <option value="">Choose an account...</option>${PurchaseAccounts.options(posting, pick)}</select>${AccountQuickAdd.button(sid)}</span>${AccountQuickAdd.panel(sid)}`;
             }
@@ -265,15 +265,15 @@ const PurchaseOrdersPage = {
 
     // Add a chart account beside a To-Bill line's Account cell (#485):
     // expense and COGS only; a new account joins every line's select here.
-    _wireAccountAdd(selectId) {
+    _wireAccountAdd(selectId, n) {
         AccountQuickAdd.register(selectId, {
             types: ['expense', 'cogs'],
+            ariaLabel: `Add a new account for line ${n + 1}`,
             accounts: () => PurchaseOrdersPage._convAccounts || [],
             onAdded: (made, fromId) => {
                 (PurchaseOrdersPage._convAccounts = PurchaseOrdersPage._convAccounts || []).push(made);
-                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
                 document.querySelectorAll('.po-conv-account').forEach(s => {
-                    if (s.id !== fromId && !s.querySelector(`option[value="${made.id}"]`)) s.insertAdjacentHTML('beforeend', opt);
+                    if (s.id !== fromId) AccountQuickAdd._addOption(s, made);
                 });
             },
         });

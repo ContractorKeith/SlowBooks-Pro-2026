@@ -318,13 +318,15 @@ const BillsPage = {
         const amount = line ? Number(l.amount).toFixed(2) : '';
         const acctOpts = PurchaseAccounts.options(BillsPage._accounts, stock ? null : (l.account_id || BillsPage._defaultExpenseAccountId));
         // Add a chart account beside the Account cell (#485): expense and COGS
-        // only, and not for a stock line (its Inventory account is not a
-        // choice). The panel goes in the cell; nothing in it is `required`.
+        // only. The control is always rendered; a stock line's select is
+        // disabled (its Inventory account is not a choice) and itemSelected
+        // hides the Add button to match. The panel goes in the cell; nothing
+        // in it is `required`.
         const sid = `bill-acct-${idx}`;
-        if (!stock) BillsPage._wireAccountAdd(sid);
+        BillsPage._wireAccountAdd(sid, idx);
         return `<tr data-billline="${idx}">
                 <td><select class="line-item" onchange="BillsPage.itemSelected(this)">${ItemQuickAdd.options(BillsPage._items, l.item_id)}</select></td>
-                <td><span style="display:inline-flex; gap:2px; align-items:center;"><select ${stock ? '' : `id="${sid}"`} class="line-account"${stock ? ' disabled title="Stock items are recorded in Inventory"' : ''}><option value="">Choose...</option>${acctOpts}</select>${stock ? '' : AccountQuickAdd.button(sid)}</span>${stock ? '' : AccountQuickAdd.panel(sid)}</td>
+                <td><span style="display:inline-flex; gap:2px; align-items:center;"><select id="${sid}" class="line-account"${stock ? ' disabled title="Stock items are recorded in Inventory"' : ''}><option value="">Choose...</option>${acctOpts}</select>${AccountQuickAdd.button(sid)}</span>${AccountQuickAdd.panel(sid)}</td>
                 <td><input class="line-desc" value="${escapeHtml(l.description || '')}"></td>
                 ${CostCodes.cellHtml('line-cost-code', l.cost_code_id)}${Nonprofit.cellHtml('line-function', l.function, l.class_id)}
                 <td style="text-align:center;"><input type="checkbox" class="line-billable" title="Billable"${l.is_billable ? ' checked' : ''}></td>
@@ -347,6 +349,9 @@ const BillsPage = {
             if (acct.disabled) acct.value = '';
             else if (item && item.expense_account_id) acct.value = item.expense_account_id;
             else if (!acct.value && BillsPage._defaultExpenseAccountId) acct.value = BillsPage._defaultExpenseAccountId;
+            // a disabled (stock) line offers no Add: hide its button and shut
+            // any open panel (#485 review)
+            BillsPage._syncAccountAdd(row);
         }
         if (item) {
             row.querySelector('.line-desc').value = item.description || item.name;
@@ -576,25 +581,41 @@ const BillsPage = {
 
     addLine(line = null) {
         const idx = BillsPage.lineCount++;
-        $('#bill-lines').insertAdjacentHTML('beforeend', BillsPage.lineHtml(idx, line));
+        const body = $('#bill-lines');
+        body.insertAdjacentHTML('beforeend', BillsPage.lineHtml(idx, line));
+        // a stored stock line opens locked to Inventory; hide its Add control
+        // as itemSelected would (#485 review)
+        const item = line && line.item_id ? BillsPage._items.find(i => i.id == line.item_id) : null;
+        if (item && item.track_inventory) BillsPage._syncAccountAdd(body.lastElementChild);
     },
 
     // Wire the shared Add-account panel for one line's Account cell (#485):
     // expense and COGS only, and a new account goes into every line's Account
     // select and the page's cached chart, so a later line offers it.
-    _wireAccountAdd(selectId) {
+    _wireAccountAdd(selectId, idx) {
         AccountQuickAdd.register(selectId, {
             types: ['expense', 'cogs'],
+            ariaLabel: `Add a new account for line ${idx + 1}`,
             accounts: () => BillsPage._accounts,
             onAdded: (made, fromId) => {
                 BillsPage._accounts.push(made);
-                const opt = `<option value="${made.id}">${accountLabel(made)}</option>`;
                 document.querySelectorAll('#bill-lines .line-account').forEach(s => {
-                    if (s.id !== fromId && !s.querySelector(`option[value="${made.id}"]`)) s.insertAdjacentHTML('beforeend', opt);
+                    if (s.id !== fromId) AccountQuickAdd._addOption(s, made);
                 });
             },
             next: () => document.querySelector(`#${selectId}`)?.closest('tr')?.querySelector('.line-desc'),
         });
+    },
+
+    // Keep a line's Add button and panel in step with its Account select: a
+    // stock line's select is disabled, so no Add is offered (#485 review).
+    _syncAccountAdd(row) {
+        const acct = row && row.querySelector('.line-account');
+        if (!acct) return;
+        const btn = row.querySelector('button[id$="-add"]');
+        if (btn) btn.hidden = acct.disabled;
+        const panel = row.querySelector('div[id$="-new"]');
+        if (acct.disabled && panel) panel.style.display = 'none';
     },
 
     async save(e, id = null) {
