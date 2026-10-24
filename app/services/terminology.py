@@ -135,6 +135,13 @@ class Terms:
         """This mode's word dictionary, or None in business mode."""
         return _DICTS.get(self.mode)
 
+    @property
+    def has_words(self) -> bool:
+        """True when the mode swaps any words (nonprofit or construction) —
+        the gate for running the dictionary over a message, so a third type
+        is not silently left in business words."""
+        return self._dict is not None
+
     def __call__(self, key: str) -> str:
         d = self._dict
         if not d or not key:

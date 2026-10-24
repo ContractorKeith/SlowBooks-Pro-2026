@@ -5,7 +5,12 @@ Mirrors the nonprofit setup checks: the accounts are idempotent and yield
 already-used numbers; the setup route leaves existing data alone and
 changes nothing on a second call."""
 
+import json
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from app.models.cost_codes import STANDARD_COST_CODES
 from app.services.accounting import CONSTRUCTION_ACCOUNTS
@@ -97,29 +102,71 @@ def test_setup_creates_the_cost_types_the_codes_reference(client, seed_accounts)
 
 
 # ---------------------------------------------------------------------------
-# Switch points (source assertions) — the SPA wires the new type in
+# Switch points (behaviour) — the three new JS branches, driven through
+# their node probes rather than source-grepped.
 # ---------------------------------------------------------------------------
 
 
-def test_report_center_leads_with_contractor_cards_in_construction():
-    src = (JS / "reports.js").read_text(encoding="utf-8")
-    assert "Terms.isConstruction()" in src
-    # the three contractor reports that exist today, in issue order, lead
-    assert (
-        "const lead = ['job-profitability', 'job-budget-vs-actual', 'profit-loss-by-job'];"
-        in src
+requires_node = pytest.mark.skipif(
+    shutil.which("node") is None, reason="node is not installed"
+)
+
+
+def _probe(name, *args):
+    out = subprocess.run(
+        ["node", str(ROOT / "tests" / "js" / name), *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
     )
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
 
 
-def test_nav_toggles_data_construction_and_guards_construction_routes():
-    app = (JS / "app.js").read_text(encoding="utf-8")
-    # toggled in the same applyTerminology pass as data-nonprofit, so the
-    # NEW-145 sidebar picker excludes any construction-only page (it reads
-    # only non-hidden <li>s). Phase 1 adds none; the hook is here for when
-    # one lands.
-    assert "$$('[data-construction]').forEach(el => { el.hidden = !con; });" in app
-    assert "route.construction && !Terms.isConstruction()" in app
-    assert "_constructionOnlyHtml" in app
+@requires_node
+def test_report_center_leads_with_contractor_cards_and_keeps_the_set():
+    got = _probe("reports_cards_probe.js")
+    # the three contractor reports lead, in issue order
+    assert got["construction"][:3] == [
+        "job-profitability",
+        "job-budget-vs-actual",
+        "profit-loss-by-job",
+    ]
+    # and construction shows exactly the business set — same cards, same count
+    assert set(got["construction"]) == set(got["business"])
+    assert len(got["construction"]) == len(got["business"])
+
+
+@requires_node
+def test_vendor_form_reveals_subs_and_a_sub_defaults_to_1099_nec():
+    got = _probe("vendor_1099_probe.js")
+    # a new vendor in construction mode shows the Sub section, fields hidden
+    assert 'name="vendor_type"' in got["subNew"]
+    for name in ("license_number", "coi_carrier", "coi_policy_number", "coi_expires"):
+        assert f'name="{name}"' in got["subNew"]
+    assert got["subNew"].count('sub-field" hidden') == 4
+    # an existing sub shows them, and an unsafe COI value is escaped
+    assert got["subEdit"].count('sub-field" hidden') == 0
+    assert "<script>x" not in got["subEdit"]
+    # marking a vendor a Sub turns on 1099-NEC and reveals the four fields
+    assert got["subToggle"]["on"]["is_1099_vendor"] == "true"
+    assert got["subToggle"]["on"]["vendor_1099_type"] == "NEC"
+    assert got["subToggle"]["on"]["hidden"] == [False, False, False, False]
+    # turning it off hides and clears them (a hidden input still submits)
+    assert got["subToggle"]["off"]["hidden"] == [True, True, True, True]
+    assert got["subToggle"]["off"]["cleared"] == ["", "", "", ""]
+
+
+@requires_node
+def test_construction_route_guard_shows_the_placeholder_for_a_business():
+    business = _probe("app_routes_probe.js", '["#/__ctest"]')["#/__ctest"]
+    assert "construction companies" in business["page"]
+    assert "CTest" not in business["page"]
+    con = _probe("app_routes_probe.js", '["#/__ctest"]', "--construction")["#/__ctest"]
+    assert "CTest" in con["page"]
+    assert "construction companies" not in con["page"]
 
 
 def test_any_construction_nav_item_is_hidden_by_default():
@@ -134,16 +181,7 @@ def test_any_construction_nav_item_is_hidden_by_default():
 
 
 def test_settings_offers_construction_and_runs_setup_on_switch():
+    # the switch flow has no probe of its own; this keeps the wiring honest
     s = (JS / "settings.js").read_text(encoding="utf-8")
     assert '<option value="construction"' in s
-    # the switch posts the construction setup, as nonprofit posts setup-accounts
     assert "/construction/setup" in s
-
-
-def test_vendor_form_reveals_the_sub_fields():
-    v = (JS / "vendors.js").read_text(encoding="utf-8")
-    assert "VendorsPage.toggleSubFields(this)" in v
-    for name in ("license_number", "coi_carrier", "coi_policy_number", "coi_expires"):
-        assert f'name="{name}"' in v
-    # a new vendor is a 1099 vendor in construction mode by default
-    assert "is_1099_vendor: Terms.isConstruction()" in v

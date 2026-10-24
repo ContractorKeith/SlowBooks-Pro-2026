@@ -492,9 +492,3 @@ def entity_info(settings) -> dict:
         "schedule_c": schedule_c,
         "nonprofit": nonprofit,
     }
-
-
-def is_construction(db: Session) -> bool:
-    """True when the company file is set to construction mode (Settings ->
-    company_type). Gates the contractor accounts, cost codes and vocabulary."""
-    return get_setting_raw(db, "company_type") == "construction"

@@ -320,13 +320,13 @@ const VendorsPage = {
     },
 
     async showForm(id = null) {
-        // A new vendor in construction mode is a 1099 vendor by default (a
-        // contractor's bills are mostly reportable); W-9 on file is a fact,
-        // not a default, so it stays No (#431).
+        // 1099 is off by default for every new vendor (a lumber yard or the
+        // power company is not reportable); marking a vendor a Sub turns it
+        // on — see toggleSubFields (#431).
         let v = { name:'', company:'', email:'', phone:'', fax:'', website:'',
             address1:'', address2:'', city:'', state:'', zip:'', country:'US',
             terms:'Net 30', tax_id:'', account_number:'', default_expense_account_id:'',
-            is_1099_vendor: Terms.isConstruction(), vendor_1099_type:'', w9_on_file:false,
+            is_1099_vendor:false, vendor_1099_type:'', w9_on_file:false,
             vendor_type:'', license_number:'', coi_carrier:'', coi_policy_number:'', coi_expires:'',
             notes:'' };
         if (id) v = await API.get(`/vendors/${id}`);
@@ -447,12 +447,25 @@ const VendorsPage = {
     },
 
     // The license and COI fields describe a subcontractor only: they show
-    // under "Yes" and hide (their values kept) otherwise (#431).
+    // under "Yes" and hide otherwise. Marking a vendor a Sub makes it a
+    // 1099-NEC vendor (a sub's labor is reportable); turning it off clears
+    // the four fields so a hidden input does not submit stale data (#431).
     toggleSubFields(select) {
         const on = select.value === 'sub';
         const form = select.form;
         if (!form) return;
         form.querySelectorAll('.sub-field').forEach(el => { el.hidden = !on; });
+        if (on) {
+            const is1099 = form.elements.namedItem('is_1099_vendor');
+            if (is1099) { is1099.value = 'true'; VendorsPage.toggle1099Type(is1099); }
+            const type = form.elements.namedItem('vendor_1099_type');
+            if (type) type.value = 'NEC';
+        } else {
+            ['license_number', 'coi_carrier', 'coi_policy_number', 'coi_expires'].forEach(n => {
+                const el = form.elements.namedItem(n);
+                if (el) el.value = '';
+            });
+        }
     },
 
     async save(e, id, force) {

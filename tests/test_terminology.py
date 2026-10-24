@@ -76,10 +76,17 @@ def test_construction_dictionary_obeys_every_rule():
         assert not key.startswith("Sales "), key
 
 
+def test_has_words_gates_every_non_business_mode():
+    assert not Terms("business").has_words
+    assert Terms("nonprofit").has_words
+    assert Terms("construction").has_words
+
+
 def test_construction_mode_speaks_its_words():
     t = Terms("construction")
     assert t.is_construction
     assert not t.is_nonprofit
+    assert t.has_words
     assert t("Subcontractor") == "Sub"
     assert t("Subcontractors") == "Subs"
     assert t("subcontractor") == "sub"
@@ -426,7 +433,7 @@ _SWEEP_EXEMPT = {
 }
 _SWEEP_WORDS = re.compile(
     r"\b(Customers?|Invoices?|Sales Receipts?|Class(?:es)?|Jobs?|Net Income|"
-    r"Profit & Loss|P&L|Balance Sheet|Equity|Income|A/R|Receivables?)\b"
+    r"Profit & Loss|P&L|Balance Sheet|Equity|Income|A/R|Receivables?|Subcontractors?)\b"
 )
 
 
@@ -482,7 +489,7 @@ def test_no_unwrapped_business_words_in_spa_text():
     """Every hit must be an App.routes label (rewritten at boot by
     applyTerminology — see test_route_labels_are_rewritten_at_boot); anything
     else is a leak the nonprofit switch will show."""
-    keys = set(NONPROFIT)
+    keys = set(NONPROFIT) | set(CONSTRUCTION)
     # the App.routes table: from "routes: {" to the first line that closes
     # it at the object's indent (the table grows as pages get addresses)
     lines = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8").splitlines()

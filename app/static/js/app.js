@@ -2376,6 +2376,8 @@ const App = {
         };
         $$('[data-nonprofit]').forEach(el => kind(el, !np));
         $$('[data-construction]').forEach(el => kind(el, !con));
+        // [data-business-only] means "not nonprofit": a contractor is a
+        // business, so construction keeps these too — hide only for nonprofit.
         $$('[data-business-only]').forEach(el => kind(el, np));
         App.syncSidebarHidden();
     },

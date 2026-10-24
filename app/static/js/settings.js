@@ -267,7 +267,7 @@ const SettingsPage = {
                                 <option value="nonprofit" ${s.company_type === 'nonprofit' ? 'selected' : ''}>Nonprofit</option>
                                 <option value="construction" ${s.company_type === 'construction' ? 'selected' : ''}>Construction</option>
                             </select>
-                            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Nonprofit shows donors, pledges, donations and funds in place of customers, invoices, sales receipts and classes, and adds the net-asset accounts and statements. Construction adds the contractor accounts (retainage, customer deposits, use tax, work in progress), the standard cost codes, and the Subcontractor vendor type. Your data does not change; switch back any time.</div>
+                            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Nonprofit shows donors, pledges, donations and funds in place of customers, invoices, sales receipts and classes, and adds the net-asset accounts and statements. Construction adds the contractor accounts (retainage, customer deposits, use tax, Construction in Progress), the standard cost codes (only if you have none of your own yet), and a Sub vendor type. Your data does not change; switch back any time.</div>
                         </div>
                         <div class="form-group"><label for="entity-type">Entity type</label>
                             <select id="entity-type" name="entity_type" onchange="SettingsPage._onEntityTypeChange(this)">
@@ -723,7 +723,7 @@ const SettingsPage = {
                         <input type="text" id="new-ct-name" placeholder="Name" style="width:200px;">
                         <label style="font-weight:normal;font-size:11px;"><input type="checkbox" id="new-ct-labor"> labor-type (burden applies)</label>
                         <button type="button" class="btn btn-primary" onclick="SettingsPage.addCostType()">Add Cost Type</button>
-                        <button type="button" class="btn btn-secondary" onclick="SettingsPage.setupOffsets()" title="Creates Applied Labor Cost, Applied Labor Burden, Applied Equipment Cost and Applied Overhead if missing, points each cost type at the matching COGS account (Materials, Labor, Subcontractor) and fills in any blank accounts">Create default offset accounts</button>
+                        <button type="button" class="btn btn-secondary" onclick="SettingsPage.setupOffsets()" title="Creates Applied Labor Cost, Applied Labor Burden, Applied Equipment Cost and Applied Overhead if missing, points each cost type at its matching COGS account and fills in any blank accounts">Create default offset accounts</button>
                     </div>
                     <div id="cost-types-list"></div>
                 </div>
@@ -1844,7 +1844,7 @@ const SettingsPage = {
         const others = SettingsPage.isDirty('company_type');
         const prompts = {
             nonprofit: 'Switch this company to nonprofit mode? Screens will say donor, pledge, donation and fund; the net-asset accounts are added. Nothing in your data changes.',
-            construction: 'Switch this company to construction mode? A subcontractor says "Sub"; the contractor accounts (retainage receivable and payable, customer deposits, use tax, construction in progress, equipment and other job costs) and the standard CSI cost codes are added. Nothing in your data changes.',
+            construction: 'Switch this company to construction mode? A subcontractor says "Sub"; the contractor accounts (retainage receivable and payable, customer deposits, use tax, construction in progress, equipment and other job costs) are added, and the standard CSI cost codes if you have none of your own yet. Nothing in your data changes.',
             business: 'Switch this company back to business mode? Screens return to customer, invoice, sales receipt and class. Nothing in your data changes.',
         };
         const msg = (prompts[value] || prompts.business)

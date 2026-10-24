@@ -13,12 +13,14 @@ Picking Construction in Settings saves `company_type = construction` and
 calls `POST /api/construction/setup`, which:
 
 1. creates the contractor accounts below if they are missing, and
-2. loads the 26 standard CSI MasterFormat cost codes (the same list the
-   Cost Codes page's **Load Standard Codes** button loads), ensuring the
-   labor / material / subcontract / equipment / other cost types first.
+2. loads the 26 standard CSI MasterFormat cost codes **only when the company
+   has no cost codes of its own** (the same list the Cost Codes page's
+   **Load Standard Codes** button loads), ensuring the labor / material /
+   subcontract / equipment / other cost types first.
 
 Setup is idempotent — safe to run again. It never renumbers or renames an
-account you already have, never touches an existing cost code, and changes
+account you already have, never touches an existing cost code (a company
+that has built its own cost-code chart gets no CSI codes added), and changes
 no posting. Switching back to Business leaves the accounts and codes in
 place (as switching away from Nonprofit leaves its net-asset accounts); they
 are ordinary accounts once created.
@@ -51,7 +53,7 @@ Subcontractor Costs.
 
 ## The cost codes
 
-The standard set is the CSI MasterFormat **divisions** (01 General
+The standard set is the 24 CSI MasterFormat **divisions** (01 General
 Requirements … 33 Utilities) plus Labor and Equipment Rental — 26 codes,
 each tagged with a cost type. This is the division level most US contractors
 already speak, not the full MasterFormat line-item list, which is not
@@ -70,17 +72,19 @@ unchanged in Phase 1 — see *What this mode does not do yet*.
 
 ## The subcontractor vendor type
 
-A vendor can be marked a **Subcontractor** (its only `vendor_type` value for
-now). A sub carries:
+A vendor can be marked a **Sub** (the UI word; `vendor_type` is
+`"sub"`, its only value for now — a Subcontractor). A sub carries:
 
 - **License #** — the trade license number;
 - **Insurance Carrier**, **Policy #**, **Insurance Expires** — the
   certificate of insurance a general contractor collects before a sub works.
 
 These fields are blank on an ordinary vendor and reveal only when the vendor
-is marked a sub. A new vendor created in construction mode is a **1099
-vendor** by default (a contractor's bills are mostly reportable); W-9 on file
-is a fact you record, not a default, so it stays No.
+is marked a sub; clearing the mark clears them. 1099 is off by default for
+every new vendor — a lumber yard or the power company is not reportable.
+**Marking a vendor a Sub turns on 1099-NEC** (a sub's labor is reportable),
+which you can still change. W-9 on file is a fact you record, not a default,
+so it stays No.
 
 ## The reports
 

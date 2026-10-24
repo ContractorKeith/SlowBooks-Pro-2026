@@ -86,7 +86,9 @@ const Terms = {
 
     init(settings) {
         const type = settings && settings.company_type;
-        Terms.mode = (type in TERMS_DICTS) ? type : 'business';
+        // own-key check: `'constructor' in TERMS_DICTS` is true by prototype
+        const known = type && Object.prototype.hasOwnProperty.call(TERMS_DICTS, type);
+        Terms.mode = known ? type : 'business';
     },
 
     isNonprofit() { return Terms.mode === 'nonprofit'; },
