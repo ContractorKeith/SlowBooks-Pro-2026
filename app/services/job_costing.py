@@ -166,7 +166,7 @@ def import_cost_codes(db: Session, rows: list[dict]) -> dict:
     def code_as_saved(raw: str) -> str:
         # A code that already exists as typed (case-insensitive) keeps its
         # stored form, so re-importing the same list is a no-op for every
-        # chart; otherwise normalize to CSI shape.
+        # chart; otherwise normalize to the division/section shape.
         raw = (raw or "").strip()
         hit = by_code.get(raw.lower())
         return (hit.code if hit else normalize_code(raw))[:20]

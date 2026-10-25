@@ -135,7 +135,7 @@ def import_codes(data: CostCodeImport, db: Session = Depends(get_db)):
 @router.post("", response_model=CostCodeResponse, status_code=201)
 def create_cost_code(data: CostCodeCreate, db: Session = Depends(get_db)):
     values = data.model_dump()
-    # Normalize to CSI "DD SS SS" and derive the level from the shape; a
+    # Normalize to the "DD SS SS" shape and derive the level from it; a
     # custom code (L-100, EQ) is left as typed with a null level.
     values["code"] = normalize_code(values["code"])
     if not values.get("level"):
@@ -177,7 +177,7 @@ def update_cost_code(code_id: int, data: CostCodeUpdate, db: Session = Depends(g
         raw = changes["code"]
         # A code that already exists as typed (case-insensitive) is kept as
         # typed, so re-saving a numeric custom chart's "1000" never rewrites
-        # it; otherwise normalize to CSI shape.
+        # it; otherwise normalize to the division/section shape.
         existing = db.query(CostCode).filter(CostCode.code.ilike(raw)).first()
         changes["code"] = raw if existing else normalize_code(raw)
         # Re-derive the level from the new shape unless the caller pinned one.

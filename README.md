@@ -155,8 +155,8 @@ Full catalog in **[docs/features.md](docs/features.md)**. Highlights:
   giving statements, pledges
   ([docs/nonprofit-module.md](docs/nonprofit-module.md))
 - **Construction mode** — one switch adds the contractor accounts
-  (retainage, deposits, use tax, work in progress), the standard CSI cost
-  codes, a Sub vendor type with license and insurance, and the contractor
+  (retainage, deposits, use tax, work in progress), the standard division
+  and section cost codes, a Sub vendor type with license and insurance, and the contractor
   reports ([docs/contractor-mode.md](docs/contractor-mode.md))
 - **Accessibility** — AA contrast in both themes, tagged PDFs, working
   toward WCAG 2.1 AA ([docs/accessibility.md](docs/accessibility.md))

@@ -1847,7 +1847,7 @@ const SettingsPage = {
         const others = SettingsPage.isDirty('company_type');
         const prompts = {
             nonprofit: 'Switch this company to nonprofit mode? Screens will say donor, pledge, donation and fund; the net-asset accounts are added. Nothing in your data changes.',
-            construction: 'Switch this company to construction mode? A subcontractor says "Sub"; the contractor accounts (retainage receivable and payable, customer deposits, use tax, construction in progress, equipment and other job costs) are added, and the standard CSI cost codes if you have none of your own yet. Nothing in your data changes.',
+            construction: 'Switch this company to construction mode? A subcontractor says "Sub"; the contractor accounts (retainage receivable and payable, customer deposits, use tax, construction in progress, equipment and other job costs) are added, and the standard division and section cost codes if you have none of your own yet. Nothing in your data changes.',
             business: 'Switch this company back to business mode? Screens return to customer, invoice, sales receipt and class. Nothing in your data changes.',
         };
         const msg = (prompts[value] || prompts.business)
@@ -2990,7 +2990,7 @@ SettingsPage.loadCostCodes = async function () {
     try {
         const codes = await API.get('/cost-codes?include_inactive=true');
         if (!codes.length) {
-            el.innerHTML = '<div style="font-size:11px; color:var(--text-muted);">No cost codes yet. Add your own, or load the standard CSI list.</div>';
+            el.innerHTML = '<div style="font-size:11px; color:var(--text-muted);">No cost codes yet. Add your own, or load the standard divisions and common sections.</div>';
             return;
         }
         const parentSel = document.getElementById('new-cc-parent');
