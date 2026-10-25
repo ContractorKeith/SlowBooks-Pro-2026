@@ -47,6 +47,7 @@ const ctx = {
   jobFormGroupHtml: async () => '',
   currencyFormGroupsHtml: () => '',
   CostCodes: { load: async () => {}, headHtml: () => '', cellHtml: () => '<td></td>' },
+  CostTypes: { load: async () => {}, any: () => false, optionsHtml: () => '', headHtml: () => '', cellHtml: () => '', fromRow: () => null },
   TaxExempt: { enforce() {} },
   ScanHelper: { scanRowHtml: () => '', wire() {} },
   $: (sel) => els[sel] || null,

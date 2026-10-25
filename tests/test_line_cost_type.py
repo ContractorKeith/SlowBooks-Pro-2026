@@ -1,8 +1,9 @@
 """Per-line cost type (#550): bill / PO / estimate / vendor-credit lines
 accept and return cost_type, the server fills it from the code when blank, an
 unknown type is refused the way the cost code's type check is, and the job
-cost tree reads the line's type (falling back to the code's) and rolls a
-section cost up under its division."""
+cost tree buckets each cost by its EFFECTIVE type (the line's own, else the
+code's) — so a coded line lands under its own type's division › section
+branch, and a blank one under the code's."""
 
 from app.models.accounts import Account, AccountType
 from app.models.transactions import Transaction
@@ -223,3 +224,79 @@ def test_job_cost_tree_reads_line_type_and_rolls_section_under_division(
     assert div["figures"]["actual"] == 1000.0  # division aggregates its sections
     sec = next(c for c in div["children"] if c["code"] == "03 30 00")
     assert sec["figures"]["actual"] == 1000.0
+
+
+def test_estimate_budget_carries_the_line_type(client, seed_accounts, seed_customer):
+    # budgets seeded from an estimate carry the line's cost type (#550)
+    job = _job(client, seed_customer.id)
+    code = _code(client, "03 30 00", "Concrete", "subcontract")
+    est = client.post(
+        "/api/estimates",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-07-01",
+            "job_id": job["id"],
+            "lines": [
+                {
+                    "description": "slab",
+                    "quantity": 1,
+                    "rate": 1000,
+                    "unit_cost": 400,
+                    "cost_code_id": code["id"],
+                    "cost_type": "labor",
+                },
+            ],
+        },
+    )
+    assert est.status_code in (200, 201), est.text
+    seeded = client.post(
+        f"/api/jobs/{job['id']}/budgets/from-estimate/{est.json()['id']}"
+    )
+    assert seeded.status_code == 200, seeded.text
+    row = next(r for r in seeded.json() if r["cost_code_id"] == code["id"])
+    assert row["cost_type"] == "labor"
+
+
+def test_coded_line_rolls_up_under_its_own_type_not_the_codes(
+    client, db_session, seed_accounts, seed_customer
+):
+    # a 03 30 00 (default "other") code with two lines: one typed subcontract,
+    # one blank. Each cost lands under its effective type's division branch.
+    job = _job(client, seed_customer.id)
+    expense, _income, _bank = _expense_income_bank(db_session)
+    client.post("/api/cost-codes/standard")
+    section = {c["code"]: c for c in client.get("/api/cost-codes").json()}["03 30 00"]
+    vendor = client.post("/api/vendors", json={"name": "Ready Mix"}).json()
+    bill = client.post(
+        "/api/bills",
+        json={
+            "vendor_id": vendor["id"],
+            "bill_number": "RM-3",
+            "date": "2026-07-04",
+            "job_id": job["id"],
+            "lines": [
+                {
+                    "account_id": expense.id,
+                    "rate": 1000,
+                    "cost_code_id": section["id"],
+                    "cost_type": "subcontract",
+                },
+                {"account_id": expense.id, "rate": 500, "cost_code_id": section["id"]},
+            ],
+        },
+    )
+    assert bill.status_code in (200, 201), bill.text
+
+    by_type = {
+        t["cost_type"]: t
+        for t in client.get(f"/api/jobs/{job['id']}/cost-tree").json()["types"]
+    }
+
+    def section_actual(type_code):
+        div = next(c for c in by_type[type_code]["codes"] if c["code"] == "03")
+        sec = next(c for c in div["children"] if c["code"] == "03 30 00")
+        return sec["figures"]["actual"], div["figures"]["actual"]
+
+    # the typed line is under subcontract, the blank one falls back to "other"
+    assert section_actual("subcontract") == (1000.0, 1000.0)
+    assert section_actual("other") == (500.0, 500.0)

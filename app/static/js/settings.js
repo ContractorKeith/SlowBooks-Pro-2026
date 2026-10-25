@@ -753,20 +753,7 @@ const SettingsPage = {
                     <div id="cost-codes-list"></div>
                 </div>
 
-                <div class="settings-section" role="group" aria-labelledby="settings-h-trade-packages" data-construction hidden>
-                    <h3 id="settings-h-trade-packages">Trade Packages</h3>
-                    <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
-                        Bid packages a general contractor awards — what a sub bids and
-                        gets awarded. Each maps to the cost-code sections its costs
-                        post to; a package can span divisions. Shown for construction
-                        companies.
-                    </div>
-                    <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;" data-write>
-                        <input type="text" id="new-tp-name" placeholder="Package name" style="width:220px;" aria-label="Trade package name">
-                        <button type="button" class="btn btn-primary" onclick="SettingsPage.addTradePackage()">Add Trade Package</button>
-                    </div>
-                    <div id="trade-packages-list"></div>
-                </div>
+                ${SettingsPage.tradePackagesSectionHtml()}
 
                 <div class="settings-section" role="group" aria-labelledby="settings-h-equipment">
                     <h3 id="settings-h-equipment">Equipment</h3>
@@ -3094,6 +3081,27 @@ SettingsPage.importCostCodes = async function () {
 // --- Trade packages (Settings > Trade Packages, construction only) -------
 // A package is what a sub bids; a section is what costs post to. The mapping
 // is a multi-select of the cost-code SECTIONS (level === 'section').
+// Rendered only for a construction company (the house pattern, vendors.js):
+// applyTerminology runs once at boot, before Settings renders, so a
+// data-construction gate would never reveal it.
+SettingsPage.tradePackagesSectionHtml = function () {
+    if (!Terms.isConstruction()) return '';
+    return `
+                <div class="settings-section" role="group" aria-labelledby="settings-h-trade-packages">
+                    <h3 id="settings-h-trade-packages">Trade Packages</h3>
+                    <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
+                        Bid packages a general contractor awards — what a sub bids and
+                        gets awarded. Each maps to the cost-code sections its costs
+                        post to; a package can span divisions.
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;" data-write>
+                        <input type="text" id="new-tp-name" placeholder="Package name" style="width:220px;" aria-label="Trade package name">
+                        <button type="button" class="btn btn-primary" onclick="SettingsPage.addTradePackage()">Add Trade Package</button>
+                    </div>
+                    <div id="trade-packages-list"></div>
+                </div>`;
+};
+
 SettingsPage.loadTradePackages = async function () {
     const el = document.getElementById('trade-packages-list');
     if (!el) return;

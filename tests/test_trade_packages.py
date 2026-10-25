@@ -99,6 +99,16 @@ def test_setup_seeds_defaults_once_and_maps_present_sections(client, seed_accoun
     assert len(client.get("/api/trade-packages").json()) == len(TRADE_PACKAGES)
 
 
+def test_setup_seeds_no_packages_for_a_custom_chart_without_sections(
+    client, seed_accounts
+):
+    # a company on its own numeric chart (no MasterFormat sections) gets no
+    # empty default packages
+    client.post("/api/cost-codes", json={"code": "1000", "name": "Direct Costs"})
+    client.post("/api/construction/setup")
+    assert client.get("/api/trade-packages").json() == []
+
+
 def test_setup_maps_only_the_sections_present(client, seed_accounts):
     # a company that already owns a (partial) chart: setup leaves the chart
     # alone, so only the sections it has map into the default packages.

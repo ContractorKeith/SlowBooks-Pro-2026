@@ -28,6 +28,11 @@ from app.services.masterformat import (
         ("03", "03", "division"),
         ("L-100", "L-100", None),
         ("EQ", "EQ", None),
+        # a numeric custom chart is never mangled (#550 review)
+        ("1.5", "1.5", None),
+        ("1000", "1000", None),
+        ("0330", "0330", None),
+        ("2000", "2000", None),
     ],
 )
 def test_normalize_and_level(raw, expected, level):
@@ -117,6 +122,57 @@ def test_import_three_hundred_sections_code_name_only(client):
     assert len(sections) >= 300
     assert all(c["parent_code"] == c["code"][:2] for c in sections)
     assert all(" " in c["code"] for c in sections)  # "DD SS SS", not "DDSS00"
+
+
+def test_reimporting_the_same_csv_is_idempotent(client):
+    divisions = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23, 25, 26, 27, 28]
+    lines = []
+    for dd in divisions:
+        for ss in range(5, 95, 5):
+            lines.append(f"{dd:02d}{ss:02d}00,Section {dd}-{ss}")
+            if len(lines) == 300:
+                break
+        if len(lines) == 300:
+            break
+    csv = "\n".join(lines)
+
+    first = client.post("/api/cost-codes/import", json={"csv": csv}).json()
+    assert first["created"] >= 300 and first["errors"] == []
+    # the second pass over the same rows creates nothing (every code already
+    # exists in its normalized form)
+    second = client.post("/api/cost-codes/import", json={"csv": csv}).json()
+    assert second["created"] == 0 and second["errors"] == []
+
+
+def test_reimport_keeps_a_numeric_custom_chart_as_typed(client):
+    # a company on a 1000/2000 chart: codes keep their form across imports,
+    # no divisions are invented
+    csv = "1000,Direct Costs\n1100,Labor\n2000,Overhead"
+    first = client.post("/api/cost-codes/import", json={"csv": csv}).json()
+    assert first["created"] == 3
+    second = client.post("/api/cost-codes/import", json={"csv": csv}).json()
+    assert second["created"] == 0
+    rows = {c["code"]: c for c in client.get("/api/cost-codes").json()}
+    assert set(rows) == {"1000", "1100", "2000"}
+    assert all(rows[c]["level"] is None for c in rows)
+
+
+def test_import_does_not_wipe_a_pinned_level(client):
+    # a level named on import is kept; re-importing the row without one (and
+    # whose shape yields no level) leaves the pinned level alone
+    client.post(
+        "/api/cost-codes/import",
+        json={"rows": [{"code": "L-100", "name": "Labor", "level": "section"}]},
+    )
+    rows = {c["code"]: c for c in client.get("/api/cost-codes").json()}
+    assert rows["L-100"]["level"] == "section"
+    client.post(
+        "/api/cost-codes/import",
+        json={"rows": [{"code": "L-100", "name": "Labor crew"}]},
+    )
+    rows = {c["code"]: c for c in client.get("/api/cost-codes").json()}
+    assert rows["L-100"]["level"] == "section"  # not wiped
+    assert rows["L-100"]["name"] == "Labor crew"  # name still updated
 
 
 def test_import_creates_a_missing_division_from_the_title_table(client):

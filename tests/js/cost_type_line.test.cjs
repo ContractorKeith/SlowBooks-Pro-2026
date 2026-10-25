@@ -49,37 +49,40 @@ test('CostTypes renders a header and a line cell when cost codes exist', () => {
     assert.match(cell, /<option value="labor" >Labor<\/option>/);
 });
 
-function appContext(construction) {
-    const fakeBlock = { matches: () => false, hidden: undefined, dataset: {} };
+// The Trade Packages settings block renders only for a construction company
+// (the house pattern: Settings renders after applyTerminology has run, so a
+// data-construction gate would never reveal it). Drive the real
+// SettingsPage.tradePackagesSectionHtml() in both modes.
+function settingsContext(construction) {
     const context = {
-        console, setTimeout, clearTimeout, Promise,
+        console,
         window: {},
-        document: { addEventListener() {}, querySelectorAll: () => [] },
-        location: { hash: '#/' },
-        history: { pushState() {}, replaceState() {} },
-        $: () => null,
-        $$: (sel) => (sel === '[data-construction]' ? [fakeBlock] : []),
+        document: { addEventListener() {} },
+        API: { get: async () => [] },
         escapeHtml: (s) => String(s ?? ''),
         T: (s) => s,
         Terms: { text: (s) => s, isNonprofit: () => false, isConstruction: () => construction },
+        formatCurrency: (v) => String(v),
+        formatDate: (v) => v,
+        openModal() {}, closeModal() {}, toast() {}, prompt() {}, confirm: () => true,
     };
-    const src = fs.readFileSync(path.join(__dirname, '../../app/static/js/app.js'), 'utf8');
-    for (const name of new Set(src.match(/\b[A-Z][A-Za-z]*Page\b/g) || [])) {
-        context[name] = new Proxy({}, { get: () => () => '' });
-    }
     vm.createContext(context);
-    vm.runInContext(src + '\nthis.App = App;', context);
-    return { App: context.App, fakeBlock };
+    vm.runInContext(
+        fs.readFileSync(path.join(__dirname, '../../app/static/js/settings.js'), 'utf8') +
+            '\nthis.SettingsPage = SettingsPage;',
+        context,
+    );
+    return context.SettingsPage;
 }
 
-test('a [data-construction] block (Trade Packages) is hidden for a business', () => {
-    const { App, fakeBlock } = appContext(false);
-    App.applyTerminology();
-    assert.equal(fakeBlock.hidden, true);
+test('the Trade Packages block is absent from the Settings HTML for a business', () => {
+    const html = settingsContext(false).tradePackagesSectionHtml();
+    assert.equal(html, '');
 });
 
-test('a [data-construction] block (Trade Packages) shows for a contractor', () => {
-    const { App, fakeBlock } = appContext(true);
-    App.applyTerminology();
-    assert.equal(fakeBlock.hidden, false);
+test('the Trade Packages block renders in the Settings HTML for a contractor', () => {
+    const html = settingsContext(true).tradePackagesSectionHtml();
+    assert.match(html, /Trade Packages/);
+    assert.match(html, /SettingsPage\.addTradePackage\(\)/);
+    assert.match(html, /id="trade-packages-list"/);
 });
