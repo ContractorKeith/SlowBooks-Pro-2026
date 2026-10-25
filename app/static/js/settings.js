@@ -210,6 +210,7 @@ const SettingsPage = {
             SettingsPage.loadClasses();
             SettingsPage.loadCostCodes();
             SettingsPage.loadCostTypes();
+            if (Terms.isConstruction()) SettingsPage.loadTradePackages();
             SettingsPage.loadEquipment();
             SettingsPage.loadUsers();
             SettingsPage.loadApiTokens();
@@ -746,10 +747,25 @@ const SettingsPage = {
                         </select>
                         <select id="new-cc-parent" aria-label="Parent cost code"><option value="">(top level)</option></select>
                         <button type="button" class="btn btn-primary" onclick="SettingsPage.addCostCode()">Add Cost Code</button>
-                        <button type="button" class="btn btn-secondary" onclick="SettingsPage.loadStandardCostCodes()" title="CSI MasterFormat divisions + Labor + Equipment Rental">Load standard list</button>
+                        <button type="button" class="btn btn-secondary" onclick="SettingsPage.loadStandardCostCodes()" title="CSI MasterFormat division titles and a set of common sections, parented by code">Load MasterFormat divisions and common sections</button>
                         <button type="button" class="btn btn-secondary" onclick="SettingsPage.showCostCodeImport()">Import CSV</button>
                     </div>
                     <div id="cost-codes-list"></div>
+                </div>
+
+                <div class="settings-section" role="group" aria-labelledby="settings-h-trade-packages" data-construction hidden>
+                    <h3 id="settings-h-trade-packages">Trade Packages</h3>
+                    <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
+                        Bid packages a general contractor awards — what a sub bids and
+                        gets awarded. Each maps to the cost-code sections its costs
+                        post to; a package can span divisions. Shown for construction
+                        companies.
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;" data-write>
+                        <input type="text" id="new-tp-name" placeholder="Package name" style="width:220px;" aria-label="Trade package name">
+                        <button type="button" class="btn btn-primary" onclick="SettingsPage.addTradePackage()">Add Trade Package</button>
+                    </div>
+                    <div id="trade-packages-list"></div>
                 </div>
 
                 <div class="settings-section" role="group" aria-labelledby="settings-h-equipment">
@@ -2993,10 +3009,11 @@ SettingsPage.loadCostCodes = async function () {
         const parentSel = document.getElementById('new-cc-parent');
         if (parentSel) parentSel.innerHTML = '<option value="">(top level)</option>' + codes.filter(c => c.is_active).map(c => `<option value="${c.id}">${'\u00a0\u00a0'.repeat(c.depth || 0)}${escapeHtml(c.label)}</option>`).join('');
         el.innerHTML = `<div class="table-container"><table>
-            <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Default account</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+            <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Level</th><th scope="col">Type</th><th scope="col">Default account</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
             <tbody>` + codes.map(c => `<tr>
                 <td style="padding-left:${8 + (c.depth || 0) * 16}px">${c.depth ? '<span style="color:var(--text-muted)">└ </span>' : ''}<code>${escapeHtml(c.code)}</code></td>
                 <td>${escapeHtml(c.name)}</td>
+                <td>${escapeHtml(c.level || '')}</td>
                 <td>${escapeHtml(c.cost_type)}</td>
                 <td>${escapeHtml(c.account_name || '')}</td>
                 <td>${c.is_active ? 'Active' : 'Inactive'}</td>
@@ -3071,6 +3088,82 @@ SettingsPage.importCostCodes = async function () {
         toast(`${r.created} created, ${r.updated} updated${r.errors.length ? `, ${r.errors.length} skipped: ${r.errors[0]}` : ''}`, r.errors.length ? 'error' : undefined);
         closeModal();
         SettingsPage.loadCostCodes();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+// --- Trade packages (Settings > Trade Packages, construction only) -------
+// A package is what a sub bids; a section is what costs post to. The mapping
+// is a multi-select of the cost-code SECTIONS (level === 'section').
+SettingsPage.loadTradePackages = async function () {
+    const el = document.getElementById('trade-packages-list');
+    if (!el) return;
+    try {
+        const [packages, codes] = await Promise.all([
+            API.get('/trade-packages'),
+            API.get('/cost-codes'),
+        ]);
+        const sections = codes.filter(c => c.level === 'section');
+        if (!packages.length) {
+            el.innerHTML = '<div style="font-size:11px; color:var(--text-muted);">No trade packages yet. Add one, or run construction setup to seed the defaults.</div>';
+            return;
+        }
+        const sectionOptions = (selectedIds) => sections.map(s =>
+            `<option value="${s.id}" ${selectedIds.includes(s.id) ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
+        el.innerHTML = `<div class="table-container"><table style="font-size:12px">
+            <thead><tr><th scope="col">Package</th><th scope="col">Sections</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+            <tbody>` + packages.map(p => `<tr data-tp="${p.id}">
+                <td>${escapeHtml(p.name)}</td>
+                <td><select class="tp-sections" multiple size="4" style="min-width:220px" aria-label="Sections for ${escapeHtml(p.name)}" data-write>${sectionOptions(p.section_ids || [])}</select></td>
+                <td>${p.is_active ? 'Active' : 'Inactive'}</td>
+                <td class="actions">
+                    <button type="button" class="btn btn-sm btn-primary" data-write onclick="SettingsPage.saveTradePackageSections(${p.id})">Save sections</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-write onclick="SettingsPage.renameTradePackage(${p.id})">Rename</button>
+                    <button type="button" class="btn btn-sm btn-danger" data-destructive data-write onclick="SettingsPage.deleteTradePackage(${p.id})">Delete</button>
+                </td>
+            </tr>`).join('') + `</tbody></table></div>`;
+    } catch (err) {
+        el.innerHTML = `<div style="color:var(--danger); font-size:11px;">${escapeHtml(err.message)}</div>`;
+    }
+};
+
+SettingsPage.addTradePackage = async function () {
+    const name = (document.getElementById('new-tp-name')?.value || '').trim();
+    if (!name) { toast('Enter a package name', 'error'); return; }
+    try {
+        await API.post('/trade-packages', { name });
+        document.getElementById('new-tp-name').value = '';
+        toast('Trade package added');
+        SettingsPage.loadTradePackages();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+SettingsPage.renameTradePackage = async function (id) {
+    const name = prompt('New trade package name:');
+    if (!name || !name.trim()) return;
+    try {
+        await API.put(`/trade-packages/${id}`, { name: name.trim() });
+        toast('Trade package renamed');
+        SettingsPage.loadTradePackages();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+SettingsPage.saveTradePackageSections = async function (id) {
+    const tr = document.querySelector(`[data-tp="${id}"]`);
+    if (!tr) return;
+    const section_ids = [...tr.querySelector('.tp-sections').selectedOptions].map(o => parseInt(o.value));
+    try {
+        await API.put(`/trade-packages/${id}`, { section_ids });
+        toast('Sections saved');
+        SettingsPage.loadTradePackages();
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+SettingsPage.deleteTradePackage = async function (id) {
+    if (!confirm('Delete this trade package?')) return;
+    try {
+        await API.del(`/trade-packages/${id}`);
+        toast('Trade package deleted');
+        SettingsPage.loadTradePackages();
     } catch (err) { toast(err.message, 'error'); }
 };
 
