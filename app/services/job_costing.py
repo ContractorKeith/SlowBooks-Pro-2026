@@ -145,13 +145,13 @@ def would_cycle(db: Session, code_id: int, new_parent_id: Optional[int]) -> bool
 
 def import_cost_codes(db: Session, rows: list[dict]) -> dict:
     """Rows of {code, name, cost_type?, parent_code?, level?}. Codes are
-    normalized to CSI "DD SS SS" (a custom code is left as typed), the level
-    is derived from the shape when a row doesn't give one, and a section with
-    no parent_code is auto-parented to its division — created from the title
-    table when the chart is missing it. Parents may appear after children; a
-    second pass links them. Existing codes are updated (name / type / level /
-    parent), never duplicated."""
-    from app.services.masterformat import (
+    normalized to the "DD SS SS" division/section shape (a custom code is left
+    as typed), the level is derived from the shape when a row doesn't give one,
+    and a section with no parent_code is auto-parented to its division —
+    created from the title table when the chart is missing it. Parents may
+    appear after children; a second pass links them. Existing codes are updated
+    (name / type / level / parent), never duplicated."""
+    from app.services.cost_code_catalog import (
         code_level,
         division_of,
         ensure_division,

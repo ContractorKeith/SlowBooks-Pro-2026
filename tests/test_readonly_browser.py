@@ -268,7 +268,7 @@ FOUND_ON_PAGES = {
         "Create Backup",
         "Seed Default Templates",
         "Create default offset accounts",
-        "Load MasterFormat divisions and common sections",
+        "Load standard divisions and common sections",
         "Send Test Email",
         "Add Class",
         "Add Cost Type",

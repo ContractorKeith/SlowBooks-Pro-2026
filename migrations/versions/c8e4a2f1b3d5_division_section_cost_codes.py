@@ -1,11 +1,11 @@
-"""MasterFormat cost codes, line cost types, and trade packages (#550)
+"""division/section cost codes, line cost types, and trade packages (#550)
 
 Step 1 of the commercial GC layer. Additive and nullable throughout:
 
 - cost_codes.level — "division" / "section" / NULL (a custom code), derived
-  from the CSI code shape on save and import. Existing rows are backfilled by
-  shape: a two-digit code is a division, "DD SS SS" (optional ".SS") a
-  section, anything else stays NULL.
+  from the division/section code shape on save and import. Existing rows are
+  backfilled by shape: a two-digit code is a division, "DD SS SS" (optional
+  ".SS") a section, anything else stays NULL.
 - cost_type on bill_lines, estimate_lines, purchase_order_lines and
   vendor_credit_lines — the per-line cost type (transaction_lines already
   has one); NULL falls back to the cost code's default, so existing lines

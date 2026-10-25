@@ -1,11 +1,11 @@
-"""MasterFormat cost codes (#550): code normalization and level, the
-divisions + common sections loader, and a few-hundred-section import through
-POST /api/cost-codes/import (code,name only) that auto-parents and normalizes
-in one call."""
+"""Division/section cost codes (#550): code normalization and level, the
+standard divisions + common sections loader, and a few-hundred-section import
+through POST /api/cost-codes/import (code,name only) that auto-parents and
+normalizes in one call."""
 
 import pytest
 
-from app.services.masterformat import (
+from app.services.cost_code_catalog import (
     DIVISIONS,
     SECTIONS,
     code_level,

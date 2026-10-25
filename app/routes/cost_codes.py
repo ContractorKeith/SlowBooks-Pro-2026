@@ -1,9 +1,10 @@
 # ============================================================================
-# Cost codes — CRUD for the job-costing chart, plus the MasterFormat loader
-# (divisions + common sections). Typed codes are normalized to CSI "DD SS SS"
-# on save and import, a section is auto-parented to its division, and the
-# level is derived from the shape. Codes referenced by posted lines are
-# archived, never deleted. Bookkeeper-writable like classes and jobs.
+# Cost codes — CRUD for the job-costing chart, plus the standard catalog
+# loader (division titles + common sections). Typed codes are normalized to
+# the "DD SS SS" division/section shape on save and import, a section is
+# auto-parented to its division, and the level is derived from the shape.
+# Codes referenced by posted lines are archived, never deleted.
+# Bookkeeper-writable like classes and jobs.
 # ============================================================================
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,11 +25,11 @@ from app.services.job_costing import (
     parse_cost_code_csv,
     would_cycle,
 )
-from app.services.masterformat import (
+from app.services.cost_code_catalog import (
     code_level,
     division_of,
     ensure_division,
-    load_masterformat,
+    load_standard_catalog,
     normalize_code,
 )
 from app.schemas.common import StrictModel
@@ -160,10 +161,10 @@ def create_cost_code(data: CostCodeCreate, db: Session = Depends(get_db)):
 
 @router.post("/standard", response_model=list[CostCodeResponse])
 def load_standard_cost_codes(db: Session = Depends(get_db)):
-    """Load the CSI MasterFormat division titles and a modest set of common
-    sections, each section parented to its division. Existing codes are left
-    alone, so this is safe to repeat."""
-    load_masterformat(db)
+    """Load the standard division titles and a modest set of common sections,
+    each section parented to its division. Existing codes are left alone, so
+    this is safe to repeat."""
+    load_standard_catalog(db)
     db.commit()
     return list_cost_codes(include_inactive=False, db=db)
 

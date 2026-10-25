@@ -417,10 +417,11 @@ it does:
   where your chart has not already used it. Your own retainage or deposit
   accounts are left as they are; move their balances by journal entry if you
   want the standard numbers.
-- Loads the standard CSI MasterFormat cost-code divisions (01–33, plus Labor
-  and Equipment Rental) if you have not built your own. QuickBooks' job
-  "Items" do not come across as cost codes — rebuild the ones you use under
-  the matching division on the Cost Codes page.
+- Loads the standard cost-code division titles and a set of common sections
+  (the two-level division/section numbering used in commercial construction
+  specifications) if you have not built your own. QuickBooks' job "Items" do
+  not come across as cost codes — rebuild the ones you use under the matching
+  division on the Cost Codes page.
 - Shows a subcontractor as a **Sub**, and gives each vendor you mark a
   Subcontractor a trade-license and certificate-of-insurance record. Mark
   your subs after the import; QuickBooks does not export the COI.

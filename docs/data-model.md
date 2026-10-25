@@ -81,8 +81,8 @@ Migration `e9f0a1b2c3d4_add_jobs`.
 
 | column | notes |
 |---|---|
-| id, code (unique, case-insensitive via API; normalized to CSI `DD SS SS`) | e.g. `03` Concrete, `03 30 00` Cast-in-Place Concrete |
-| level | `division` · `section` · null (a custom, non-MasterFormat code) |
+| id, code (unique, case-insensitive via API; normalized to the `DD SS SS` division/section shape) | e.g. `03` Concrete, `03 30 00` Cast-in-Place Concrete |
+| level | `division` · `section` · null (a custom, non-standard code) |
 | cost_type | per-code default: labor · material · subcontract · equipment · other |
 | account_id (FK accounts, nullable) | default posting account |
 | parent_id (self FK) | a section's division; set automatically |
@@ -96,7 +96,7 @@ vendor_credit_lines — chosen per line, falling back to the code's default when
 blank. `is_billable` + `billed_invoice_line_id` (FK invoice_lines) on
 transaction_lines and bill_lines. `purchase_orders.job_id` /
 `purchase_order_lines.job_id` feed committed cost. Migrations
-`f0a1b2c3d4e5_add_cost_codes`, `c8e4a2f1b3d5_masterformat_cost_codes`
+`f0a1b2c3d4e5_add_cost_codes`, `c8e4a2f1b3d5_division_section_cost_codes`
 (#550: `level`, the four line `cost_type` columns, trade packages).
 
 ## Trade packages (#550)

@@ -5,18 +5,18 @@
 # the cost posts to: the account says *what kind of expense*, the cost code
 # says *which part of the job*.
 #
-# Codes follow CSI MasterFormat at two levels — a `level` of "division"
-# ("DD") or "section" ("DD SS SS", optional ".SS") — and a section sits under
-# its division through parent_id. A code that isn't MasterFormat-shaped
-# (L-100, EQ) keeps level null and is left as typed. Each code carries a
-# cost type as its per-line default (labor / material / subcontract /
-# equipment / other); the effective type is read from the line first, so a
-# line may override it.
+# Codes follow the two-level division/section numbering used in commercial
+# construction specifications — a `level` of "division" ("DD") or "section"
+# ("DD SS SS", optional ".SS") — and a section sits under its division through
+# parent_id. A code that isn't division/section shaped (L-100, EQ) keeps level
+# null and is left as typed. Each code carries a cost type as its per-line
+# default (labor / material / subcontract / equipment / other); the effective
+# type is read from the line first, so a line may override it.
 #
 # Codes referenced by any posted line are archived, never deleted. The
-# MasterFormat divisions and a modest set of common sections are loaded on
-# request (app/services/masterformat.py), not forced on companies that use
-# their own numbering.
+# standard division titles and a modest set of common sections are loaded on
+# request (app/services/cost_code_catalog.py), not forced on companies that
+# use their own numbering.
 # ============================================================================
 
 from sqlalchemy import (
@@ -44,8 +44,8 @@ class CostCode(Base):
     code = Column(String(20), nullable=False, unique=True)
     name = Column(String(200), nullable=False)
     cost_type = Column(String(20), nullable=False, default="other")
-    # CSI level: "division", "section", or NULL for a custom (non-MasterFormat)
-    # code. Derived from the code's shape on save and import.
+    # Level: "division", "section", or NULL for a custom (non-standard) code.
+    # Derived from the code's shape on save and import.
     level = Column(String(10), nullable=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     # Hierarchy: division > section > sub-code, any depth

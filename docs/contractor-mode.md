@@ -13,9 +13,9 @@ Picking Construction in Settings saves `company_type = construction` and
 calls `POST /api/construction/setup`, which:
 
 1. creates the contractor accounts below if they are missing,
-2. loads the CSI MasterFormat division titles and a set of common sections
+2. loads the standard division titles and a set of common sections
    **only when the company has no cost codes of its own** (the same list the
-   Cost Codes page's **Load MasterFormat divisions and common sections**
+   Cost Codes page's **Load standard divisions and common sections**
    button loads), ensuring the labor / material / subcontract / equipment /
    other cost types first, and
 3. seeds the default **trade packages**, mapped to the sections just loaded
@@ -23,7 +23,7 @@ calls `POST /api/construction/setup`, which:
 
 Setup is idempotent — safe to run again. It never renumbers or renames an
 account you already have, never touches an existing cost code (a company
-that has built its own cost-code chart gets no CSI codes added), and changes
+that has built its own cost-code chart gets no standard codes added), and changes
 no posting. Switching back to Business leaves the accounts and codes in
 place (as switching away from Nonprofit leaves its net-asset accounts); they
 are ordinary accounts once created.
@@ -56,28 +56,29 @@ Subcontractor Costs.
 
 ## The cost codes
 
-Codes follow **CSI MasterFormat** at two levels:
+Codes use the **two-level division/section numbering** common in commercial
+construction specifications:
 
 - a **division** — a two-digit number and title (`03` Concrete, `26`
-  Electrical), the titled MasterFormat divisions every US contractor and
-  estimating package speaks (the reserved, un-titled division numbers are
-  left out; add them yourself); and
+  Electrical), the standard division list every US contractor and estimating
+  package speaks (the reserved, un-titled division numbers are left out; add
+  them yourself); and
 - a **section** — `DD SS SS` with an optional `.SS` extension (`03 30 00`
   Cast-in-Place Concrete, `07 42 13.16`), which sits under its division
   through the cost-code tree's parent link, set automatically.
 
 Each code carries a `level` of `division`, `section`, or null for a code that
-isn't MasterFormat-shaped. **What you type is normalized on save and import**:
-`033000`, `03-3000`, `03 3000` and `03.30.00` all become `03 30 00`. Only a
-two-digit division or a 6-/8-digit section is reshaped; a code that numbers
-its own way (`L-100`, `EQ`, or a numeric `1000`/`2000` chart) is left exactly
-as typed, with a null level, and re-importing it never rewrites it. Everything
-sorts by code — list, tree, pickers, import result.
+isn't division/section shaped. **What you type is normalized on save and
+import**: `033000`, `03-3000`, `03 3000` and `03.30.00` all become
+`03 30 00`. Only a two-digit division or a 6-/8-digit section is reshaped; a
+code that numbers its own way (`L-100`, `EQ`, or a numeric `1000`/`2000`
+chart) is left exactly as typed, with a null level, and re-importing it never
+rewrites it. Everything sorts by code — list, tree, pickers, import result.
 
 The seeded set is the division titles plus a **modest set of common
-sections**. CSI's full numbered section catalogue is licensed, so it is not
-shipped; import your own full list through **Import CSV** on the Cost Codes
-page — a CSV of just `code,name` is enough (a few hundred sections land
+sections**. The full numbered section catalog is a licensed product, so it is
+not shipped; import your own full list through **Import CSV** on the Cost
+Codes page — a CSV of just `code,name` is enough (a few hundred sections land
 normalized and auto-parented in one call, each section's division created
 from the title table if the chart is missing it). Cost type is optional on
 import and defaults to `other`.
@@ -150,7 +151,8 @@ appear. Every other report stays where it is.
   to by hand until those land.
 - **No COI-expiry warning** in Pay Bills — a later issue.
 - **Customer:Job** still prints with a space; the no-space form is deferred.
-- **No full MasterFormat** section catalogue (CSI-licensed); the division
-  titles and a set of common sections ship, and you import the rest.
+- **No full section catalog** (the numbered catalog is a licensed product);
+  the division titles and a set of common sections ship, and you import the
+  rest.
 - **Nothing references a trade package yet** — bids and commitments against a
   package are later steps.

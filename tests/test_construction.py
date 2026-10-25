@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from app.services.accounting import CONSTRUCTION_ACCOUNTS
-from app.services.masterformat import DIVISIONS, SECTIONS, TRADE_PACKAGES
-from app.services.masterformat import normalize_code
+from app.services.cost_code_catalog import DIVISIONS, SECTIONS, TRADE_PACKAGES
+from app.services.cost_code_catalog import normalize_code
 
 ROOT = Path(__file__).resolve().parent.parent
 JS = ROOT / "app/static/js"
@@ -81,7 +81,7 @@ def test_setup_loads_accounts_and_cost_codes_and_repeats_cleanly(client, seed_ac
     assert names == {name for _n, name, _t, _d in CONSTRUCTION_ACCOUNTS}
 
     codes = {c["code"] for c in client.get("/api/cost-codes").json()}
-    # every MasterFormat division and common section lands
+    # every standard division and common section lands
     for code, _name in DIVISIONS:
         assert code in codes, code
     for raw, _name in SECTIONS:
@@ -104,7 +104,7 @@ def test_setup_loads_accounts_and_cost_codes_and_repeats_cleanly(client, seed_ac
 
 def test_setup_creates_the_cost_types_the_codes_reference(client, seed_accounts):
     client.post("/api/construction/setup")
-    # seeded MasterFormat codes all default to "other"
+    # seeded standard codes all default to "other"
     rows = client.get("/api/cost-codes").json()
     assert {c["cost_type"] for c in rows} == {"other"}
     # the five cost types exist for a per-line type to point at

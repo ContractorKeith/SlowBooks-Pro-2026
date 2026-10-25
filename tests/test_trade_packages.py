@@ -1,7 +1,7 @@
 """Trade packages (#550): CRUD, the section mapping (replace), the 400 a
 non-section code gets, and the defaults the construction setup seeds once."""
 
-from app.services.masterformat import TRADE_PACKAGES
+from app.services.cost_code_catalog import TRADE_PACKAGES
 
 
 def _section(client, code, name="Section"):
@@ -102,7 +102,7 @@ def test_setup_seeds_defaults_once_and_maps_present_sections(client, seed_accoun
 def test_setup_seeds_no_packages_for_a_custom_chart_without_sections(
     client, seed_accounts
 ):
-    # a company on its own numeric chart (no MasterFormat sections) gets no
+    # a company on its own numeric chart (no standard sections) gets no
     # empty default packages
     client.post("/api/cost-codes", json={"code": "1000", "name": "Direct Costs"})
     client.post("/api/construction/setup")

@@ -747,7 +747,7 @@ const SettingsPage = {
                         </select>
                         <select id="new-cc-parent" aria-label="Parent cost code"><option value="">(top level)</option></select>
                         <button type="button" class="btn btn-primary" onclick="SettingsPage.addCostCode()">Add Cost Code</button>
-                        <button type="button" class="btn btn-secondary" onclick="SettingsPage.loadStandardCostCodes()" title="CSI MasterFormat division titles and a set of common sections, parented by code">Load MasterFormat divisions and common sections</button>
+                        <button type="button" class="btn btn-secondary" onclick="SettingsPage.loadStandardCostCodes()" title="The standard division titles and a set of common sections, parented by code">Load standard divisions and common sections</button>
                         <button type="button" class="btn btn-secondary" onclick="SettingsPage.showCostCodeImport()">Import CSV</button>
                     </div>
                     <div id="cost-codes-list"></div>

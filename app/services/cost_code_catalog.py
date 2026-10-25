@@ -1,9 +1,10 @@
-# Seed data for #550. Division numbers and titles follow CSI MasterFormat 2016
-# (the division list is published openly; the numbered SECTION catalogue is
-# CSI's licensed product, so only a modest set of common sections ships, and
-# companies import their own full list through POST /api/cost-codes/import).
-# Reserved division numbers (15-20, 24, 29, 30, 36-39, 47, 49) have no title
-# and are not created; a company can add them.
+# Seed data for #550. The two-level division/section numbering used in
+# commercial construction specifications. The division titles ship here;
+# reserved division numbers (15-20, 24, 29, 30, 36-39, 47, 49) have no title
+# and are not created (a company can add them). The full numbered section
+# catalogue is a licensed product, so only a modest set of common sections
+# ships — companies import their own full list through
+# POST /api/cost-codes/import.
 
 import re
 
@@ -167,7 +168,7 @@ TRADE_PACKAGES = (
 DIVISION_TITLES = dict(DIVISIONS)
 
 # ---------------------------------------------------------------------------
-# Code shape: CSI "DD SS SS" with an optional ".SS" extension. A division is
+# Code shape: "DD SS SS" with an optional ".SS" extension. A division is
 # exactly two digits as typed; a section is all digits and separators with 6
 # (DD SS SS) or 8 (with a .SS extension) digits. Anything else — a custom
 # chart's "1000", "0330", "1.5", "L-100", "EQ" — is left exactly as typed, so
@@ -180,7 +181,7 @@ _SECTION = re.compile(r"^\d{2} \d{2} \d{2}(\.\d{2})?$")
 
 
 def normalize_code(raw: str) -> str:
-    """Normalize a typed cost code to CSI 'DD SS SS' (optional '.SS'). Only a
+    """Normalize a typed cost code to 'DD SS SS' (optional '.SS'). Only a
     two-digit division or a 6-/8-digit section is reshaped; everything else is
     returned stripped but otherwise as typed, so numeric custom charts
     ('1000', '0330', '1.5') are never mangled."""
@@ -199,7 +200,8 @@ def normalize_code(raw: str) -> str:
 
 
 def code_level(code: str) -> str | None:
-    """'division', 'section', or None for a code that isn't MasterFormat."""
+    """'division', 'section', or None for a code that isn't division/section
+    shaped."""
     c = (code or "").strip()
     if _DIVISION.match(c):
         return "division"
@@ -240,7 +242,7 @@ def ensure_division(db: Session, number: str, cache: dict | None = None):
     return row
 
 
-def load_masterformat(db: Session) -> dict:
+def load_standard_catalog(db: Session) -> dict:
     """Load the division titles and the common sections: divisions first,
     then each section parented to its division (created from the title table
     when missing). Codes already present are skipped, so it is safe to
@@ -292,7 +294,7 @@ def seed_trade_packages(db: Session) -> int:
 
     if db.query(TradePackage.id).first():
         return 0
-    # Nothing to bid against without sections, so a custom (non-MasterFormat)
+    # Nothing to bid against without sections, so a custom (non-standard)
     # chart gets no empty packages.
     if not db.query(CostCode.id).filter(CostCode.level == "section").first():
         return 0
