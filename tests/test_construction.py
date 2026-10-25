@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from app.models.cost_codes import STANDARD_COST_CODES
 from app.services.accounting import CONSTRUCTION_ACCOUNTS
+from app.services.masterformat import DIVISIONS, SECTIONS, TRADE_PACKAGES
+from app.services.masterformat import normalize_code
 
 ROOT = Path(__file__).resolve().parent.parent
 JS = ROOT / "app/static/js"
@@ -80,25 +81,35 @@ def test_setup_loads_accounts_and_cost_codes_and_repeats_cleanly(client, seed_ac
     assert names == {name for _n, name, _t, _d in CONSTRUCTION_ACCOUNTS}
 
     codes = {c["code"] for c in client.get("/api/cost-codes").json()}
-    for code, _name, _type in STANDARD_COST_CODES:
+    # every MasterFormat division and common section lands
+    for code, _name in DIVISIONS:
         assert code in codes, code
+    for raw, _name in SECTIONS:
+        assert normalize_code(raw) in codes, raw
+    # the default trade packages are seeded, mapped to sections
+    pkgs = client.get("/api/trade-packages").json()
+    assert len(pkgs) == len(TRADE_PACKAGES)
+    concrete = next(p for p in pkgs if p["name"] == "Concrete")
+    assert "03 30 00" in {s["code"] for s in concrete["sections"]}
 
-    # second call: same accounts, no duplicate cost codes
+    # second call: same accounts, no duplicate cost codes, no duplicate packages
     accounts_before = client.get("/api/accounts").json()
     codes_before = client.get("/api/cost-codes").json()
     second = client.post("/api/construction/setup")
     assert second.status_code == 200
     assert len(client.get("/api/accounts").json()) == len(accounts_before)
     assert len(client.get("/api/cost-codes").json()) == len(codes_before)
+    assert len(client.get("/api/trade-packages").json()) == len(TRADE_PACKAGES)
 
 
 def test_setup_creates_the_cost_types_the_codes_reference(client, seed_accounts):
     client.post("/api/construction/setup")
+    # seeded MasterFormat codes all default to "other"
     rows = client.get("/api/cost-codes").json()
-    types = {c["cost_type"] for c in rows}
-    assert {"subcontract", "material", "labor", "equipment", "other"} <= {
-        t for t in types if t
-    }
+    assert {c["cost_type"] for c in rows} == {"other"}
+    # the five cost types exist for a per-line type to point at
+    types = {t["code"] for t in client.get("/api/cost-types").json()}
+    assert {"subcontract", "material", "labor", "equipment", "other"} <= types
 
 
 # ---------------------------------------------------------------------------
