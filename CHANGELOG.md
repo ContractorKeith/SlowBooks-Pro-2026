@@ -40,39 +40,37 @@ clients truncate long bodies; Reveal log file opens the log's folder on native
 desktop installs only. Security reports still go through GitHub Security
 Advisories. See docs/support.md.
 
-**Construction company type** (#431, @ContractorKeith; Testing #110, Phase 2). Settings → Company Type gains
-a third value, Construction, beside Business and Nonprofit. Switching to it
-works like switching to Nonprofit: it changes no data, and it adds a set of
-contractor accounts and the standard cost codes rather than re-seeding the
-chart. The accounts are Retainage Receivable (1150), Construction in Progress
-(1350), Retainage Payable (2050), Customer Deposits (2210), Use Tax Payable
-(2220), Equipment Cost (5400) and Other Job Costs (5500) — each created only
-if missing, its number yielding to a chart that already owns it, and placed
-on the balance sheet as an Other Current asset or liability (the job-cost
-accounts as Cost of Goods Sold). The switch also loads the 26 standard CSI
-MasterFormat cost codes (the same list the Cost Codes page loads) and the
-labor / material / subcontract / equipment / other cost types they use —
-but only into a company that has no cost codes of its own yet, so a custom
-chart is left alone. Vocabulary is light — a contractor keeps Customer,
-Invoice, Estimate and Job; the one word that changes is "Subcontractor",
-shown as "Sub". Vendors gain a Sub type with a trade license and a
-certificate of insurance (carrier, policy number, expiry); marking a vendor
-a Sub turns on 1099-NEC. The Report Center leads with the contractor reports
-that already exist — Job Profitability, Job Budget vs Actual, P&L by Job.
+**Construction company type** (#431, @ContractorKeith; Testing #110,
+Phase 2). Settings → Company Type gains a third value, Construction, beside
+Business and Nonprofit. Switching to it works like switching to Nonprofit:
+it changes no data, and it adds a set of contractor accounts and the
+standard cost codes rather than re-seeding the chart. The accounts are
+Retainage Receivable (1150), Construction in Progress (1350), Retainage
+Payable (2050), Customer Deposits (2210), Use Tax Payable (2220), Equipment
+Cost (5400) and Other Job Costs (5500) — each created only if missing, its
+number yielding to a chart that already owns it, and placed on the balance
+sheet as an Other Current asset or liability (the job-cost accounts as Cost
+of Goods Sold). The switch also loads the 26 standard CSI MasterFormat cost
+codes (the same list the Cost Codes page loads) and the labor / material /
+subcontract / equipment / other cost types they use — but only into a
+company that has no cost codes of its own yet, so a custom chart is left
+alone. Vocabulary is light — a contractor keeps Customer, Invoice, Estimate
+and Job; the one word that changes is "Subcontractor", shown as "Sub".
+Vendors gain a Sub type with a trade license and a certificate of insurance
+(carrier, policy number, expiry); the first time a vendor is marked a Sub,
+1099-NEC turns on, and it can be changed afterward. The Report Center leads
+with the contractor reports that already exist — Job Profitability, Job
+Budget vs Actual, P&L by Job.
 
 Not yet: no first-run "what kind of company is this?" prompt (company_type
 still defaults to Business; Construction is chosen in Settings, as Nonprofit
 is), no new accounting, no change orders / draws / pay applications screens,
 no COI-expiry warning in Pay Bills, and the full MasterFormat line-item list
-is not shipped. See [docs/contractor-mode.md](docs/contractor-mode.md). Two
-pieces of #431 are not a switch this release can flip and wait for their own
-work: the job and cost-code columns are shown by data (they appear on bills,
-expenses, purchase orders and journal entries once a company has a job and
-cost codes — construction setup seeds the codes, so the cost-code column is
-on from the first open, with no preference to toggle), and a W-9-on-file
-default is deliberately left out because that flag records paperwork a
-company actually holds, not a preference — a prompt to collect a Sub's W-9
-is the real follow-up.
+is not shipped. The job and cost-code columns appear on bills, expenses,
+purchase orders and journal entries as soon as the company has a job or a
+cost code (construction setup seeds the cost codes), and a prompt to collect
+a Sub's W-9 is a follow-up. See
+[docs/contractor-mode.md](docs/contractor-mode.md).
 
 ### v2.29.1 — Profit & Loss Detail, Bill Quick Entry, and pre-printed checks
 

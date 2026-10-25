@@ -80,11 +80,12 @@ A vendor can be marked a **Sub** (the UI word; `vendor_type` is
   certificate of insurance a general contractor collects before a sub works.
 
 These fields are blank on an ordinary vendor and reveal only when the vendor
-is marked a sub; clearing the mark clears them. 1099 is off by default for
-every new vendor — a lumber yard or the power company is not reportable.
-**Marking a vendor a Sub turns on 1099-NEC** (a sub's labor is reportable),
-which you can still change. W-9 on file is a fact you record, not a default,
-so it stays No.
+is marked a sub; un-marking a sub clears the license and COI fields but
+leaves the 1099 answer as it is. 1099 is off by default for every new vendor
+— a lumber yard or the power company is not reportable. **The first time a
+vendor is marked a Sub, 1099-NEC turns on** (a sub's labor is reportable);
+you can change it afterward, and a sub already set to 1099-MISC keeps it.
+W-9 on file is a fact you record, not a default, so it stays No.
 
 ## The reports
 

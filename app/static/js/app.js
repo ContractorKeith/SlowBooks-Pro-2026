@@ -735,7 +735,7 @@ const App = {
             App.setStatus(`${route.label} — nonprofit companies only`);
             return;
         }
-        // The same guard for any construction-only page (none in Phase 1):
+        // The same guard for any construction-only page (none this phase):
         // a bookmark or a typed URL must not reach it in another company.
         if (route.construction && !Terms.isConstruction()) {
             $('#page-content').innerHTML = App._constructionOnlyHtml(route.label);

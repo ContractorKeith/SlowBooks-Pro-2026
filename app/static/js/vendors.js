@@ -412,7 +412,7 @@ const VendorsPage = {
                         <textarea name="notes">${escapeHtml(v.notes || '')}</textarea></div>
                 </div>
                 ${(Terms.isConstruction() || v.vendor_type) ? `
-                <h3 style="margin:16px 0 8px; font-size:14px; color:var(--gray-600);">${T('Subcontractor')}</h3>
+                <h3 style="margin:16px 0 8px; font-size:14px; color:var(--gray-600);">Trade license and insurance</h3>
                 <div class="form-grid">
                     <div class="form-group"><label>${T('Subcontractor')}</label>
                         <select name="vendor_type" onchange="VendorsPage.toggleSubFields(this)" title="A subcontractor carries a trade license and a certificate of insurance">

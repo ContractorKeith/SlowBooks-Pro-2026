@@ -28,10 +28,11 @@ def clear_sub_fields_unless_sub(vendor: Vendor) -> None:
 
 
 def nec_for_sub(vendor: Vendor) -> None:
-    """A subcontractor's labor is reportable, so a Sub turns on 1099-NEC —
-    but only when the vendor's 1099 type is still blank. A Sub already on
-    1099-MISC (or INT/DIV) keeps it, never switched silently. Mirrors the
-    vendor form's toggleSubFields so the API and the form agree (#431)."""
+    """Turn on 1099-NEC when a vendor is first marked a Sub — a sub's labor
+    is reportable — but only when its 1099 type is still blank, so a Sub
+    already on 1099-MISC (or INT/DIV) keeps it. Call this on the transition
+    into Sub, never on every write: an incorporated Sub taken off 1099 later
+    must stay off. Mirrors the vendor form's toggleSubFields (#431)."""
     if vendor.vendor_type == "sub" and not vendor.vendor_1099_type:
         vendor.is_1099_vendor = True
         vendor.vendor_1099_type = "NEC"
@@ -107,7 +108,12 @@ def create_vendor(
                 },
             )
     vendor = Vendor(**data.model_dump())
-    nec_for_sub(vendor)
+    # A new vendor marked a Sub turns on 1099-NEC, unless the client set the
+    # 1099 answer itself — the form always does, and an API caller may say
+    # "false" for an incorporated sub. Only an API create that leaves the
+    # 1099 answer out gets the default.
+    if "is_1099_vendor" not in data.model_dump(exclude_unset=True):
+        nec_for_sub(vendor)
     clear_type_unless_1099(vendor)
     clear_sub_fields_unless_sub(vendor)
     db.add(vendor)
@@ -122,10 +128,15 @@ def create_vendor(
 @router.put("/{vendor_id}", response_model=VendorResponse)
 def update_vendor(vendor_id: int, data: VendorUpdate, db: Session = Depends(get_db)):
     vendor = get_or_404(db, Vendor, vendor_id)
+    was_sub = vendor.vendor_type == "sub"
     update_data = reject_null_updates(Vendor, data.model_dump(exclude_unset=True))
     for key, val in update_data.items():
         setattr(vendor, key, val)
-    nec_for_sub(vendor)
+    # Marking a vendor a Sub for the first time turns on 1099-NEC (blank type
+    # only). Re-saving a Sub, or saving one with 1099 deliberately off, is
+    # left alone — the rule fires on the transition, not on every write.
+    if "vendor_type" in update_data and not was_sub:
+        nec_for_sub(vendor)
     clear_type_unless_1099(vendor)
     clear_sub_fields_unless_sub(vendor)
     if data.bank_feed_rule is not None:

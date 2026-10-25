@@ -175,7 +175,7 @@ def test_construction_route_guard_shows_the_placeholder_for_a_business():
 def test_any_construction_nav_item_is_hidden_by_default():
     """NEW-145 invariant: a construction-only sidebar page must ship with
     `hidden` so the Sidebar picker leaves it out of other company types.
-    Phase 1 adds none, so this guards future additions."""
+    This phase adds none, so this guards future additions."""
     import re
 
     html = (ROOT / "index.html").read_text(encoding="utf-8")

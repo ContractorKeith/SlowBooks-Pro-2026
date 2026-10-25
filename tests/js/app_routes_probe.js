@@ -48,7 +48,7 @@ const ctx = {
 for (const name of new Set(src.match(/\b[A-Z][A-Za-z]*Page\b/g) || [])) ctx[name] = stub(name);
 vm.createContext(ctx);
 vm.runInContext(src + '\nthis.App = App;', ctx);
-// A synthetic construction-only route (Phase 1 ships none) to exercise the
+// A synthetic construction-only route (this phase ships none) to exercise the
 // route.construction guard: it renders only for a construction company.
 ctx.App.routes['/__ctest'] = {
   page: 'dashboard', label: 'Contractor Test', construction: true, render: () => '<CTest>',
