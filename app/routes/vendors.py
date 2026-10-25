@@ -27,6 +27,16 @@ def clear_sub_fields_unless_sub(vendor: Vendor) -> None:
         vendor.coi_expires = None
 
 
+def nec_for_sub(vendor: Vendor) -> None:
+    """A subcontractor's labor is reportable, so a Sub turns on 1099-NEC —
+    but only when the vendor's 1099 type is still blank. A Sub already on
+    1099-MISC (or INT/DIV) keeps it, never switched silently. Mirrors the
+    vendor form's toggleSubFields so the API and the form agree (#431)."""
+    if vendor.vendor_type == "sub" and not vendor.vendor_1099_type:
+        vendor.is_1099_vendor = True
+        vendor.vendor_1099_type = "NEC"
+
+
 def _responses(db: Session, vendors: list[Vendor]) -> list[VendorResponse]:
     """The vendors with what is owed to each, summed from the open bills,
     credits and unapplied payments (Vendor.balance is never written)."""
@@ -97,6 +107,7 @@ def create_vendor(
                 },
             )
     vendor = Vendor(**data.model_dump())
+    nec_for_sub(vendor)
     clear_type_unless_1099(vendor)
     clear_sub_fields_unless_sub(vendor)
     db.add(vendor)
@@ -114,6 +125,7 @@ def update_vendor(vendor_id: int, data: VendorUpdate, db: Session = Depends(get_
     update_data = reject_null_updates(Vendor, data.model_dump(exclude_unset=True))
     for key, val in update_data.items():
         setattr(vendor, key, val)
+    nec_for_sub(vendor)
     clear_type_unless_1099(vendor)
     clear_sub_fields_unless_sub(vendor)
     if data.bank_feed_rule is not None:

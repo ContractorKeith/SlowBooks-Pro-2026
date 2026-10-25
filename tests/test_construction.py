@@ -157,6 +157,9 @@ def test_vendor_form_reveals_subs_and_a_sub_defaults_to_1099_nec():
     # turning it off hides and clears them (a hidden input still submits)
     assert got["subToggle"]["off"]["hidden"] == [True, True, True, True]
     assert got["subToggle"]["off"]["cleared"] == ["", "", "", ""]
+    # a Sub already on 1099-MISC keeps MISC, not switched to NEC silently
+    assert got["subToggleMisc"]["is_1099_vendor"] == "true"
+    assert got["subToggleMisc"]["vendor_1099_type"] == "MISC"
 
 
 @requires_node

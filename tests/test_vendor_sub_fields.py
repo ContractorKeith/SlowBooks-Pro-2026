@@ -5,7 +5,7 @@ migration adds and drops them cleanly."""
 import sqlite3
 from pathlib import Path
 
-PREV = "4ac01efbd72a"
+PREV = "f2e3d4c5b6a7"
 HEAD = "b7d3f1e2a9c4"
 COLS = (
     "vendor_type",
@@ -62,6 +62,74 @@ def test_ordinary_vendor_leaves_sub_fields_blank(client):
     body = v.json()
     for col in COLS:
         assert body[col] is None, col
+
+
+# ---------------------------------------------------------------------------
+# A Sub turns on 1099-NEC, but only when the 1099 type is still blank — the
+# API behaves like the vendor form's toggleSubFields (#431, review item 5).
+# ---------------------------------------------------------------------------
+
+
+def test_new_sub_with_blank_1099_type_turns_on_nec(client):
+    v = client.post("/api/vendors", json={"name": "Ace Electric", "vendor_type": "sub"})
+    assert v.status_code == 201, v.text
+    body = v.json()
+    assert body["is_1099_vendor"] is True
+    assert body["vendor_1099_type"] == "NEC"
+
+
+def test_sub_already_on_misc_keeps_misc(client):
+    # a Sub already flagged 1099-MISC must not be switched to NEC silently
+    v = client.post(
+        "/api/vendors",
+        json={
+            "name": "Rent-A-Crane",
+            "vendor_type": "sub",
+            "is_1099_vendor": True,
+            "vendor_1099_type": "MISC",
+        },
+    )
+    assert v.status_code == 201, v.text
+    body = v.json()
+    assert body["is_1099_vendor"] is True
+    assert body["vendor_1099_type"] == "MISC"
+
+
+def test_marking_an_existing_vendor_a_sub_turns_on_nec(client):
+    v = client.post("/api/vendors", json={"name": "Day Labor LLC"})
+    assert v.status_code == 201, v.text
+    vid = v.json()["id"]
+    assert v.json()["vendor_1099_type"] is None
+
+    up = client.put(f"/api/vendors/{vid}", json={"vendor_type": "sub"})
+    assert up.status_code == 200, up.text
+    body = up.json()
+    assert body["is_1099_vendor"] is True
+    assert body["vendor_1099_type"] == "NEC"
+
+
+def test_marking_an_existing_misc_vendor_a_sub_keeps_misc(client):
+    v = client.post(
+        "/api/vendors",
+        json={"name": "Equip Co", "is_1099_vendor": True, "vendor_1099_type": "MISC"},
+    )
+    assert v.status_code == 201, v.text
+    vid = v.json()["id"]
+
+    up = client.put(f"/api/vendors/{vid}", json={"vendor_type": "sub"})
+    assert up.status_code == 200, up.text
+    body = up.json()
+    assert body["vendor_type"] == "sub"
+    assert body["vendor_1099_type"] == "MISC"
+
+
+def test_ordinary_new_vendor_is_not_1099(client):
+    # the PR no longer defaults 1099 on for a plain vendor in any mode
+    v = client.post("/api/vendors", json={"name": "Paper Co"})
+    assert v.status_code == 201, v.text
+    body = v.json()
+    assert body["is_1099_vendor"] is False
+    assert body["vendor_1099_type"] is None
 
 
 # ---------------------------------------------------------------------------

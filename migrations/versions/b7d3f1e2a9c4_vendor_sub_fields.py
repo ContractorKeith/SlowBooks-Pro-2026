@@ -13,7 +13,7 @@ Data-only note: nothing is backfilled. No earlier representation of a
 sub's license or COI exists to migrate from.
 
 Revision ID: b7d3f1e2a9c4
-Revises: 4ac01efbd72a
+Revises: f2e3d4c5b6a7
 Create Date: 2026-10-24
 
 """
@@ -24,7 +24,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "b7d3f1e2a9c4"
-down_revision: Union[str, None] = "4ac01efbd72a"
+down_revision: Union[str, None] = "f2e3d4c5b6a7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

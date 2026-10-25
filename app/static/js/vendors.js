@@ -448,18 +448,22 @@ const VendorsPage = {
 
     // The license and COI fields describe a subcontractor only: they show
     // under "Yes" and hide otherwise. Marking a vendor a Sub makes it a
-    // 1099-NEC vendor (a sub's labor is reportable); turning it off clears
-    // the four fields so a hidden input does not submit stale data (#431).
+    // 1099-NEC vendor (a sub's labor is reportable) — but only when the
+    // 1099 type is still blank, so a Sub already on MISC is not switched
+    // silently; turning it off clears the four fields so a hidden input
+    // does not submit stale data (#431).
     toggleSubFields(select) {
         const on = select.value === 'sub';
         const form = select.form;
         if (!form) return;
         form.querySelectorAll('.sub-field').forEach(el => { el.hidden = !on; });
         if (on) {
-            const is1099 = form.elements.namedItem('is_1099_vendor');
-            if (is1099) { is1099.value = 'true'; VendorsPage.toggle1099Type(is1099); }
             const type = form.elements.namedItem('vendor_1099_type');
-            if (type) type.value = 'NEC';
+            if (type && !type.value) {
+                const is1099 = form.elements.namedItem('is_1099_vendor');
+                if (is1099) { is1099.value = 'true'; VendorsPage.toggle1099Type(is1099); }
+                type.value = 'NEC';
+            }
         } else {
             ['license_number', 'coi_carrier', 'coi_policy_number', 'coi_expires'].forEach(n => {
                 const el = form.elements.namedItem(n);

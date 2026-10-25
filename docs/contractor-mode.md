@@ -3,7 +3,7 @@
 Settings → Company Type → **Construction** sets a company up the way a
 contractor keeps its books, the same way **Nonprofit** does for a ministry:
 one switch, no change to any data, reversible at any time. It is the
-counterpart to QuickBooks Desktop's Contractor Edition. This is Phase 1 — a
+counterpart to QuickBooks Desktop's Contractor Edition. This is Phase 2 (Testing #110) — a
 setting, the accounts, the cost codes and the subcontractor vendor type. No
 new accounting posts yet.
 
@@ -68,7 +68,7 @@ API, the database or the export formats changes name.
 
 Customer:Job in QuickBooks prints with no space around the colon; SlowBooks
 prints "Customer: Job" (with a space) everywhere today, and that is left
-unchanged in Phase 1 — see *What this mode does not do yet*.
+unchanged in Phase 2 — see *What this mode does not do yet*.
 
 ## The subcontractor vendor type
 

@@ -40,7 +40,7 @@ clients truncate long bodies; Reveal log file opens the log's folder on native
 desktop installs only. Security reports still go through GitHub Security
 Advisories. See docs/support.md.
 
-**Construction company type** (#431, Phase 1). Settings → Company Type gains
+**Construction company type** (#431, @ContractorKeith; Testing #110, Phase 2). Settings → Company Type gains
 a third value, Construction, beside Business and Nonprofit. Switching to it
 works like switching to Nonprofit: it changes no data, and it adds a set of
 contractor accounts and the standard cost codes rather than re-seeding the
@@ -64,7 +64,15 @@ Not yet: no first-run "what kind of company is this?" prompt (company_type
 still defaults to Business; Construction is chosen in Settings, as Nonprofit
 is), no new accounting, no change orders / draws / pay applications screens,
 no COI-expiry warning in Pay Bills, and the full MasterFormat line-item list
-is not shipped. See [docs/contractor-mode.md](docs/contractor-mode.md).
+is not shipped. See [docs/contractor-mode.md](docs/contractor-mode.md). Two
+pieces of #431 are not a switch this release can flip and wait for their own
+work: the job and cost-code columns are shown by data (they appear on bills,
+expenses, purchase orders and journal entries once a company has a job and
+cost codes — construction setup seeds the codes, so the cost-code column is
+on from the first open, with no preference to toggle), and a W-9-on-file
+default is deliberately left out because that flag records paperwork a
+company actually holds, not a preference — a prompt to collect a Sub's W-9
+is the real follow-up.
 
 ### v2.29.1 — Profit & Loss Detail, Bill Quick Entry, and pre-printed checks
 

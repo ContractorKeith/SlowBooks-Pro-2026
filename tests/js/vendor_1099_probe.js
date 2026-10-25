@@ -96,5 +96,21 @@ const answerTag = () => (/<select name="is_1099_vendor"[^>]*>/.exec(modalHtml) |
       .map((f) => f.value),
   };
   out.subToggle = { on: onState, off: offState };
+
+  // A Sub already on 1099-MISC keeps MISC — toggleSubFields must not switch
+  // it to NEC silently (#431, review item 5).
+  const miscFields = {
+    is_1099_vendor: { value: 'true' },
+    vendor_1099_type: { value: 'MISC', disabled: false },
+  };
+  const miscForm = {
+    elements: { namedItem: (n) => miscFields[n] || null },
+    querySelectorAll: () => [{ hidden: true }, { hidden: true }, { hidden: true }, { hidden: true }],
+  };
+  V.toggleSubFields({ value: 'sub', form: miscForm });
+  out.subToggleMisc = {
+    is_1099_vendor: miscFields.is_1099_vendor.value,
+    vendor_1099_type: miscFields.vendor_1099_type.value,
+  };
   console.log(JSON.stringify(out));
 })();
