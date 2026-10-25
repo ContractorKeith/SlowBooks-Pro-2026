@@ -130,6 +130,7 @@ def _line_dict(line, acct) -> dict:
         "job_id": line.job_id,
         "class_id": line.class_id,
         "cost_code_id": line.cost_code_id,
+        "cost_type": line.cost_type,
         "function": line.function,
         "is_billable": bool(line.is_billable),
     }
@@ -188,7 +189,14 @@ def _journal_lines(db: Session, data, edit: bool = False) -> list[dict]:
         # the body leaves out keeps what the line has, so a memo fix from a
         # client that sends bare lines doesn't clear a line's class, job,
         # cost code or billable mark (#388 review).
-        for key in ("class_id", "job_id", "cost_code_id", "is_billable", "function"):
+        for key in (
+            "class_id",
+            "job_id",
+            "cost_code_id",
+            "cost_type",
+            "is_billable",
+            "function",
+        ):
             if key in line.model_fields_set:
                 value = getattr(line, key)
                 if value is None and key in unmanaged:

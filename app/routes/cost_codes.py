@@ -1,7 +1,9 @@
 # ============================================================================
-# Cost codes — CRUD for the job-costing chart, plus the standard (CSI
-# MasterFormat) list loader. Codes referenced by posted lines are archived,
-# never deleted. Bookkeeper-writable like classes and jobs.
+# Cost codes — CRUD for the job-costing chart, plus the MasterFormat loader
+# (divisions + common sections). Typed codes are normalized to CSI "DD SS SS"
+# on save and import, a section is auto-parented to its division, and the
+# level is derived from the shape. Codes referenced by posted lines are
+# archived, never deleted. Bookkeeper-writable like classes and jobs.
 # ============================================================================
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +13,7 @@ from app.database import get_db
 from app.routes._helpers import reject_null_updates
 from app.models.accounts import Account
 from app.models.bills import BillLine
-from app.models.cost_codes import STANDARD_COST_CODES, CostCode
+from app.models.cost_codes import CostCode
 from app.models.transactions import TransactionLine
 from app.schemas.cost_codes import CostCodeCreate, CostCodeResponse, CostCodeUpdate
 from app.services.job_costing import (
@@ -22,10 +24,33 @@ from app.services.job_costing import (
     parse_cost_code_csv,
     would_cycle,
 )
+from app.services.masterformat import (
+    DIVISION_TITLES,
+    code_level,
+    division_of,
+    load_masterformat,
+    normalize_code,
+)
 from app.schemas.common import StrictModel
 from typing import Optional
 
 router = APIRouter(prefix="/api/cost-codes", tags=["cost-codes"])
+
+
+def _division_row(db: Session, div: str) -> CostCode:
+    """The division row a section parents to, created from the title table
+    when the chart doesn't have it yet."""
+    row = db.query(CostCode).filter(CostCode.code.ilike(div)).first()
+    if row is None:
+        row = CostCode(
+            code=div,
+            name=DIVISION_TITLES.get(div, div),
+            cost_type="other",
+            level="division",
+        )
+        db.add(row)
+        db.flush()
+    return row
 
 
 def _to_response(row: CostCode, db: Session | None = None) -> CostCodeResponse:
@@ -124,12 +149,26 @@ def import_codes(data: CostCodeImport, db: Session = Depends(get_db)):
 
 @router.post("", response_model=CostCodeResponse, status_code=201)
 def create_cost_code(data: CostCodeCreate, db: Session = Depends(get_db)):
-    _check_code_clash(db, data.code)
-    _check_type_exists(db, data.cost_type)
-    _check_parent(db, data.parent_id)
-    if data.account_id is not None and not db.get(Account, data.account_id):
+    values = data.model_dump()
+    # Normalize to CSI "DD SS SS" and derive the level from the shape; a
+    # custom code (L-100, EQ) is left as typed with a null level.
+    values["code"] = normalize_code(values["code"])
+    if not values.get("level"):
+        values["level"] = code_level(values["code"])
+    _check_code_clash(db, values["code"])
+    _check_type_exists(db, values["cost_type"])
+    _check_parent(db, values.get("parent_id"))
+    if values.get("account_id") is not None and not db.get(
+        Account, values["account_id"]
+    ):
         raise HTTPException(status_code=404, detail="Account not found")
-    row = CostCode(**data.model_dump())
+    # A section with no parent given sits under its division (created from the
+    # title table when missing).
+    if values.get("parent_id") is None:
+        div = division_of(values["code"])
+        if div and div.lower() != values["code"].lower():
+            values["parent_id"] = _division_row(db, div).id
+    row = CostCode(**values)
     db.add(row)
     db.commit()
     return _to_response(_get(db, row.id), db)
@@ -137,13 +176,10 @@ def create_cost_code(data: CostCodeCreate, db: Session = Depends(get_db)):
 
 @router.post("/standard", response_model=list[CostCodeResponse])
 def load_standard_cost_codes(db: Session = Depends(get_db)):
-    """Load the CSI MasterFormat divisions (plus Labor and Equipment
-    Rental). Existing codes are left alone, so this is safe to repeat."""
-    existing = {r.code.lower() for r in db.query(CostCode).all()}
-    for code, name, cost_type in STANDARD_COST_CODES:
-        if code.lower() in existing:
-            continue
-        db.add(CostCode(code=code, name=name, cost_type=cost_type))
+    """Load the CSI MasterFormat division titles and a modest set of common
+    sections, each section parented to its division. Existing codes are left
+    alone, so this is safe to repeat."""
+    load_masterformat(db)
     db.commit()
     return list_cost_codes(include_inactive=False, db=db)
 
@@ -153,6 +189,10 @@ def update_cost_code(code_id: int, data: CostCodeUpdate, db: Session = Depends(g
     row = _get(db, code_id)
     changes = reject_null_updates(CostCode, data.model_dump(exclude_unset=True))
     if "code" in changes:
+        changes["code"] = normalize_code(changes["code"])
+        # Re-derive the level from the new shape unless the caller pinned one.
+        if "level" not in changes:
+            changes["level"] = code_level(changes["code"])
         _check_code_clash(db, changes["code"], row.id)
     if "cost_type" in changes:
         _check_type_exists(db, changes["cost_type"])

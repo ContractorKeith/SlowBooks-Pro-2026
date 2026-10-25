@@ -15,6 +15,7 @@ from app.routes.cost_codes import load_standard_cost_codes
 from app.schemas.accounts import AccountResponse
 from app.services.accounting import CONSTRUCTION_ACCOUNTS, ensure_construction_accounts
 from app.services.job_costing import ensure_default_cost_types
+from app.services.masterformat import seed_trade_packages
 
 router = APIRouter(prefix="/api/construction", tags=["construction"])
 
@@ -25,10 +26,12 @@ def setup(db: Session = Depends(get_db)):
     (retainage, customer deposits, use tax, CIP, equipment and other job
     costs — numbers yield to an existing chart), the labor / material /
     subcontract / equipment / other cost types, and — only when the company
-    has no cost codes yet — the standard CSI MasterFormat set. A company
-    that has built its own cost-code chart keeps it untouched, so this is
-    safe to call any number of times and changes no posting. The Settings
-    page calls it when a company switches to construction.
+    has no cost codes yet — the CSI MasterFormat divisions and a set of
+    common sections, plus the default trade packages (bid packages mapped to
+    those sections). A company that has built its own cost-code chart keeps
+    it untouched, so this is safe to call any number of times and changes no
+    posting. The Settings page calls it when a company switches to
+    construction.
 
     (Cost types aren't a toggle setting — they are seeded on demand — so
     "enable cost types" means ensure the five exist before the codes that
@@ -36,9 +39,13 @@ def setup(db: Session = Depends(get_db)):
     accounts = ensure_construction_accounts(db)
     db.commit()
     ensure_default_cost_types(db)
-    # Only seed the CSI divisions into a company with no codes of its own:
-    # the loader skips matching code strings, but a company with a custom
-    # chart should not have 26 CSI divisions appear beside it.
+    # Only seed the MasterFormat chart into a company with no codes of its
+    # own: the loader skips matching code strings, but a company with a
+    # custom chart should not have CSI divisions appear beside it.
     if db.query(CostCode).count() == 0:
         load_standard_cost_codes(db)
+    # Default trade packages, mapped to the sections just seeded — once, only
+    # when the company has none yet.
+    seed_trade_packages(db)
+    db.commit()
     return [accounts[number] for number, _name, _type, _detail in CONSTRUCTION_ACCOUNTS]

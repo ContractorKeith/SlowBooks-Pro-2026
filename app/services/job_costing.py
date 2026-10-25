@@ -78,6 +78,29 @@ def cost_type_map(db: Session) -> dict[str, CostType]:
     return {r.code: r for r in db.query(CostType).all()}
 
 
+def line_cost_type(
+    db: Session, cost_code_id: Optional[int], cost_type: Optional[str]
+) -> Optional[str]:
+    """A document line's effective cost type (#550). A value given on the
+    line is validated against the cost_types table, the same check the cost
+    code gets; a blank falls back to the code's default so existing postings
+    are unchanged. Raises HTTPException(422) on an unknown type."""
+    from fastapi import HTTPException
+
+    if cost_type is not None:
+        if cost_type not in cost_type_map(db):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown cost type '{cost_type}' — add it under Settings → Cost Types",
+            )
+        return cost_type
+    if cost_code_id:
+        code = db.get(CostCode, cost_code_id)
+        if code:
+            return code.cost_type
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Cost-code tree
 # ---------------------------------------------------------------------------
@@ -122,15 +145,43 @@ def would_cycle(db: Session, code_id: int, new_parent_id: Optional[int]) -> bool
 
 
 def import_cost_codes(db: Session, rows: list[dict]) -> dict:
-    """Rows of {code, name, cost_type?, parent_code?}. Parents may appear
-    after children; a second pass links them. Existing codes are updated
-    (name / type / parent), never duplicated."""
+    """Rows of {code, name, cost_type?, parent_code?, level?}. Codes are
+    normalized to CSI "DD SS SS" (a custom code is left as typed), the level
+    is derived from the shape when a row doesn't give one, and a section with
+    no parent_code is auto-parented to its division — created from the title
+    table when the chart is missing it. Parents may appear after children; a
+    second pass links them. Existing codes are updated (name / type / level /
+    parent), never duplicated."""
+    from app.services.masterformat import (
+        DIVISION_TITLES,
+        code_level,
+        division_of,
+        normalize_code,
+    )
+
     types = cost_type_map(db)
     created = updated = 0
     errors: list[str] = []
     by_code: dict[str, CostCode] = {c.code.lower(): c for c in db.query(CostCode).all()}
+
+    def ensure_division(div: str) -> CostCode:
+        nonlocal created
+        row = by_code.get(div.lower())
+        if row is None:
+            row = CostCode(
+                code=div,
+                name=DIVISION_TITLES.get(div, div),
+                cost_type="other",
+                level="division",
+            )
+            db.add(row)
+            db.flush()
+            by_code[div.lower()] = row
+            created += 1
+        return row
+
     for i, row in enumerate(rows, 1):
-        code = (row.get("code") or "").strip()[:20]
+        code = normalize_code((row.get("code") or "").strip())[:20]
         name = (row.get("name") or "").strip()[:200]
         if not code or not name:
             errors.append(f"row {i}: code and name are required")
@@ -139,32 +190,37 @@ def import_cost_codes(db: Session, rows: list[dict]) -> dict:
         if ctype not in types:
             errors.append(f"row {i}: unknown cost type '{ctype}'")
             continue
+        level = (row.get("level") or "").strip().lower() or code_level(code)
         existing = by_code.get(code.lower())
         if existing:
-            existing.name, existing.cost_type = name, ctype
+            existing.name, existing.cost_type, existing.level = name, ctype, level
             updated += 1
         else:
-            existing = CostCode(code=code, name=name, cost_type=ctype)
+            existing = CostCode(code=code, name=name, cost_type=ctype, level=level)
             db.add(existing)
             db.flush()
             by_code[code.lower()] = existing
             created += 1
     for i, row in enumerate(rows, 1):
-        code = (row.get("code") or "").strip().lower()
-        parent_code = (row.get("parent_code") or "").strip().lower()
+        code = normalize_code((row.get("code") or "").strip()).lower()
+        parent_code = normalize_code((row.get("parent_code") or "").strip()).lower()
         if not code or code not in by_code:
             continue
-        if parent_code:
-            parent = by_code.get(parent_code)
-            if not parent:
-                errors.append(f"row {i}: parent '{parent_code}' not found")
-                continue
-            if parent.id == by_code[code].id or would_cycle(
-                db, by_code[code].id, parent.id
-            ):
-                errors.append(f"row {i}: parent would create a cycle")
-                continue
-            by_code[code].parent_id = parent.id
+        child = by_code[code]
+        if not parent_code:
+            # No parent given: a section sits under its division.
+            div = division_of(child.code)
+            if div and div.lower() != code:
+                child.parent_id = ensure_division(div).id
+            continue
+        parent = by_code.get(parent_code)
+        if not parent:
+            errors.append(f"row {i}: parent '{parent_code}' not found")
+            continue
+        if parent.id == child.id or would_cycle(db, child.id, parent.id):
+            errors.append(f"row {i}: parent would create a cycle")
+            continue
+        child.parent_id = parent.id
     db.flush()
     return {"created": created, "updated": updated, "errors": errors}
 
@@ -847,6 +903,7 @@ def job_cost_tree(
     committed_rows = (
         db.query(
             PurchaseOrderLine.cost_code_id,
+            PurchaseOrderLine.cost_type,
             sqlfunc.coalesce(sqlfunc.sum(PurchaseOrderLine.amount), 0),
         )
         .select_from(PurchaseOrderLine)
@@ -857,7 +914,7 @@ def job_cost_tree(
                 (POStatus.SENT, POStatus.PARTIAL, POStatus.RECEIVED)
             ),
         )
-        .group_by(PurchaseOrderLine.cost_code_id)
+        .group_by(PurchaseOrderLine.cost_code_id, PurchaseOrderLine.cost_type)
         .all()
     )
     budgets = db.query(JobBudget).filter(JobBudget.job_id == job_id).all()
@@ -901,10 +958,12 @@ def job_cost_tree(
                 "is_billable": bool(ln.is_billable),
             }
         )
-    for code_id, amt in committed_rows:
-        k = key_for(
-            code_id, code_by_id[code_id].cost_type if code_id in code_by_id else None
+    for code_id, line_ct, amt in committed_rows:
+        # the line's own type wins, the code's is the fallback
+        ctype = line_ct or (
+            code_by_id[code_id].cost_type if code_id in code_by_id else None
         )
+        k = key_for(code_id, ctype)
         fig.setdefault(k, _blank())["committed"] += Decimal(str(amt))
     job_level = _blank()
     type_level: dict[str, dict] = {}

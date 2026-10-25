@@ -12,11 +12,14 @@ new accounting posts yet.
 Picking Construction in Settings saves `company_type = construction` and
 calls `POST /api/construction/setup`, which:
 
-1. creates the contractor accounts below if they are missing, and
-2. loads the 26 standard CSI MasterFormat cost codes **only when the company
-   has no cost codes of its own** (the same list the Cost Codes page's
-   **Load Standard Codes** button loads), ensuring the labor / material /
-   subcontract / equipment / other cost types first.
+1. creates the contractor accounts below if they are missing,
+2. loads the CSI MasterFormat division titles and a set of common sections
+   **only when the company has no cost codes of its own** (the same list the
+   Cost Codes page's **Load MasterFormat divisions and common sections**
+   button loads), ensuring the labor / material / subcontract / equipment /
+   other cost types first, and
+3. seeds the default **trade packages**, mapped to the sections just loaded
+   (only when the company has no packages yet).
 
 Setup is idempotent — safe to run again. It never renumbers or renames an
 account you already have, never touches an existing cost code (a company
@@ -53,11 +56,48 @@ Subcontractor Costs.
 
 ## The cost codes
 
-The standard set is the 24 CSI MasterFormat **divisions** (01 General
-Requirements … 33 Utilities) plus Labor and Equipment Rental — 26 codes,
-each tagged with a cost type. This is the division level most US contractors
-already speak, not the full MasterFormat line-item list, which is not
-shipped. Add your own codes beneath a division on the Cost Codes page.
+Codes follow **CSI MasterFormat** at two levels:
+
+- a **division** — a two-digit number and title (`03` Concrete, `26`
+  Electrical), the 50-slot division list every US contractor and estimating
+  package speaks; and
+- a **section** — `DD SS SS` with an optional `.SS` extension (`03 30 00`
+  Cast-in-Place Concrete, `07 42 13.16`), which sits under its division
+  through the cost-code tree's parent link, set automatically.
+
+Each code carries a `level` of `division`, `section`, or null for a code that
+isn't MasterFormat-shaped. **What you type is normalized on save and import**:
+`033000`, `03-3000`, `03 3000` and `03.30.00` all become `03 30 00`. A custom
+code (`L-100`, `EQ`) is left exactly as typed, with a null level. Everything
+sorts by code — list, tree, pickers, import result.
+
+The seeded set is the division titles plus a **modest set of common
+sections**. CSI's full numbered section catalogue is licensed, so it is not
+shipped; import your own full list through **Import CSV** on the Cost Codes
+page — a CSV of just `code,name` is enough (a few hundred sections land
+normalized and auto-parented in one call, each section's division created
+from the title table if the chart is missing it). Cost type is optional on
+import and defaults to `other`.
+
+### Trade packages
+
+A **trade package** (Concrete, Drywall and Ceilings, HVAC, Electrical …) is
+what a subcontractor bids and gets awarded; a cost-code **section** is what
+costs post to. The two are mapped many-to-many — a package can span
+divisions, and a division can be split across packages. Construction setup
+seeds a default set of packages mapped to the sections it has; edit them, and
+the section mapping, under **Settings → Trade Packages** (shown only for
+construction companies). Nothing references a package yet — bids and
+commitments are later steps.
+
+### Cost type per line
+
+A cost code carries a **default** cost type, but the type is chosen **per
+line** on a budget, estimate, commitment or bill — a `03 30 00` line can post
+as subcontract on one job and as labor on another. Leave the line's type
+blank to use the code's default, so existing books are unchanged. Job-cost
+reports read the line's type first and fall back to the code's, and roll a
+section's cost up under its division.
 
 ## The words
 
@@ -105,4 +145,7 @@ appear. Every other report stays where it is.
   to by hand until those land.
 - **No COI-expiry warning** in Pay Bills — a later issue.
 - **Customer:Job** still prints with a space; the no-space form is deferred.
-- **No full MasterFormat** line-item cost-code list; divisions only.
+- **No full MasterFormat** section catalogue (CSI-licensed); the division
+  titles and a set of common sections ship, and you import the rest.
+- **Nothing references a trade package yet** — bids and commitments against a
+  package are later steps.

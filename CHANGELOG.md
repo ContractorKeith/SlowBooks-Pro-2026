@@ -40,37 +40,43 @@ clients truncate long bodies; Reveal log file opens the log's folder on native
 desktop installs only. Security reports still go through GitHub Security
 Advisories. See docs/support.md.
 
-**Construction company type** (#431, @ContractorKeith; Testing #110,
-Phase 2). Settings → Company Type gains a third value, Construction, beside
-Business and Nonprofit. Switching to it works like switching to Nonprofit:
-it changes no data, and it adds a set of contractor accounts and the
-standard cost codes rather than re-seeding the chart. The accounts are
-Retainage Receivable (1150), Construction in Progress (1350), Retainage
-Payable (2050), Customer Deposits (2210), Use Tax Payable (2220), Equipment
-Cost (5400) and Other Job Costs (5500) — each created only if missing, its
-number yielding to a chart that already owns it, and placed on the balance
-sheet as an Other Current asset or liability (the job-cost accounts as Cost
-of Goods Sold). The switch also loads the 26 standard CSI MasterFormat cost
-codes (the same list the Cost Codes page loads) and the labor / material /
-subcontract / equipment / other cost types they use — but only into a
-company that has no cost codes of its own yet, so a custom chart is left
-alone. Vocabulary is light — a contractor keeps Customer, Invoice, Estimate
-and Job; the one word that changes is "Subcontractor", shown as "Sub".
-Vendors gain a Sub type with a trade license and a certificate of insurance
-(carrier, policy number, expiry); the first time a vendor is marked a Sub,
-1099-NEC turns on, and it can be changed afterward. The Report Center leads
-with the contractor reports that already exist — Job Profitability, Job
-Budget vs Actual, P&L by Job.
+**Construction cost codes: CSI MasterFormat, trade packages, and a cost
+type on every line** (#550, @ContractorKeith; Testing #110; step 1 of the
+commercial GC layer). The Construction company type (#431) keeps its
+contractor accounts, its Sub vendor type with the 1099-NEC transition rule,
+its light vocabulary (Subcontractor → Sub) and its Report Center ordering
+(Job Profitability, Job Budget vs Actual, P&L by Job). What changes is the
+cost-code chart. Codes now follow CSI MasterFormat at two levels — a
+**division** ("03") and a **section** ("03 30 00", with an optional ".16"
+extension) — and a section sits under its division automatically. What you
+type is normalized on save and import (`033000`, `03-3000`, `03.30.00` all
+become `03 30 00`); a code that isn't MasterFormat-shaped (`L-100`, `EQ`) is
+left exactly as typed. The switch (and the Cost Codes page's **Load
+MasterFormat divisions and common sections** button) seeds the division
+titles plus a modest set of common sections — the full section catalogue is
+CSI's licensed product, so you import your own through **Import CSV** (a few
+hundred sections with just `code,name` land normalized and auto-parented in
+one call). The accounts, cost types and MasterFormat chart still seed only
+into a company that has no cost codes of its own yet, so a custom chart is
+left alone.
+
+New **Trade Packages** (Concrete, Drywall and Ceilings, HVAC, Electrical …):
+a bid package is what a sub bids and gets awarded, mapped to the cost-code
+sections its costs post to. A package can span divisions; a division can be
+split across packages. Construction setup seeds the defaults, mapped to the
+sections it has. And a **cost type** now rides each budget, estimate,
+commitment and bill line — not fixed per code — so a line can carry a type
+that differs from its code's default; left blank, it falls back to the code's
+type, so existing books read exactly as before. The cost type picker appears
+beside the cost code on bills, expenses, journal entries, purchase orders and
+estimates, and job-cost reports roll a section's cost up under its division.
 
 Not yet: no first-run "what kind of company is this?" prompt (company_type
 still defaults to Business; Construction is chosen in Settings, as Nonprofit
 is), no new accounting, no change orders / draws / pay applications screens,
-no COI-expiry warning in Pay Bills, and the full MasterFormat line-item list
-is not shipped. The job and cost-code columns appear on bills, expenses,
-purchase orders and journal entries as soon as the company has a job or a
-cost code (construction setup seeds the cost codes), and a prompt to collect
-a Sub's W-9 is a follow-up. See
-[docs/contractor-mode.md](docs/contractor-mode.md).
+no COI-expiry warning in Pay Bills, and nothing references a trade package
+yet (bids and commitments are later steps). A prompt to collect a Sub's W-9
+is a follow-up. See [docs/contractor-mode.md](docs/contractor-mode.md).
 
 ### v2.29.1 — Profit & Loss Detail, Bill Quick Entry, and pre-printed checks
 
