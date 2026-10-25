@@ -67,9 +67,11 @@ split across packages. Construction setup seeds the defaults, mapped to the
 sections it has. And a **cost type** now rides each budget, estimate,
 commitment and bill line — not fixed per code — so a line can carry a type
 that differs from its code's default; left blank, it falls back to the code's
-type, so existing books read exactly as before. The cost type picker appears
-beside the cost code on bills, expenses, journal entries, purchase orders and
-estimates, and job-cost reports roll a section's cost up under its division.
+type, so existing books read exactly as before. In construction mode the cost
+type picker appears beside the cost code on bills, expenses, journal entries,
+purchase orders and estimates (Business and Nonprofit forms keep their
+columns and post the code's type); job-cost reports roll a section's cost up
+under its division.
 
 Not yet: no first-run "what kind of company is this?" prompt (company_type
 still defaults to Business; Construction is chosen in Settings, as Nonprofit

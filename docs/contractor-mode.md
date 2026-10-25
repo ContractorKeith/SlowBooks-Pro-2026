@@ -98,9 +98,11 @@ commitments are later steps.
 A cost code carries a **default** cost type, but the type is chosen **per
 line** on a budget, estimate, commitment or bill — a `03 30 00` line can post
 as subcontract on one job and as labor on another. Leave the line's type
-blank to use the code's default, so existing books are unchanged. Job-cost
-reports read the line's type first and fall back to the code's, and roll a
-section's cost up under its division.
+blank to use the code's default, so existing books are unchanged. The picker
+shows in construction mode only; a Business or Nonprofit company keeps its
+line forms as they were and posts the code's type (the API accepts a line
+type for any company). Job-cost reports read the line's type first and fall
+back to the code's, and roll a section's cost up under its division.
 
 ## The words
 

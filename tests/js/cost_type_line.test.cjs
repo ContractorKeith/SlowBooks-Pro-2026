@@ -14,6 +14,7 @@ function utilsContext() {
         window: {},
         document: { addEventListener() {} },
         API: { get: async () => [] },
+        Terms: { mode: 'business', isConstruction() { return this.mode === 'construction'; } },
     };
     vm.createContext(context);
     vm.runInContext(
@@ -26,6 +27,7 @@ function utilsContext() {
 
 test('CostTypes renders nothing when the company has no cost codes', () => {
     const ctx = utilsContext();
+    ctx.Terms.mode = 'construction';
     ctx.CostCodes._list = [];
     ctx.CostTypes._list = [{ code: 'labor', name: 'Labor' }];
     assert.equal(ctx.CostTypes.any(), false);
@@ -33,8 +35,18 @@ test('CostTypes renders nothing when the company has no cost codes', () => {
     assert.equal(ctx.CostTypes.cellHtml('line-cost-type'), '');
 });
 
-test('CostTypes renders a header and a line cell when cost codes exist', () => {
+test('CostTypes renders nothing outside construction mode, even with cost codes', () => {
     const ctx = utilsContext();
+    ctx.Terms.mode = 'business';
+    ctx.CostCodes._list = [{ id: 1, code: '03', name: 'Concrete', label: '03 Concrete' }];
+    ctx.CostTypes._list = [{ code: 'labor', name: 'Labor' }];
+    assert.equal(ctx.CostTypes.any(), false);
+    assert.equal(ctx.CostTypes.headHtml(), '');
+});
+
+test('CostTypes renders a header and a line cell for a construction company with cost codes', () => {
+    const ctx = utilsContext();
+    ctx.Terms.mode = 'construction';
     ctx.CostCodes._list = [{ id: 1, code: '03', name: 'Concrete', label: '03 Concrete' }];
     ctx.CostTypes._list = [
         { code: 'labor', name: 'Labor' },

@@ -1667,9 +1667,11 @@ const CostCodes = {
 
 // ---------------------------------------------------------------------------
 // Cost types — the per-LINE cost type that sits beside the cost code on a cost
-// form (#550). Same shape as CostCodes; shown under the same gate
-// (CostCodes.any()), since a line only carries a cost type where it carries a
-// cost code. Blank means "use the cost code's own type".
+// form (#550). Same shape as CostCodes; shown in construction mode under the
+// cost code column's gate (CostCodes.any()), since a line only carries a cost
+// type where it carries a cost code. Business and Nonprofit forms keep their
+// nine columns (the bill form fits the agents' window exactly) and post the
+// code's own type. Blank means "use the cost code's own type".
 // ---------------------------------------------------------------------------
 const CostTypes = {
     _list: null,
@@ -1677,8 +1679,8 @@ const CostTypes = {
         try { CostTypes._list = await API.get('/cost-types'); } catch (e) { CostTypes._list = []; }
         return CostTypes._list;
     },
-    // gated the same way the cost code column is
-    any() { return CostCodes.any(); },
+    // construction mode, and gated the same way the cost code column is
+    any() { return Terms.isConstruction() && CostCodes.any(); },
     optionsHtml(selected) {
         return '<option value="">--</option>' + (CostTypes._list || []).map(t =>
             `<option value="${escapeHtml(t.code)}" ${selected === t.code ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('');
