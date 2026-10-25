@@ -167,10 +167,11 @@ TRADE_PACKAGES = (
 DIVISION_TITLES = dict(DIVISIONS)
 
 # ---------------------------------------------------------------------------
-# Code shape: CSI "DD SS SS" with an optional ".SS" extension. A MasterFormat
-# code is all digits and separators with 2 (division), 4, 6 (section) or 8
-# (section + extension) digits; anything else (L-100, EQ) is a custom code and
-# is left exactly as typed.
+# Code shape: CSI "DD SS SS" with an optional ".SS" extension. A division is
+# exactly two digits as typed; a section is all digits and separators with 6
+# (DD SS SS) or 8 (with a .SS extension) digits. Anything else — a custom
+# chart's "1000", "0330", "1.5", "L-100", "EQ" — is left exactly as typed, so
+# a company that numbers its own way is never rewritten.
 # ---------------------------------------------------------------------------
 
 _MF_SHAPE = re.compile(r"^[\d\s.\-]+$")
@@ -179,23 +180,21 @@ _SECTION = re.compile(r"^\d{2} \d{2} \d{2}(\.\d{2})?$")
 
 
 def normalize_code(raw: str) -> str:
-    """Normalize a typed cost code to 'DD SS SS' (optional '.SS'). A code
-    that isn't MasterFormat-shaped is returned stripped but otherwise as
-    typed."""
+    """Normalize a typed cost code to CSI 'DD SS SS' (optional '.SS'). Only a
+    two-digit division or a 6-/8-digit section is reshaped; everything else is
+    returned stripped but otherwise as typed, so numeric custom charts
+    ('1000', '0330', '1.5') are never mangled."""
     s = (raw or "").strip()
-    if not s or not _MF_SHAPE.match(s):
+    if not s:
         return s
-    digits = re.sub(r"\D", "", s)
-    n = len(digits)
-    if n == 2:
-        return digits
-    if n == 4:
-        digits += "00"
-        n = 6
-    if n == 6:
-        return f"{digits[0:2]} {digits[2:4]} {digits[4:6]}"
-    if n == 8:
-        return f"{digits[0:2]} {digits[2:4]} {digits[4:6]}.{digits[6:8]}"
+    if _DIVISION.match(s):  # a division is exactly two digits as typed
+        return s
+    if _MF_SHAPE.match(s):
+        digits = re.sub(r"\D", "", s)
+        if len(digits) == 6:
+            return f"{digits[0:2]} {digits[2:4]} {digits[4:6]}"
+        if len(digits) == 8:
+            return f"{digits[0:2]} {digits[2:4]} {digits[4:6]}.{digits[6:8]}"
     return s
 
 
@@ -216,6 +215,31 @@ def division_of(code: str) -> str | None:
     return None
 
 
+def ensure_division(db: Session, number: str, cache: dict | None = None):
+    """The division row a section parents to, created from the title table
+    when the chart doesn't have it. `cache` (code.lower() -> CostCode), when
+    given, is read and updated in place so a bulk load avoids re-querying."""
+    from app.models.cost_codes import CostCode
+
+    number = (number or "")[:20]
+    key = number.lower()
+    if cache is not None and key in cache:
+        return cache[key]
+    row = db.query(CostCode).filter(CostCode.code.ilike(number)).first()
+    if row is None:
+        row = CostCode(
+            code=number,
+            name=DIVISION_TITLES.get(number, number),
+            cost_type="other",
+            level="division",
+        )
+        db.add(row)
+        db.flush()
+    if cache is not None:
+        cache[key] = row
+    return row
+
+
 def load_masterformat(db: Session) -> dict:
     """Load the division titles and the common sections: divisions first,
     then each section parented to its division (created from the title table
@@ -227,26 +251,21 @@ def load_masterformat(db: Session) -> dict:
     by_code = {c.code.lower(): c for c in db.query(CostCode).all()}
     created = 0
 
-    def ensure_division(code: str, name: str) -> CostCode:
-        nonlocal created
-        row = by_code.get(code.lower())
-        if row is None:
-            row = CostCode(code=code, name=name, cost_type="other", level="division")
-            db.add(row)
-            db.flush()
-            by_code[code.lower()] = row
-            created += 1
-        return row
-
     for code, name in DIVISIONS:
-        ensure_division(code, name)
+        if code.lower() not in by_code:
+            created += 1
+        ensure_division(db, code, by_code)
 
     for raw, name in SECTIONS:
         code = normalize_code(raw)
         if code.lower() in by_code:
             continue
         div = division_of(code)
-        parent = ensure_division(div, DIVISION_TITLES.get(div, div)) if div else None
+        parent = None
+        if div:
+            if div.lower() not in by_code:
+                created += 1
+            parent = ensure_division(db, div, by_code)
         row = CostCode(
             code=code,
             name=name,
@@ -265,12 +284,17 @@ def load_masterformat(db: Session) -> dict:
 
 def seed_trade_packages(db: Session) -> int:
     """Seed the default trade packages and their section mappings, once, when
-    the company has none. Maps each package by section code and skips a code
-    the chart doesn't have. Returns the number of packages created."""
+    the chart has at least one section and the company has no packages yet.
+    Maps each package by section code and skips a code the chart doesn't have.
+    Returns the number of packages created."""
     from app.models.cost_codes import CostCode
     from app.models.trade_packages import TradePackage, TradePackageSection
 
     if db.query(TradePackage.id).first():
+        return 0
+    # Nothing to bid against without sections, so a custom (non-MasterFormat)
+    # chart gets no empty packages.
+    if not db.query(CostCode.id).filter(CostCode.level == "section").first():
         return 0
     by_code = {c.code.lower(): c for c in db.query(CostCode).all()}
     created = 0

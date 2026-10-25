@@ -34,6 +34,7 @@ from app.services.bank_posting import (
 )
 from app.services.bank_register import date_text
 from app.services.closing_date import check_closing_date
+from app.services.job_costing import line_cost_type
 from app.services.safe_errors import safe_message
 from app.services.entry_text import header_text
 
@@ -202,6 +203,12 @@ def _journal_lines(db: Session, data, edit: bool = False) -> list[dict]:
                 if value is None and key in unmanaged:
                     continue
                 row[key] = value
+        # Validate a sent cost type against cost_types (and fill from the code
+        # when blank), the same check the other cost forms run (#550).
+        if "cost_type" in row:
+            row["cost_type"] = line_cost_type(
+                db, row.get("cost_code_id"), row["cost_type"]
+            )
         lines.append(row)
     return lines
 

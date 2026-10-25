@@ -176,6 +176,8 @@ def create_vendor_credit(data: VendorCreditCreate, db: Session = Depends(get_db)
 
     for i, line_data in enumerate(data.lines):
         amt = amounts[i]
+        # The line's cost type, validated and filled from the code when blank.
+        eff_cost_type = line_cost_type(db, line_data.cost_code_id, line_data.cost_type)
         item = None
         if line_data.item_id:
             item = db.query(Item).filter(Item.id == line_data.item_id).first()
@@ -233,9 +235,7 @@ def create_vendor_credit(data: VendorCreditCreate, db: Session = Depends(get_db)
                 job_id=line_data.job_id,
                 class_id=line_data.class_id,
                 cost_code_id=line_data.cost_code_id,
-                cost_type=line_cost_type(
-                    db, line_data.cost_code_id, line_data.cost_type
-                ),
+                cost_type=eff_cost_type,
                 line_order=line_data.line_order or i,
             )
         )
@@ -250,9 +250,7 @@ def create_vendor_credit(data: VendorCreditCreate, db: Session = Depends(get_db)
                     "job_id": line_data.job_id,
                     "class_id": line_data.class_id,
                     "cost_code_id": line_data.cost_code_id,
-                    "cost_type": line_cost_type(
-                        db, line_data.cost_code_id, line_data.cost_type
-                    ),
+                    "cost_type": eff_cost_type,
                 }
             )
 

@@ -3,7 +3,9 @@
 Step 1 of the commercial GC layer. Additive and nullable throughout:
 
 - cost_codes.level — "division" / "section" / NULL (a custom code), derived
-  from the CSI code shape on save and import.
+  from the CSI code shape on save and import. Existing rows are backfilled by
+  shape: a two-digit code is a division, "DD SS SS" (optional ".SS") a
+  section, anything else stays NULL.
 - cost_type on bill_lines, estimate_lines, purchase_order_lines and
   vendor_credit_lines — the per-line cost type (transaction_lines already
   has one); NULL falls back to the cost code's default, so existing lines
@@ -20,6 +22,7 @@ Create Date: 2026-10-25
 
 """
 
+import re
 from typing import Sequence, Union
 
 from alembic import op
@@ -42,6 +45,25 @@ _LINE_TABLES = (
 def upgrade() -> None:
     with op.batch_alter_table("cost_codes") as batch:
         batch.add_column(sa.Column("level", sa.String(length=10), nullable=True))
+
+    # Backfill the level from each existing code's shape (portable Python so
+    # it runs on SQLite and PostgreSQL alike).
+    division = re.compile(r"^\d{2}$")
+    section = re.compile(r"^\d{2} \d{2} \d{2}(\.\d{2})?$")
+    conn = op.get_bind()
+    for row in conn.execute(sa.text("SELECT id, code FROM cost_codes")).fetchall():
+        code = (row[1] or "").strip()
+        level = (
+            "division"
+            if division.match(code)
+            else ("section" if section.match(code) else None)
+        )
+        if level:
+            conn.execute(
+                sa.text("UPDATE cost_codes SET level = :level WHERE id = :id"),
+                {"level": level, "id": row[0]},
+            )
+
     for table in _LINE_TABLES:
         with op.batch_alter_table(table) as batch:
             batch.add_column(sa.Column("cost_type", sa.String(length=20), nullable=True))

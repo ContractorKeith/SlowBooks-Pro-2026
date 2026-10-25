@@ -59,16 +59,19 @@ Subcontractor Costs.
 Codes follow **CSI MasterFormat** at two levels:
 
 - a **division** — a two-digit number and title (`03` Concrete, `26`
-  Electrical), the 50-slot division list every US contractor and estimating
-  package speaks; and
+  Electrical), the titled MasterFormat divisions every US contractor and
+  estimating package speaks (the reserved, un-titled division numbers are
+  left out; add them yourself); and
 - a **section** — `DD SS SS` with an optional `.SS` extension (`03 30 00`
   Cast-in-Place Concrete, `07 42 13.16`), which sits under its division
   through the cost-code tree's parent link, set automatically.
 
 Each code carries a `level` of `division`, `section`, or null for a code that
 isn't MasterFormat-shaped. **What you type is normalized on save and import**:
-`033000`, `03-3000`, `03 3000` and `03.30.00` all become `03 30 00`. A custom
-code (`L-100`, `EQ`) is left exactly as typed, with a null level. Everything
+`033000`, `03-3000`, `03 3000` and `03.30.00` all become `03 30 00`. Only a
+two-digit division or a 6-/8-digit section is reshaped; a code that numbers
+its own way (`L-100`, `EQ`, or a numeric `1000`/`2000` chart) is left exactly
+as typed, with a null level, and re-importing it never rewrites it. Everything
 sorts by code — list, tree, pickers, import result.
 
 The seeded set is the division titles plus a **modest set of common

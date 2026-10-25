@@ -25,9 +25,9 @@ from app.services.job_costing import (
     would_cycle,
 )
 from app.services.masterformat import (
-    DIVISION_TITLES,
     code_level,
     division_of,
+    ensure_division,
     load_masterformat,
     normalize_code,
 )
@@ -35,22 +35,6 @@ from app.schemas.common import StrictModel
 from typing import Optional
 
 router = APIRouter(prefix="/api/cost-codes", tags=["cost-codes"])
-
-
-def _division_row(db: Session, div: str) -> CostCode:
-    """The division row a section parents to, created from the title table
-    when the chart doesn't have it yet."""
-    row = db.query(CostCode).filter(CostCode.code.ilike(div)).first()
-    if row is None:
-        row = CostCode(
-            code=div,
-            name=DIVISION_TITLES.get(div, div),
-            cost_type="other",
-            level="division",
-        )
-        db.add(row)
-        db.flush()
-    return row
 
 
 def _to_response(row: CostCode, db: Session | None = None) -> CostCodeResponse:
@@ -167,7 +151,7 @@ def create_cost_code(data: CostCodeCreate, db: Session = Depends(get_db)):
     if values.get("parent_id") is None:
         div = division_of(values["code"])
         if div and div.lower() != values["code"].lower():
-            values["parent_id"] = _division_row(db, div).id
+            values["parent_id"] = ensure_division(db, div).id
     row = CostCode(**values)
     db.add(row)
     db.commit()
@@ -189,7 +173,12 @@ def update_cost_code(code_id: int, data: CostCodeUpdate, db: Session = Depends(g
     row = _get(db, code_id)
     changes = reject_null_updates(CostCode, data.model_dump(exclude_unset=True))
     if "code" in changes:
-        changes["code"] = normalize_code(changes["code"])
+        raw = changes["code"]
+        # A code that already exists as typed (case-insensitive) is kept as
+        # typed, so re-saving a numeric custom chart's "1000" never rewrites
+        # it; otherwise normalize to CSI shape.
+        existing = db.query(CostCode).filter(CostCode.code.ilike(raw)).first()
+        changes["code"] = raw if existing else normalize_code(raw)
         # Re-derive the level from the new shape unless the caller pinned one.
         if "level" not in changes:
             changes["level"] = code_level(changes["code"])
