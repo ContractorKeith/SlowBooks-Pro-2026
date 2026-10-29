@@ -52,7 +52,6 @@ def _check_text(subject: str, body: str) -> None:
 
 @router.get("/rules", response_model=list[RuleResponse])
 def list_rules(db: Session = Depends(get_db)):
-    svc.ensure_default_rules(db)
     return [svc.rule_dict(r) for r in svc.list_rules(db)]
 
 

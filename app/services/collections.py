@@ -31,6 +31,7 @@ from app.models.credit_memos import CreditMemo, CreditMemoStatus
 from app.models.email_log import EmailLog
 from app.models.invoices import Invoice, InvoiceStatus
 from app.models.payments import Payment
+from app.services.contact_balances import customer_balances
 from app.services.donor_documents import document_label, invoice_doc_kind
 from app.services.email_service import send_email
 from app.services.pdf_service import generate_invoice_pdf, generate_statement_pdf
@@ -159,6 +160,10 @@ def ensure_default_rules(db: Session) -> None:
 
 
 def list_rules(db: Session) -> list[InvoiceReminderRule]:
+    """Every rule, softest first. Seeds the defaults on a company that has
+    none, so a run or the Collections page works before anyone has opened
+    Settings; a company that deleted every rule gets the defaults back."""
+    ensure_default_rules(db)
     return (
         db.query(InvoiceReminderRule).order_by(InvoiceReminderRule.days_from_due).all()
     )
@@ -625,9 +630,12 @@ def statement_candidates(db: Session, as_of: date) -> list[dict]:
         .order_by(Customer.name)
         .all()
     )
+    # Customer.balance is a stored column nothing keeps up; what a customer
+    # owes is summed from the open documents (contact_balances).
+    owed = customer_balances(db, [c.id for c in customers])
     out = []
     for c in customers:
-        balance = float(c.balance or 0)
+        balance = float(owed.get(c.id, 0))
         if balance == 0 and c.id not in recent:
             continue
         email = (c.email or "").strip()

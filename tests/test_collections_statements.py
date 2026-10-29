@@ -36,16 +36,31 @@ def mail(monkeypatch, db_session):
 
 
 def _cust(db, name, email="x@example.com", balance=100, monthly=True, **kw):
+    """A customer; `balance` is owed on an old open invoice (the balance is
+    summed from documents, Customer.balance is never read), dated long ago
+    so it is not recent activity."""
     c = Customer(
         name=name,
         email=email,
         is_active=True,
-        balance=Decimal(balance),
         monthly_statement=monthly,
         **kw,
     )
     db.add(c)
     db.commit()
+    if balance:
+        db.add(
+            Invoice(
+                invoice_number=f"OLD-{c.id}",
+                customer_id=c.id,
+                status=InvoiceStatus.SENT,
+                date=date(2025, 1, 1),
+                due_date=date(2025, 1, 31),
+                total=Decimal(balance),
+                balance_due=Decimal(balance),
+            )
+        )
+        db.commit()
     return c
 
 
