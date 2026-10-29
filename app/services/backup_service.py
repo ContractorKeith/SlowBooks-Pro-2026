@@ -10,11 +10,13 @@
 # state they are in, whichever state the backup was in.
 # ============================================================================
 
+import json
 import logging
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,6 +61,95 @@ LEGACY_SLUG = "slowbooks"
 PRE_RESTORE_TAG = "before-restore"
 
 
+# ---------------------------------------------------------------------------
+# Where backups go. BACKUP_DIR is the default; an administrator can choose
+# another folder in Settings (an external drive, a synced folder). The choice
+# is kept in BACKUP_DIR/backup-settings.json, not in the books: it is a
+# setting of this machine, so restoring a backup must not move it. Backups
+# already in the default folder stay listed and restorable.
+# ---------------------------------------------------------------------------
+
+
+def _settings_file() -> Path:
+    return BACKUP_DIR / "backup-settings.json"
+
+
+def read_backup_settings() -> dict:
+    try:
+        settings = json.loads(_settings_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def update_backup_settings(**changes) -> dict:
+    """Merge ``changes`` into the settings file; a None value removes a key.
+    Written to a temp file and renamed over it, so never half-written."""
+    settings = {**read_backup_settings(), **changes}
+    settings = {k: v for k, v in settings.items() if v is not None}
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _settings_file().with_suffix(".tmp")
+    tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    os.replace(tmp, _settings_file())
+    return settings
+
+
+def custom_backup_dir() -> Path | None:
+    """The folder chosen in Settings, or None for the default."""
+    folder = read_backup_settings().get("folder")
+    return Path(folder) if isinstance(folder, str) and folder else None
+
+
+def backup_dir() -> Path:
+    """Where new backups are written."""
+    return custom_backup_dir() or BACKUP_DIR
+
+
+def _backup_dirs() -> list[Path]:
+    """Every existing folder backups are listed and restored from: the
+    chosen one first, then the default."""
+    dirs = [backup_dir()]
+    if dirs[0] != BACKUP_DIR:
+        dirs.append(BACKUP_DIR)
+    return [d for d in dirs if d.is_dir()]
+
+
+def set_backup_dir(folder: str | None) -> Path:
+    """Choose where new backups go; blank goes back to the default.
+    Raises ValueError with a sentence for the person when the folder can't
+    be used. Never creates the folder: a path on a drive that isn't plugged
+    in would otherwise quietly become a folder on the startup disk."""
+    folder = (folder or "").strip()
+    if not folder:
+        update_backup_settings(folder=None)
+        return BACKUP_DIR
+    path = Path(folder).expanduser()
+    if not path.is_absolute():
+        raise ValueError(
+            "Enter the folder's full path, e.g. /Volumes/Backup/SlowBooks."
+        )
+    if not path.is_dir():
+        raise ValueError(f"There is no folder at {path}.")
+    try:
+        with tempfile.NamedTemporaryFile(dir=path):
+            pass  # a write probe; the file vanishes on close
+    except OSError:
+        raise ValueError(f"SlowBooks Pro can't save files in {path}.") from None
+    path = path.resolve()
+    update_backup_settings(folder=None if path == BACKUP_DIR.resolve() else str(path))
+    return path
+
+
+def _unavailable(folder: Path) -> dict:
+    return {
+        "success": False,
+        "error": (
+            f"The backup folder {folder} is not available. Connect the drive "
+            "it is on, or choose another folder in Settings."
+        ),
+    }
+
+
 def parse_backup_name(filename: str) -> dict | None:
     """{"slug", "stamp", "tag"} for a name this app makes, else None."""
     m = _NAME_RE.match(filename or "")
@@ -80,13 +171,17 @@ def company_slug() -> str:
     return f"{slug}-books" if slug == LEGACY_SLUG else slug
 
 
+def _name_taken(name: str) -> bool:
+    return any((folder / name).exists() for folder in _backup_dirs())
+
+
 def _new_backup_filename(tag: str | None = None) -> str:
     ext = "db" if _is_sqlite() else "sql"
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = f"{company_slug()}_{stamp}" + (f"-{tag}" if tag else "")
     name = f"{base}.{ext}"
     n = 2
-    while (BACKUP_DIR / name).exists():  # two in one second must not overwrite
+    while _name_taken(name):  # two in one second must not overwrite
         name = f"{base}-{n}.{ext}"
         n += 1
     return name
@@ -156,7 +251,7 @@ def _parse_db_url(url: str) -> dict:
 def _create_sqlite_backup(
     db: Session, notes: str, backup_type: str, tag: str | None = None
 ) -> dict:
-    """Snapshot the active company's .db file into BACKUP_DIR."""
+    """Snapshot the active company's .db file into the backup folder."""
     src = _sqlite_db_path()
     if src is None or not src.exists():
         return {
@@ -164,8 +259,11 @@ def _create_sqlite_backup(
             "error": "Active database is not a file-backed SQLite database",
         }
 
+    folder = backup_dir()
+    if not folder.is_dir():
+        return _unavailable(folder)
     filename = _new_backup_filename(tag)
-    filepath = BACKUP_DIR / filename
+    filepath = folder / filename
 
     try:
         # sqlite3's online backup API gives a consistent snapshot even if
@@ -333,9 +431,12 @@ def create_backup(
     if _is_sqlite():
         return _create_sqlite_backup(db, notes, backup_type, tag)
 
+    folder = backup_dir()
+    if not folder.is_dir():
+        return _unavailable(folder)
     params = _parse_db_url(DATABASE_URL)
     filename = _new_backup_filename(tag)
-    filepath = BACKUP_DIR / filename
+    filepath = folder / filename
 
     env = {"PGPASSWORD": params["password"]}
 
@@ -394,13 +495,10 @@ def restore_backup(db: Session, filename: str, recovery_key: str | None = None) 
     if safe_name is None:
         return {"success": False, "error": "Invalid filename"}
 
-    # normpath + startswith is the containment guard CodeQL recognizes for
-    # py/path-injection (is_relative_to on Path objects is not).
-    backup_root = os.path.normpath(str(BACKUP_DIR))
-    candidate = os.path.normpath(os.path.join(backup_root, safe_name))
-    if not candidate.startswith(backup_root + os.sep):
+    # backup_path() holds the containment guard (normpath + startswith).
+    filepath = backup_path(safe_name)
+    if filepath is None:
         return {"success": False, "error": "Invalid filename"}
-    filepath = Path(candidate)
     if not filepath.exists():
         return {"success": False, "error": f"Backup file not found: {safe_name}"}
 
@@ -443,14 +541,94 @@ def restore_backup(db: Session, filename: str, recovery_key: str | None = None) 
         return {"success": False, "error": "pg_restore not found"}
 
 
+# ---------------------------------------------------------------------------
+# A backup chosen on the person's computer (a thumb drive, a download). It is
+# copied into the backup folder and then restored the ordinary way, so it gets
+# every check a listed backup gets: whose books, which version, a key that
+# opens it, and a safety copy of the books as they are first.
+# ---------------------------------------------------------------------------
+
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+_PG_DUMP_MAGIC = b"PGDMP"  # pg_dump -F c, what create_backup() writes
+
+
+def _refuse(error: str, status: int = 400) -> dict:
+    return {"success": False, "error": error, "status": status}
+
+
+def _open_new_upload(folder: Path, original: str | None, ext: str):
+    """Create (never overwrite) a file named close to the upload's own and
+    return (name, open binary file). The name says whose books it is."""
+    stem = Path(os.path.basename(original or "")).stem
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", stem).strip("-")[:100] or "uploaded"
+    name, n = f"{stem}.{ext}", 2
+    while True:
+        if not _name_taken(name):
+            try:
+                return name, open(folder / name, "xb")
+            except FileExistsError:
+                pass  # taken a moment ago: try the next
+        name = f"{stem}-{n}.{ext}"
+        n += 1
+
+
+def save_uploaded_backup(fileobj, original_name: str | None) -> dict:
+    """Copy an uploaded backup into the backup folder, kept only if it is a
+    backup this install can restore. {"success": True, "filename"} or
+    {"success": False, "error", "status"}. Streamed, never held in memory."""
+    from app.services.upload_limits import MAX_BACKUP_UPLOAD_BYTES
+
+    folder = backup_dir()
+    if not folder.is_dir():
+        return _refuse(_unavailable(folder)["error"], 500)
+    magic = _SQLITE_MAGIC if _is_sqlite() else _PG_DUMP_MAGIC
+    head = fileobj.read(len(magic))
+    fileobj.seek(0)
+    # An encrypted company file's backup (#290) has no SQLite header. It is
+    # taken only by an encrypted company, and kept only if it opens with
+    # that company's key (checked below).
+    encrypted_books = _is_sqlite() and company_file.is_encrypted_file(_sqlite_db_path())
+    if head != magic and not encrypted_books:
+        return _refuse("This is not a SlowBooks Pro backup for this kind of install.")
+    filename, out = _open_new_upload(
+        folder, original_name, "db" if _is_sqlite() else "sql"
+    )
+    path = folder / filename
+    try:
+        with out:
+            copied = 0
+            while chunk := fileobj.read(1024 * 1024):
+                copied += len(chunk)
+                if copied > MAX_BACKUP_UPLOAD_BYTES:
+                    path.unlink(missing_ok=True)
+                    gib = MAX_BACKUP_UPLOAD_BYTES // 1024**3
+                    return _refuse(f"This file is too large (limit {gib} GB).", 413)
+                out.write(chunk)
+    except OSError:
+        path.unlink(missing_ok=True)
+        logger.exception("Could not save the uploaded backup")
+        return _refuse("The file could not be saved in the backup folder.", 500)
+    if head != magic and backup_key_problem(filename) is not None:
+        path.unlink(missing_ok=True)
+        return _refuse(
+            "This file is not a backup this company's key opens. A backup of a "
+            "company encrypted under another key is restored from that "
+            "company's own backup list."
+        )
+    # A SQLite file with no migration history is not a company file: it would
+    # replace the books with something the app can't open.
+    if _is_sqlite() and not read_backup_facts(filename).get("revision"):
+        path.unlink(missing_ok=True)
+        return _refuse(
+            "This file is a database, but not a SlowBooks Pro company backup."
+        )
+    return {"success": True, "filename": filename}
+
+
 def list_backup_files() -> list[dict]:
-    """List every backup file in the (shared) backup directory, any company."""
+    """List every backup file in the (shared) backup folders, any company."""
     files = []
-    candidates = [
-        p
-        for p in BACKUP_DIR.iterdir()
-        if p.is_file() and _safe_backup_filename(p.name) is not None
-    ]
+    candidates = _backup_files()
     for f in sorted(candidates, key=lambda p: p.name, reverse=True):
         files.append(
             {
@@ -471,15 +649,44 @@ def list_backup_files() -> list[dict]:
 
 
 def backup_path(filename: str) -> Path | None:
-    """The backup's path, validated the same way restore_backup() does."""
+    """The backup's path in the first backup folder that has it (the chosen
+    folder, then the default), else where it would be in the chosen one;
+    None for a name that is not a backup file. The trust boundary for every
+    read: a safe basename, then contained in a backup folder."""
     safe_name = _safe_backup_filename(filename)
     if safe_name is None:
         return None
-    backup_root = os.path.normpath(str(BACKUP_DIR))
-    candidate = os.path.normpath(os.path.join(backup_root, safe_name))
-    if not candidate.startswith(backup_root + os.sep):
-        return None
-    return Path(candidate)
+    first = None
+    folders = [backup_dir()] + [d for d in _backup_dirs() if d != backup_dir()]
+    for folder in folders:
+        # normpath + startswith is the containment guard CodeQL recognizes
+        # for py/path-injection (is_relative_to on Path objects is not).
+        backup_root = os.path.normpath(str(folder))
+        candidate = os.path.normpath(os.path.join(backup_root, safe_name))
+        if not candidate.startswith(backup_root + os.sep):
+            return None
+        if os.path.exists(candidate):
+            return Path(candidate)
+        first = first or Path(candidate)
+    return first
+
+
+def _backup_files() -> list[Path]:
+    """Every backup file in the backup folders; a name in two folders is
+    the chosen folder's."""
+    seen, found = set(), []
+    for folder in _backup_dirs():
+        try:
+            entries = list(folder.iterdir())
+        except OSError:
+            continue  # a drive that went away mid-listing
+        for path in entries:
+            if path.name in seen or _safe_backup_filename(path.name) is None:
+                continue
+            if path.is_file():
+                seen.add(path.name)
+                found.append(path)
+    return found
 
 
 def read_backup_facts(filename: str) -> dict:
@@ -541,10 +748,8 @@ def list_company_backups(db: Session) -> list[dict]:
     rows = {b.filename: b for b in db.query(Backup).all()}
     name = current_company_name(db)
     listed = []
-    for path in BACKUP_DIR.iterdir():
+    for path in _backup_files():
         filename = path.name
-        if not path.is_file() or _safe_backup_filename(filename) is None:
-            continue
         parsed = parse_backup_name(filename)
         owner = parsed["slug"] if parsed else None
         if owner == slug:

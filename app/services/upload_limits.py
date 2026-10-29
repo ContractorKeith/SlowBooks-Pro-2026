@@ -17,6 +17,11 @@ from fastapi import HTTPException, UploadFile
 # 20 MB is orders of magnitude above any real statement or ledger export.
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 
+# A company backup restored from a file (app/services/backup_service.py).
+# It is a whole database, so far bigger than an import; the upload is
+# streamed to disk in chunks and this only bounds how much.
+MAX_BACKUP_UPLOAD_BYTES = 2 * 1024**3
+
 
 async def read_limited(
     file: UploadFile, max_bytes: int = MAX_IMPORT_BYTES, label: str = "File"

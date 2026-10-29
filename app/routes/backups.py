@@ -6,14 +6,14 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.schemas.common import StrictModel
 from typing import Optional
 
 from app.database import get_db
-from app.routes._roles import may_download_backups
+from app.routes._roles import may_download_backups, require_admin
 from app.services import backup_service
 from app.services.backup_service import (
     PRE_RESTORE_TAG,
@@ -37,6 +37,51 @@ class RestoreRequest(StrictModel):
     # A backup encrypted under another key (409, code "other_key") is
     # opened with the recovery key it was made under (#290).
     recovery_key: Optional[str] = None
+
+
+class FolderUpdate(StrictModel):
+    # blank goes back to the default folder
+    folder: str = ""
+
+
+def _folder_info() -> dict:
+    folder = backup_service.backup_dir()
+    return {
+        "folder": str(folder),
+        "default_folder": str(backup_service.BACKUP_DIR),
+        "is_default": backup_service.custom_backup_dir() is None,
+        "available": folder.is_dir(),
+    }
+
+
+@router.get("/folder")
+def get_backup_folder(request: Request):
+    """Where new backups are saved. A path on this machine: admin only."""
+    require_admin(request)
+    return _folder_info()
+
+
+@router.put("/folder")
+def set_backup_folder(data: FolderUpdate):
+    # writes under /api/backups are admin-only (middleware in app.main)
+    try:
+        backup_service.set_backup_dir(data.folder)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _folder_info()
+
+
+@router.post("/upload")
+def upload_backup(file: UploadFile = File(...)):
+    """Put a backup file from the person's computer in the backup folder.
+    Nothing is restored here: the page then offers the ordinary restore,
+    which makes every one of its checks."""
+    result = backup_service.save_uploaded_backup(file.file, file.filename)
+    if not result["success"]:
+        raise HTTPException(
+            status_code=result.get("status", 400), detail=result["error"]
+        )
+    return {"filename": result["filename"]}
 
 
 @router.get("")

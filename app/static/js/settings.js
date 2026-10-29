@@ -990,8 +990,20 @@ const SettingsPage = {
                     </div>
                     <div style="display:flex; gap:8px; margin-bottom:12px;" data-admin data-write>
                         <button type="button" class="btn btn-primary" onclick="SettingsPage.createBackup()">Create Backup</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('backup-upload').click()">Restore from File…</button>
+                        <input type="file" id="backup-upload" aria-label="Backup file to restore" accept=".db,.sql,.dump,.backup" hidden
+                            onchange="SettingsPage.uploadBackup(this)">
                     </div>
                     <div class="hidden" data-admin-note style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">Backups are made, downloaded and restored by an administrator.</div>
+                    ${SettingsPage._isAdmin() ? `<div id="backup-folder" data-admin style="margin-bottom:12px;">
+                        <label for="backup-folder-path" style="font-size:11px;">Backup folder</label>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <input type="text" id="backup-folder-path" placeholder="/Volumes/Backup/SlowBooks" style="flex:1; min-width:240px;">
+                            <button type="button" class="btn btn-secondary" data-write onclick="SettingsPage.saveBackupFolder()">Save Folder</button>
+                            <button type="button" class="btn btn-secondary" data-write onclick="SettingsPage.saveBackupFolder('')">Use Default</button>
+                        </div>
+                        <div id="backup-folder-status" style="font-size:10px; color:var(--text-muted); margin-top:4px;"></div>
+                    </div>` : ''}
                     <div id="backup-list"></div>
                 </div>
 
@@ -2228,7 +2240,55 @@ const SettingsPage = {
         } catch (err) { toast(err.message, 'error'); }
     },
 
+    _showBackupFolder(info) {
+        const input = $('#backup-folder-path');
+        const status = $('#backup-folder-status');
+        if (!input || !status) return;
+        input.value = info.folder;
+        status.textContent = !info.available
+            ? 'This folder is not available: backups will fail until the drive is connected or another folder is chosen.'
+            : info.is_default
+                ? 'New backups are saved in the default folder.'
+                : `New backups are saved here. Backups already in the default folder (${info.default_folder}) are still listed.`;
+        status.style.color = info.available ? 'var(--text-muted)' : 'var(--danger)';
+    },
+
+    async loadBackupFolder() {
+        if (!$('#backup-folder')) return;
+        try {
+            SettingsPage._showBackupFolder(await API.get('/backups/folder'));
+        } catch (e) { /* ignore */ }
+    },
+
+    async saveBackupFolder(folder) {
+        const value = folder === undefined ? $('#backup-folder-path').value : folder;
+        try {
+            const info = await API.put('/backups/folder', { folder: value });
+            SettingsPage._showBackupFolder(info);
+            toast(info.is_default ? 'Backups will be saved in the default folder' : `Backups will be saved in ${info.folder}`);
+            SettingsPage.loadBackups();
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
+    // A backup from elsewhere (a thumb drive, another computer): copied into
+    // the backup folder, then the ordinary restore dialog, with its checks.
+    async uploadBackup(input) {
+        const file = input.files[0];
+        input.value = '';  // the same file can be chosen again
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const resp = await fetch('/api/backups/upload', { method: 'POST', body: formData });
+            if (!resp.ok) throw new Error(await API.responseError(resp, 'Upload failed'));
+            const data = await resp.json();
+            await SettingsPage.loadBackups();
+            SettingsPage.confirmRestore(data.filename);
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
     async loadBackups() {
+        SettingsPage.loadBackupFolder();
         try {
             const backups = await API.get('/backups');
             SettingsPage._backups = backups;
