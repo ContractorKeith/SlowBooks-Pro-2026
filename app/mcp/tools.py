@@ -7,7 +7,7 @@ import difflib
 import re
 from typing import Optional
 
-from app.mcp.client import ApiClient, ApiError
+from app.mcp.client import ApiClient, ApiError, reachable, unreachable_sentence
 
 # kind -> list route. The first eight are the books' main records.
 KINDS = {
@@ -92,6 +92,10 @@ def _item(client: ApiClient, op: dict) -> dict:
 
 def api_schema(client: ApiClient, path: str):
     """How to call a route: methods, parameters and request body."""
+    if not reachable(path):
+        # The schema of a route the server never sends to would only invite
+        # the call; say so here as api_get would.
+        return unreachable_sentence(path)
     paths = _spec(client).get("paths", {})
     if path in paths:
         return {

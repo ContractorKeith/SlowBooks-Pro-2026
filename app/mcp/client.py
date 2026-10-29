@@ -40,14 +40,20 @@ class ApiError(Exception):
         return f"HTTP {self.status}: {self.detail}"
 
 
-def _check_path(path: str) -> None:
+def reachable(path: str) -> bool:
+    """Whether the server sends requests to this path at all."""
     if path == "/openapi.json":
-        return
-    if not path.startswith("/api/") or path.startswith(_REFUSED_PREFIXES):
-        raise ApiError(
-            403,
-            f"{path} is not available: the MCP server does not reach that route.",
-        )
+        return True
+    return path.startswith("/api/") and not path.startswith(_REFUSED_PREFIXES)
+
+
+def unreachable_sentence(path: str) -> str:
+    return f"{path} is not available: the MCP server does not reach that route."
+
+
+def _check_path(path: str) -> None:
+    if not reachable(path):
+        raise ApiError(403, unreachable_sentence(path))
 
 
 def _parse(raw: bytes):

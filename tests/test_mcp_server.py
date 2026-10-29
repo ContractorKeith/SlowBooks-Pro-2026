@@ -234,7 +234,7 @@ def test_api_schema(api):
     rows = tools.api_schema(api, "/api/custo")
     assert any(r["path"] == "/api/customers" for r in rows)
     assert len(rows) <= 20
-    assert "No route matches" in tools.api_schema(api, "/nothing")
+    assert "No route matches" in tools.api_schema(api, "/api/nothing")
 
 
 def test_api_get(api):
@@ -279,3 +279,29 @@ def test_server_tool_errors_are_sentences(api):
         asyncio.run(server.call_tool("list_records", {"kind": "nope"}))
     with pytest.raises(ToolError, match="does not reach that route"):
         asyncio.run(server.call_tool("api_get", {"path": "/api/tokens"}))
+
+
+def test_server_refuses_a_stray_argument(api):
+    """report(name, start_date=...) with the date beside name instead of inside
+    params ran with default dates and said nothing (found on the Mac)."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    server = build_server(api)
+    with pytest.raises(ToolError, match="start_date"):
+        asyncio.run(
+            server.call_tool(
+                "report", {"name": "profit-loss", "start_date": "2026-01-01"}
+            )
+        )
+    # The right shape still works through the same model (no raise).
+    asyncio.run(
+        server.call_tool(
+            "report",
+            {"name": "profit-loss", "params": {"start_date": "2026-01-01"}},
+        )
+    )
+
+
+def test_api_schema_refuses_guarded_routes(api):
+    for path in ("/api/tokens", "/api/users", "/api/backups/restore", "/health"):
+        assert "does not reach that route" in tools.api_schema(api, path)

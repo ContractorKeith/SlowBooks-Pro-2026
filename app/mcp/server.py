@@ -68,6 +68,13 @@ def build_server(client: ApiClient) -> MCPServer:
         sig = inspect.signature(fn)
         tool.__signature__ = sig.replace(parameters=list(sig.parameters.values())[1:])
         server.tool(annotations=annotations)(tool)
+        # The SDK's argument model drops unknown arguments, so `report` called
+        # with start_date beside name (not inside params) ran with default
+        # dates and no word. Refuse a stray argument instead; the sentence
+        # names it. The tool manager is the SDK's own attribute (mcp 2.x).
+        model = server._tool_manager.get_tool(fn.__name__).fn_metadata.arg_model
+        model.model_config["extra"] = "forbid"
+        model.model_rebuild(force=True)
 
     for fn in (
         tools.context,
