@@ -1054,6 +1054,7 @@ const SettingsPage = {
                             <div style="font-family:var(--font-mono); word-break:break-all; flex:1;" id="api-token-secret"></div>
                             <button type="button" class="btn btn-sm btn-secondary" onclick="SettingsPage.copyApiTokenSecret()">Copy</button>
                         </div>
+                        <div id="api-token-connect" style="display:none; margin-top:10px;"></div>
                     </div>
                     <div id="api-token-list" style="margin-bottom:12px;"></div>
                     <div class="form-grid" style="align-items:end;">
@@ -1612,12 +1613,29 @@ const SettingsPage = {
                 allow_backups: $('#token-new-backups').checked,
             });
             $('#api-token-secret').textContent = created.token;
+            SettingsPage.showAgentSnippet(created.token);
             $('#api-token-reveal').style.display = '';
             $('#token-new-label').value = '';
             $('#token-new-backups').checked = false;
             toast('Token created — press Copy below, it will not be shown again');
             SettingsPage.loadApiTokens();
         } catch (err) { toast(err.message, 'error'); }
+    },
+
+    // "Connect an agent": the MCP setup, with the new token filled in. Shown
+    // with the secret, so it is gone when the reveal box is.
+    showAgentSnippet(token) {
+        const box = $('#api-token-connect');
+        if (!box) return;
+        box.innerHTML =
+            '<div>To let an agent work these books, save the token in a private file and start the MCP server:</div>' +
+            '<pre style="font-family:var(--font-mono); white-space:pre-wrap; word-break:break-all; margin:6px 0;">' +
+            escapeHtml("printf '%s\\n' '" + token + "' > ~/.slowbooks-token && chmod 600 ~/.slowbooks-token\n" +
+                'SLOWBOOKS_TOKEN_FILE=~/.slowbooks-token python -m app.mcp') + '</pre>' +
+            '<div>In Claude Code: <code>claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=~/.slowbooks-token -- python -m app.mcp</code></div>' +
+            '<div>Desktop install: <code>SlowBooksPro --mcp</code> with the token in <code>&lt;data dir&gt;/mcp-token</code>.</div>' +
+            '<div>More in <a href="https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/blob/main/docs/agents.md" target="_blank" rel="noopener">docs/agents.md</a>.</div>';
+        box.style.display = '';
     },
 
     copyApiTokenSecret() {

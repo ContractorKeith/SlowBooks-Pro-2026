@@ -5,6 +5,23 @@ Notable changes between releases. Format roughly follows
 used during development is captured here so the README can stay focused
 on what the software does, not on what sprint shipped what.
 
+### Unreleased
+
+**A local MCP server for agents** (#655, @ContractorKeith). `python -m app.mcp`
+starts a stdio MCP server that lets an agent such as Claude Code, Codex or
+Claude Desktop work the books of a running app under an API token: a context
+call, search, records, reports and any other read-only route; and curated
+writes (customers, vendors, items, invoices, bills, expenses, journal entries,
+payments with an `Idempotency-Key` so a retry never pays twice, and voids).
+No generic write tool, and nothing is ever deleted. The token
+comes only from a file (`SLOWBOOKS_TOKEN_FILE`, private on macOS and Linux)
+and the server talks to a loopback `http://` address only. The SDK is an extra
+(`requirements-mcp.txt`), which the desktop installers include, and the
+installed app starts the server with `SlowBooksPro --mcp`. Settings, API
+Tokens shows the setup with a new token. The server reaches the API only,
+through the token's own role and audit, so nothing in the books is new; see
+[docs/agents.md](docs/agents.md).
+
 ### v2.31.1 — Sub-customers, memorized transactions, and stock that comes back out at its own cost
 
 **Each sign-in is offered only what it may do.** The Memorized Transactions

@@ -112,6 +112,13 @@ for _mod in ("Vision", "Quartz", "objc", "Foundation"):
     except Exception:
         pass
 
+# Local MCP server (#655): the `mcp` SDK extra (requirements-mcp.txt) is
+# imported only by `--mcp`. Guarded so a build without it still bundles.
+try:
+    hiddenimports += collect_submodules("mcp")
+except Exception:
+    pass
+
 a = Analysis(
     [os.path.join(ROOT, "desktop_launcher.py")],
     pathex=[ROOT],
