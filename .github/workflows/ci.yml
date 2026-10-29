@@ -244,7 +244,10 @@ jobs:
           # test_reports_hide_zero.py::test_the_pdf_takes_the_choice, WeasyPrint
           # again; the other 2.31.0 tests run everywhere, the job-report
           # local-day tests pin the zone without tzset on Windows).
-          MAX_SKIPS: "194"
+          # 195 with the backup-folder write-probe test (#651,
+          # test_backup_folder.py::test_a_folder_that_cannot_be_written_is_refused,
+          # which chmods a folder read-only; Windows has no such mode bit).
+          MAX_SKIPS: "195"
         shell: pwsh
         run: |
           # -v names each test as it starts, so a mid-run death is identified
