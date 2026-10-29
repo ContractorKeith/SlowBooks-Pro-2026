@@ -189,7 +189,7 @@ def validate_template(subject: str, body: str) -> None:
         except TemplateError as e:
             raise ValueError(f"The text has a formatting error: {e}") from e
         except Exception as e:  # sandbox refusals and the like
-            raise ValueError(f"The text can't be used: {e}") from e
+            raise ValueError("The text can't be used as a template.") from e
 
 
 def _render(text: str, ctx: dict) -> str:
@@ -387,10 +387,12 @@ def _send_one(db, plan, settings, words, home, trigger) -> str | None:
             log_id = log[0] if log else None
         else:
             error = "The email could not be sent (the email log has the reason)."
-    except Exception as e:
+    except Exception:
+        # The exception's own text stays in the log and the audit row; the
+        # sentence that goes back to the screen names no internals.
         logger.exception("Reminder for invoice %s failed", inv.id)
         db.rollback()
-        error = f"The reminder could not be prepared: {e}"
+        error = "The reminder could not be prepared (the server log has the reason)."
     db.add(
         InvoiceReminder(
             invoice_id=inv.id,
