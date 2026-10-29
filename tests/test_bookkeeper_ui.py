@@ -215,6 +215,26 @@ SETTINGS_TAKEN = {
     "Company Logo › #logo-upload": ("POST", "/api/uploads/logo", UPLOAD),
     "Company Logo › Remove logo": ("DELETE", "/api/uploads/logo", None),
     "Backup / Restore › Create Backup": ("POST", "/api/backups", None),
+    # #651: the backup folder, restore from a file, and the schedule are the
+    # administrator's too (the inputs are named by id, the buttons by label)
+    "Backup / Restore › #backup-folder-path": (
+        "PUT",
+        "/api/backups/folder",
+        {"folder": ""},
+    ),
+    "Backup / Restore › Save Folder": ("PUT", "/api/backups/folder", {"folder": ""}),
+    "Backup / Restore › Use Default": ("PUT", "/api/backups/folder", {"folder": ""}),
+    "Backup / Restore › Restore from File…": ("POST", "/api/backups/upload", UPLOAD),
+    "Backup / Restore › #auto-backup-frequency": (
+        "PUT",
+        "/api/backups/schedule",
+        {"frequency": "off"},
+    ),
+    "Backup / Restore › Save Schedule": (
+        "PUT",
+        "/api/backups/schedule",
+        {"frequency": "off"},
+    ),
     "Backup / Restore › Restore…": (
         "POST",
         "/api/backups/restore",
