@@ -5,6 +5,10 @@ Notable changes between releases. Format roughly follows
 used during development is captured here so the README can stay focused
 on what the software does, not on what sprint shipped what.
 
+### Unreleased
+
+**Collections: reminder rules that send once, a monthly statement per customer, and a Collections view** (#653, @ContractorKeith). Reminder rules (days from the due date, subject and body, seeded with 3 days before and 3, 7 and 15 days after) send each open invoice its reminder once, recorded in `invoice_reminders`, and catch up after a missed day. A customer can be flagged for a monthly statement, sent once a calendar month by its own batch. The Collections page lists open invoices with days overdue and the last and next reminder.
+
 ### v2.31.1 — Sub-customers, memorized transactions, and stock that comes back out at its own cost
 
 **Each sign-in is offered only what it may do.** The Memorized Transactions
