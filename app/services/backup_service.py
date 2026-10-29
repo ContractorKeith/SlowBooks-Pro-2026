@@ -692,7 +692,7 @@ def backup_path(filename: str) -> Path | None:
         backup_root = os.path.normpath(str(folder))
         prefix = backup_root if backup_root.endswith(os.sep) else backup_root + os.sep
         candidate = os.path.normpath(os.path.join(backup_root, safe_name))
-        if not os.path.normcase(candidate).startswith(os.path.normcase(prefix)):
+        if not candidate.startswith(prefix):
             return None
         if os.path.exists(candidate):
             return Path(candidate)
