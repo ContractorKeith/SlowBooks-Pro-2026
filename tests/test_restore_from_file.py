@@ -209,3 +209,34 @@ def test_a_backup_under_another_key_is_refused(books, client, tmp_path, monkeypa
     assert r.status_code == 400
     assert "key" in r.json()["detail"]
     assert _left_behind(books) == []
+
+
+def test_a_file_named_like_an_automatic_backup_is_not_one(books, client, tmp_path):
+    data = _company_file(tmp_path, "Harbor Light Bakery", "elsewhere")
+    for tag in ("auto", "auto-2", "before-restore"):
+        name = _upload(
+            client, f"harbor-light-bakery_20260101_120000-{tag}.db", data
+        ).json()["filename"]
+        assert "-uploaded" in name and tag not in name
+        assert not backup_service.is_auto_backup(name)
+
+
+def test_an_upload_that_says_it_is_too_big_is_refused_up_front():
+    from app.routes.backups import _declared_too_big
+    from app.services.upload_limits import MAX_BACKUP_UPLOAD_BYTES
+
+    assert _declared_too_big(str(MAX_BACKUP_UPLOAD_BYTES + 1))
+    assert not _declared_too_big(str(MAX_BACKUP_UPLOAD_BYTES))
+    assert not _declared_too_big(None) and not _declared_too_big("junk")
+
+
+def test_a_spoofed_content_length_gets_a_413_before_the_body(books, client):
+    from app.services.upload_limits import MAX_BACKUP_UPLOAD_BYTES
+
+    r = client.post(
+        "/api/backups/upload",
+        files={"file": ("x.db", io.BytesIO(b"tiny"), "application/octet-stream")},
+        headers={"Content-Length": str(MAX_BACKUP_UPLOAD_BYTES + 1)},
+    )
+    assert r.status_code == 413, r.text
+    assert _left_behind(books) == []

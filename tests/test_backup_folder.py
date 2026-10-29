@@ -9,10 +9,6 @@ sentence, never a folder quietly created on the startup disk.
 # ruff: noqa: F811 (the books fixture is imported, then named as an argument)
 
 import json
-import os
-import sys
-
-import pytest
 
 from app.services import backup_service
 from tests.test_backups_per_company import (  # noqa: F401 (fixture)
@@ -89,20 +85,28 @@ def test_a_folder_that_cannot_be_used_is_refused(books, client, tmp_path):
     assert client.get("/api/backups/folder").json()["is_default"] is True
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
-    reason="needs a folder the current user cannot write to",
-)
-def test_a_folder_that_cannot_be_written_is_refused(books, client, tmp_path):
-    locked = tmp_path / "locked"
-    locked.mkdir()
-    locked.chmod(0o500)
-    try:
-        r = client.put("/api/backups/folder", json={"folder": str(locked)})
-    finally:
-        locked.chmod(0o700)
+def test_a_folder_that_cannot_be_written_is_refused(
+    books, client, tmp_path, monkeypatch
+):
+    def refuse(*args, **kwargs):
+        raise OSError("read-only")
+
+    monkeypatch.setattr(backup_service.tempfile, "NamedTemporaryFile", refuse)
+    r = client.put("/api/backups/folder", json={"folder": str(tmp_path)})
     assert r.status_code == 400, r.text
     assert "can't save files" in r.json()["detail"]
+
+
+def test_a_root_folder_contains_what_is_in_it():
+    import ntpath
+    import posixpath
+
+    assert backup_service._is_within("/", "/a.db", posixpath)
+    assert backup_service._is_within("/mnt/x", "/mnt/x/a.db", posixpath)
+    assert not backup_service._is_within("/mnt/x", "/mnt/xy/a.db", posixpath)
+    assert backup_service._is_within("C:\\", "C:\\a.db", ntpath)
+    assert backup_service._is_within("E:\\Backups", "e:\\backups\\a.db", ntpath)
+    assert not backup_service._is_within("C:\\", "D:\\a.db", ntpath)  # other drive
 
 
 def test_an_unplugged_folder_fails_the_backup_and_creates_nothing(

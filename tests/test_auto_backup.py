@@ -220,12 +220,22 @@ def test_a_held_lock_means_skip(books, TestSession):
 
 def test_the_lock_is_released_and_names_its_holder(books, TestSession):
     folder = books.backups
-    lock = auto_backup._acquire_lock(folder)
+    lock, _token = auto_backup._acquire_lock(folder)
     assert lock == folder / auto_backup.LOCK_NAME
     assert lock.read_text().startswith(f"pid {os.getpid()}\n")
     lock.unlink()
     _schedule(frequency="daily", time="23:00")
     auto_backup.run_if_due(SINCE + timedelta(days=2), session_factory=TestSession)
+    assert not lock.exists()
+
+
+def test_a_worker_does_not_remove_a_lock_it_does_not_own(books):
+    lock, token = auto_backup._acquire_lock(books.backups)
+    lock.write_text("pid 1\ntoken someone-else\n")  # reclaimed and retaken
+    auto_backup._release_lock(lock, token)
+    assert lock.exists()
+    lock.write_text(f"pid 1\ntoken {token}\n")
+    auto_backup._release_lock(lock, token)
     assert not lock.exists()
 
 
@@ -241,7 +251,7 @@ def test_a_stale_lock_is_reclaimed_by_exactly_one_of_two(books):
     lock = _stale(books.backups)
     first = auto_backup._acquire_lock(books.backups)
     second = auto_backup._acquire_lock(books.backups)
-    assert first == lock and second is None
+    assert first[0] == lock and second is None
     assert lock.read_text().startswith("pid ")
     assert not list(books.backups.glob(".auto-backup.lock.stale-*"))
 

@@ -99,14 +99,30 @@ def next_backup_at(settings: dict, now: datetime) -> datetime | None:
 # ---------------------------------------------------------------------------
 
 
-def _try_create(path: Path) -> bool:
+def _new_token() -> str:
+    return f"{os.getpid()}-{time.monotonic_ns()}"
+
+
+def _try_create(path: Path) -> str | None:
+    """Create the lock; returns the token written in it, or None."""
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except OSError:
-        return False
+        return None
+    token = _new_token()
     with os.fdopen(fd, "w") as f:  # for whoever wonders what holds it
-        f.write(f"pid {os.getpid()}\n{datetime.now().isoformat()}\n")
-    return True
+        f.write(f"pid {os.getpid()}\n{datetime.now().isoformat()}\ntoken {token}\n")
+    return token
+
+
+def _release_lock(path: Path, token: str) -> None:
+    """Remove the lock only if it is still ours: a lock reclaimed as stale
+    and retaken by another worker must be left alone."""
+    try:
+        if f"token {token}\n" in path.read_text():
+            path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _age(path: Path) -> float | None:
@@ -116,18 +132,19 @@ def _age(path: Path) -> float | None:
         return None
 
 
-def _acquire_lock(folder: Path) -> Path | None:
-    """The lock file's path once taken, else None. A lock older than two
+def _acquire_lock(folder: Path) -> tuple[Path, str] | None:
+    """(lock path, token) once taken, else None. A lock older than two
     hours is stale. To clear it the worker renames it to a name of its own:
     one rename wins and that worker alone deletes it and tries again; a
     failed rename means another worker got there first, so back off."""
     path = folder / LOCK_NAME
-    if _try_create(path):
-        return path
+    token = _try_create(path)
+    if token:
+        return path, token
     age = _age(path)
     if age is None or age <= LOCK_STALE_AFTER:
         return None
-    mine = folder / f"{LOCK_NAME}.stale-{os.getpid()}-{time.time_ns()}"
+    mine = folder / f"{LOCK_NAME}.stale-{_new_token()}"
     try:
         os.rename(path, mine)
     except OSError:
@@ -135,15 +152,18 @@ def _acquire_lock(folder: Path) -> Path | None:
     age = _age(mine)
     if age is not None and age <= LOCK_STALE_AFTER:
         # We looked at the old lock but renamed a fresh one that another
-        # worker made after clearing it: put it back and leave.
+        # worker made after clearing it: put it back if the name is free
+        # (no hard links: FAT/exFAT drives lack them), else drop our copy.
         try:
-            os.link(mine, path)
+            if not path.exists():
+                os.rename(mine, path)
         except OSError:
             pass
         mine.unlink(missing_ok=True)
         return None
     mine.unlink(missing_ok=True)
-    return path if _try_create(path) else None
+    token = _try_create(path)
+    return (path, token) if token else None
 
 
 def run_if_due(now: datetime | None = None, session_factory=None) -> dict | None:
@@ -156,7 +176,7 @@ def run_if_due(now: datetime | None = None, session_factory=None) -> dict | None
     folder = backup_service.backup_dir()
     lock = None
     if folder.is_dir():
-        lock = _acquire_lock(folder)
+        lock = _acquire_lock(folder)  # (path, token)
         if lock is None:
             logger.info("Automatic backup skipped: another worker holds the lock")
             return None
@@ -202,7 +222,7 @@ def run_if_due(now: datetime | None = None, session_factory=None) -> dict | None
         return record
     finally:
         if lock is not None:
-            lock.unlink(missing_ok=True)
+            _release_lock(*lock)
 
 
 def _loop(stop: threading.Event) -> None:

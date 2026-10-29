@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,7 +91,8 @@ def update_backup_settings(**changes) -> dict:
     settings = {**read_backup_settings(), **changes}
     settings = {k: v for k, v in settings.items() if v is not None}
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _settings_file().with_suffix(".tmp")
+    # a name of its own, so two writers never share one temp file
+    tmp = _settings_file().with_suffix(f".tmp-{os.getpid()}-{time.monotonic_ns()}")
     tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     os.replace(tmp, _settings_file())
     return settings
@@ -558,11 +560,27 @@ def _refuse(error: str, status: int = 400) -> dict:
     return {"success": False, "error": error, "status": status}
 
 
+def _uploaded_name(stem: str) -> str:
+    """The upload's name stem, with a tag that would make it look like one
+    of this app's own automatic or safety backups changed to "uploaded": the
+    schedule prunes "auto" ones, so a file from elsewhere must not join them."""
+    m = _NAME_RE.match(f"{stem}.db")
+    tag = (m.group("tag") if m else None) or ""
+    if m and (
+        tag == AUTO_TAG
+        or tag.startswith(AUTO_TAG + "-")
+        or tag.startswith(PRE_RESTORE_TAG)
+    ):
+        return f"{stem[: -len(tag)]}uploaded"
+    return stem
+
+
 def _open_new_upload(folder: Path, original: str | None, ext: str):
     """Create (never overwrite) a file named close to the upload's own and
     return (name, open binary file). The name says whose books it is."""
     stem = Path(os.path.basename(original or "")).stem
     stem = re.sub(r"[^A-Za-z0-9_-]+", "-", stem).strip("-")[:100] or "uploaded"
+    stem = _uploaded_name(stem)
     name, n = f"{stem}.{ext}", 2
     while True:
         if not _name_taken(name):
@@ -596,16 +614,20 @@ def save_uploaded_backup(fileobj, original_name: str | None) -> dict:
         folder, original_name, "db" if _is_sqlite() else "sql"
     )
     path = folder / filename
+    too_big = False
     try:
         with out:
             copied = 0
             while chunk := fileobj.read(1024 * 1024):
                 copied += len(chunk)
                 if copied > MAX_BACKUP_UPLOAD_BYTES:
-                    path.unlink(missing_ok=True)
-                    gib = MAX_BACKUP_UPLOAD_BYTES // 1024**3
-                    return _refuse(f"This file is too large (limit {gib} GB).", 413)
+                    too_big = True
+                    break
                 out.write(chunk)
+        if too_big:  # the file is closed now; Windows can't delete an open one
+            path.unlink(missing_ok=True)
+            gib = MAX_BACKUP_UPLOAD_BYTES // 1024**3
+            return _refuse(f"This file is too large (limit {gib} GB).", 413)
     except OSError:
         path.unlink(missing_ok=True)
         logger.exception("Could not save the uploaded backup")
@@ -650,6 +672,17 @@ def list_backup_files() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _is_within(root: str, candidate: str, pathmod=os.path) -> bool:
+    """True when ``candidate`` is under ``root`` (both normalized absolute
+    paths). commonpath, not startswith(root + sep): a root like "/" or
+    "E:\\" already ends in a separator. Different drives are not contained."""
+    try:
+        common = pathmod.commonpath([root, candidate])
+    except ValueError:
+        return False
+    return pathmod.normcase(common) == pathmod.normcase(root)
+
+
 def backup_path(filename: str) -> Path | None:
     """The backup's path in the first backup folder that has it (the chosen
     folder, then the default), else where it would be in the chosen one;
@@ -661,11 +694,11 @@ def backup_path(filename: str) -> Path | None:
     first = None
     folders = [backup_dir()] + [d for d in _backup_dirs() if d != backup_dir()]
     for folder in folders:
-        # normpath + startswith is the containment guard CodeQL recognizes
+        # normpath + a containment check is the guard CodeQL recognizes
         # for py/path-injection (is_relative_to on Path objects is not).
         backup_root = os.path.normpath(str(folder))
         candidate = os.path.normpath(os.path.join(backup_root, safe_name))
-        if not candidate.startswith(backup_root + os.sep):
+        if not _is_within(backup_root, candidate):
             return None
         if os.path.exists(candidate):
             return Path(candidate)
@@ -819,21 +852,25 @@ def is_auto_backup(filename: str) -> bool:
     return tag == AUTO_TAG or tag.startswith(AUTO_TAG + "-")
 
 
-def prune_auto_backups(db: Session, keep: int) -> list[str]:
+def prune_auto_backups(db: Session, keep: int) -> dict:
     """Delete this company's automatic backups beyond the newest ``keep``:
     the file and its row. Manual and before-restore backups are never
-    touched. Returns the names removed."""
+    touched. Returns {"removed": names, "kept": names}: a backup whose file
+    could not be found or deleted keeps its row, so the list stays true."""
     autos = [
         b["filename"] for b in list_company_backups(db) if is_auto_backup(b["filename"])
     ]
-    removed = []
+    removed, kept = [], []
     for name in autos[max(keep, 1) :]:
         path = backup_path(name)
+        if path is None:
+            kept.append(name)
+            continue
         try:
-            if path is not None:
-                path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
         except OSError:
             logger.exception("Could not remove old automatic backup %s", name)
+            kept.append(name)
             continue
         removed.append(name)
     if removed:
@@ -841,7 +878,7 @@ def prune_auto_backups(db: Session, keep: int) -> list[str]:
             synchronize_session=False
         )
         db.commit()
-    return removed
+    return {"removed": removed, "kept": kept}
 
 
 def other_company(db: Session, filename: str) -> dict | None:

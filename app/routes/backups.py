@@ -10,6 +10,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.routing import APIRoute
 from pydantic import Field
 from sqlalchemy.orm import Session
 from app.schemas.common import StrictModel
@@ -110,7 +111,32 @@ def set_backup_schedule(data: ScheduleUpdate):
     return _schedule_info()
 
 
-@router.post("/upload")
+def _declared_too_big(content_length: str | None) -> bool:
+    """True when the request says up front it is over the upload cap. The
+    copy-time cap in save_uploaded_backup stays the real guard."""
+    from app.services.upload_limits import MAX_BACKUP_UPLOAD_BYTES
+
+    try:
+        return int(content_length or 0) > MAX_BACKUP_UPLOAD_BYTES
+    except ValueError:
+        return False
+
+
+class _CappedUploadRoute(APIRoute):
+    """Turns away an upload that says it is over the cap before the body is
+    read (the form is otherwise parsed first)."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request):
+            if _declared_too_big(request.headers.get("content-length")):
+                raise HTTPException(status_code=413, detail="This file is too large.")
+            return await original(request)
+
+        return handler
+
+
 def upload_backup(file: UploadFile = File(...)):
     """Put a backup file from the person's computer in the backup folder.
     Nothing is restored here: the page then offers the ordinary restore,
@@ -121,6 +147,16 @@ def upload_backup(file: UploadFile = File(...)):
             status_code=result.get("status", 400), detail=result["error"]
         )
     return {"filename": result["filename"]}
+
+
+# Registered here, not with a decorator, to name the route class that checks
+# Content-Length before the body is read.
+router.add_api_route(
+    "/upload",
+    upload_backup,
+    methods=["POST"],
+    route_class_override=_CappedUploadRoute,
+)
 
 
 @router.get("")

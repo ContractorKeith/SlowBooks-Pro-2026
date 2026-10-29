@@ -60,6 +60,14 @@ next is due.
   copies of the app do not both take it. A lock left behind by a crash is
   cleared after two hours.
 
+Automatic backups cover the company that is open (desktop) or the default
+company file (server). Server Edition installs with several company files
+should keep the cron script.
+
+If the app is killed during a backup, the lock file in the backup folder blocks
+the next automatic run for up to two hours; deleting `.auto-backup.lock` clears
+it.
+
 This does not replace the cron script above on a server: nobody keeps the app
 open there. Use `scripts/backup.sh` from cron for servers and Docker.
 
