@@ -7296,6 +7296,10 @@ Root now keeps only `README.md`, `INSTALL.md`, `SECURITY.md`,
 `CHANGELOG.md`, `CONTRIBUTING.md` (the conventional set). Everything
 else moved into `docs/`.
 
+### Unreleased
+
+- Backups: a backup folder of your choosing, restore from an uploaded file, and scheduled automatic backups with retention (#651).
+
 ## [2.0.0] — May 2026
 
 ### Added
