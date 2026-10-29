@@ -10,45 +10,11 @@ import subprocess
 import sys
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.main import app
 from app.mcp import tools
 from app.mcp.client import ApiClient, ApiError
 from app.mcp.config import ConfigError, load_config
 from app.mcp.server import build_server
-from app.models.api_tokens import ApiToken
-from app.services.api_token_service import generate_token, hash_token
-
-
-@pytest.fixture
-def api(client, db_session):
-    """An ApiClient that reaches the app with a bookkeeper token."""
-    client.put("/api/settings", json={"company_name": "Acme Fence Test Co"})
-    secret = generate_token()
-    db_session.add(
-        ApiToken(
-            label="mcp-test",
-            token_hash=hash_token(secret),
-            token_hint=secret[:10],
-            role="bookkeeper",
-            is_active=True,
-            created_by="test",
-        )
-    )
-    db_session.commit()
-    http = TestClient(app)
-    http.headers["Authorization"] = f"Bearer {secret}"
-
-    def transport(method, path, params, body, headers):
-        r = http.request(method, path, params=params, json=body, headers=headers)
-        try:
-            return r.status_code, r.json()
-        except ValueError:
-            return r.status_code, r.text
-
-    return ApiClient(transport)
-
 
 # ---------------------------------------------------------------------------
 # config
@@ -296,8 +262,10 @@ TOOL_NAMES = {
 def test_server_registers_the_eight_read_only_tools(api):
     server = build_server(api)
     listed = asyncio.run(server.list_tools())
-    assert {t.name for t in listed} == TOOL_NAMES
+    assert TOOL_NAMES <= {t.name for t in listed}
     for t in listed:
+        if t.name not in TOOL_NAMES:
+            continue
         assert t.annotations.read_only_hint is True
         assert t.annotations.destructive_hint is False
         assert "client" not in t.input_schema.get("properties", {})

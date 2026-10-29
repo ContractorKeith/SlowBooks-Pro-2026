@@ -111,5 +111,11 @@ class ApiClient:
     def get(self, path: str, params: Optional[dict] = None):
         return self._request("GET", path, params)
 
-    def post(self, path: str, body: Any = None, headers: Optional[dict] = None):
-        return self._request("POST", path, None, body, headers)
+    def post(
+        self,
+        path: str,
+        body: Any = None,
+        headers: Optional[dict] = None,
+        params: Optional[dict] = None,
+    ):
+        return self._request("POST", path, params, body, headers)
