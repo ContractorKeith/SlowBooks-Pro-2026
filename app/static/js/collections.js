@@ -40,7 +40,7 @@ const CollectionsPage = {
                     <option value="">All ${escapeHtml(T('Customers').toLowerCase())}</option>${opts}
                 </select>
                 <span style="margin-left:auto; font-size:12px;">
-                    <a href="#/reports/ar-aging">A/R Aging</a> &middot;
+                    <a href="#/reports/ar-aging">${escapeHtml(T('A/R Aging'))}</a> &middot;
                     <a href="#/settings" onclick="try { sessionStorage.setItem('settings_focus', 'settings-h-reminder-rules'); } catch (e) {}">Reminder rules</a>
                 </span>
             </div>

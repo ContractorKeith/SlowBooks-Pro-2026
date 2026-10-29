@@ -2618,7 +2618,8 @@ const SettingsPage = {
     async loadReminderRules() {
         const el = $('#reminder-rules-list');
         if (!el) return;
-        try { SettingsPage._rules = await API.get('/collections/rules'); } catch (e) {
+        // A stubbed API (the admin-controls probe) may answer with no list
+        try { const got = await API.get('/collections/rules'); SettingsPage._rules = Array.isArray(got) ? got : []; } catch (e) {
             el.innerHTML = `<div style="font-size:11px; color:var(--text-muted);">${escapeHtml(e.message)}</div>`;
             return;
         }
