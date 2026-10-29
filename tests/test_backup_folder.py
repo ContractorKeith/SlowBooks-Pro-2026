@@ -9,6 +9,8 @@ sentence, never a folder quietly created on the startup disk.
 # ruff: noqa: F811 (the books fixture is imported, then named as an argument)
 
 import json
+import os
+from pathlib import Path
 
 from app.services import backup_service
 from tests.test_backups_per_company import (  # noqa: F401 (fixture)
@@ -97,16 +99,15 @@ def test_a_folder_that_cannot_be_written_is_refused(
     assert "can't save files" in r.json()["detail"]
 
 
-def test_a_root_folder_contains_what_is_in_it():
-    import ntpath
-    import posixpath
-
-    assert backup_service._is_within("/", "/a.db", posixpath)
-    assert backup_service._is_within("/mnt/x", "/mnt/x/a.db", posixpath)
-    assert not backup_service._is_within("/mnt/x", "/mnt/xy/a.db", posixpath)
-    assert backup_service._is_within("C:\\", "C:\\a.db", ntpath)
-    assert backup_service._is_within("E:\\Backups", "e:\\backups\\a.db", ntpath)
-    assert not backup_service._is_within("C:\\", "D:\\a.db", ntpath)  # other drive
+def test_a_root_backup_folder_still_resolves_its_files(monkeypatch):
+    """A folder at a drive root ("/" here, "E:\\" on Windows) already ends
+    in the separator; the containment check must not reject every name."""
+    root = Path(os.path.abspath(os.sep))
+    monkeypatch.setattr(backup_service, "backup_dir", lambda: root)
+    monkeypatch.setattr(backup_service, "_backup_dirs", lambda: [root])
+    name = "harbor-light_2026-09-25_2210.db"
+    assert backup_service.backup_path(name) == root / name
+    assert backup_service.backup_path("../" + name) is None
 
 
 def test_an_unplugged_folder_fails_the_backup_and_creates_nothing(

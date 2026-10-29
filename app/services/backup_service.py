@@ -127,6 +127,9 @@ def set_backup_dir(folder: str | None) -> Path:
     if not folder:
         update_backup_settings(folder=None)
         return BACKUP_DIR
+    # The administrator names any folder on this machine on purpose (an
+    # external drive, a synced folder); the checks below are about the
+    # folder being usable, not about keeping them out of it (CodeQL 75).
     path = Path(folder).expanduser()
     if not path.is_absolute():
         raise ValueError(
@@ -672,17 +675,6 @@ def list_backup_files() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _is_within(root: str, candidate: str, pathmod=os.path) -> bool:
-    """True when ``candidate`` is under ``root`` (both normalized absolute
-    paths). commonpath, not startswith(root + sep): a root like "/" or
-    "E:\\" already ends in a separator. Different drives are not contained."""
-    try:
-        common = pathmod.commonpath([root, candidate])
-    except ValueError:
-        return False
-    return pathmod.normcase(common) == pathmod.normcase(root)
-
-
 def backup_path(filename: str) -> Path | None:
     """The backup's path in the first backup folder that has it (the chosen
     folder, then the default), else where it would be in the chosen one;
@@ -694,11 +686,13 @@ def backup_path(filename: str) -> Path | None:
     first = None
     folders = [backup_dir()] + [d for d in _backup_dirs() if d != backup_dir()]
     for folder in folders:
-        # normpath + a containment check is the guard CodeQL recognizes
-        # for py/path-injection (is_relative_to on Path objects is not).
+        # normpath + startswith(root + sep) is the guard CodeQL recognizes
+        # for py/path-injection (a helper or Path.is_relative_to is not).
+        # A root folder ("/" or "E:\\") already ends in the separator.
         backup_root = os.path.normpath(str(folder))
+        prefix = backup_root if backup_root.endswith(os.sep) else backup_root + os.sep
         candidate = os.path.normpath(os.path.join(backup_root, safe_name))
-        if not _is_within(backup_root, candidate):
+        if not os.path.normcase(candidate).startswith(os.path.normcase(prefix)):
             return None
         if os.path.exists(candidate):
             return Path(candidate)
