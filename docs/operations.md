@@ -37,6 +37,32 @@ database server (S3, Backblaze B2, an offsite NAS — anywhere that isn't
 the same machine). A backup you've never restored from isn't a backup;
 test restore quarterly.
 
+### Automatic backups in the app
+
+Settings, Backup / Restore, lets an administrator choose the backup folder
+(it must already exist; an external drive or a synced folder works) and set a
+schedule: every few hours, daily at a time, or weekly on a day at a time,
+keeping the newest N automatic backups (14 unless changed). Times are the
+machine's local clock. Settings shows the last automatic backup and when the
+next is due.
+
+- Automatic backups run only while SlowBooks Pro is open. One that came due
+  while it was closed runs within a minute of the next start; missed ones are
+  not made up, only one is taken.
+- A failed backup (the drive is unplugged, the disk is full) is shown in red
+  in Settings and tried again an hour later.
+- Only automatic backups are pruned. Backups you made by hand, and the safety
+  backup taken before a restore, are never deleted.
+- The folder choice and the schedule are kept in `backup-settings.json` in the
+  default `backups` folder (under `SLOWBOOKS_DATA_DIR` when that is set), not in
+  the books, so restoring a backup does not change them.
+- While one is running, `.auto-backup.lock` sits in the backup folder so two
+  copies of the app do not both take it. A lock left behind by a crash is
+  cleared after two hours.
+
+This does not replace the cron script above on a server: nobody keeps the app
+open there. Use `scripts/backup.sh` from cron for servers and Docker.
+
 ### Docker backups
 
 When running under `docker compose`, backups land in a Docker volume

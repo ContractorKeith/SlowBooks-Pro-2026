@@ -1003,6 +1003,26 @@ const SettingsPage = {
                             <button type="button" class="btn btn-secondary" data-write onclick="SettingsPage.saveBackupFolder('')">Use Default</button>
                         </div>
                         <div id="backup-folder-status" style="font-size:10px; color:var(--text-muted); margin-top:4px;"></div>
+                    </div>
+                    <div id="auto-backup" data-admin style="margin-bottom:12px;">
+                        <label for="auto-backup-frequency" style="font-size:11px;">Automatic backups</label>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                            <select id="auto-backup-frequency" onchange="SettingsPage._showScheduleFields()">
+                                <option value="off">Off</option>
+                                <option value="hours">Every few hours</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                            </select>
+                            <span data-for="hours" hidden>every <input type="number" id="auto-backup-hours" min="1" max="168" style="width:60px;" aria-label="Hours between backups"> hours</span>
+                            <span data-for="weekly" hidden>on <select id="auto-backup-weekday" aria-label="Day of the week">
+                                ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((d, i) => `<option value="${i}">${d}</option>`).join('')}
+                            </select></span>
+                            <span data-for="daily weekly" hidden>at <input type="time" id="auto-backup-time" aria-label="Time of day"></span>
+                            <span data-for="hours daily weekly" hidden>keep the last <input type="number" id="auto-backup-keep" min="1" max="365" style="width:60px;" aria-label="Automatic backups to keep"></span>
+                            <button type="button" class="btn btn-secondary" data-write onclick="SettingsPage.saveBackupSchedule()">Save Schedule</button>
+                        </div>
+                        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Automatic backups run while SlowBooks Pro is open.</div>
+                        <div id="auto-backup-status" style="font-size:10px; color:var(--text-muted); margin-top:2px;"></div>
                     </div>` : ''}
                     <div id="backup-list"></div>
                 </div>
@@ -2270,6 +2290,59 @@ const SettingsPage = {
         } catch (err) { toast(err.message, 'error'); }
     },
 
+    // Show only the schedule fields the chosen frequency uses.
+    _showScheduleFields() {
+        const freq = $('#auto-backup-frequency').value;
+        document.querySelectorAll('#auto-backup [data-for]').forEach(el => {
+            el.hidden = !el.dataset.for.split(' ').includes(freq);
+        });
+    },
+
+    _showBackupSchedule(info) {
+        if (!$('#auto-backup')) return;
+        $('#auto-backup-frequency').value = info.frequency;
+        $('#auto-backup-hours').value = info.every_hours;
+        $('#auto-backup-weekday').value = String(info.weekday);
+        $('#auto-backup-time').value = info.time;
+        $('#auto-backup-keep').value = info.keep;
+        SettingsPage._showScheduleFields();
+        const parts = [];
+        const last = info.last_run;
+        if (last) {
+            parts.push(last.ok
+                ? `Last automatic backup: ${SettingsPage._when(last.at)}${last.file_size ? `, ${(last.file_size / 1024).toFixed(1)} KB` : ''}.`
+                : `Last automatic backup failed (${SettingsPage._when(last.at)}): ${last.message} It will be tried again in an hour.`);
+        }
+        if (info.next_run) {
+            parts.push(new Date(info.next_run) <= new Date() ? 'Next: within a minute.' : `Next: ${SettingsPage._when(info.next_run)}.`);
+        }
+        const status = $('#auto-backup-status');
+        status.textContent = parts.join(' ');
+        status.style.color = last && !last.ok ? 'var(--danger)' : 'var(--text-muted)';
+    },
+
+    async loadBackupSchedule() {
+        if (!$('#auto-backup')) return;
+        try {
+            SettingsPage._showBackupSchedule(await API.get('/backups/schedule'));
+        } catch (e) { /* ignore */ }
+    },
+
+    async saveBackupSchedule() {
+        const body = {
+            frequency: $('#auto-backup-frequency').value,
+            every_hours: parseInt($('#auto-backup-hours').value, 10) || 24,
+            weekday: parseInt($('#auto-backup-weekday').value, 10),
+            time: $('#auto-backup-time').value || '23:00',
+            keep: parseInt($('#auto-backup-keep').value, 10) || 14,
+        };
+        try {
+            const info = await API.put('/backups/schedule', body);
+            SettingsPage._showBackupSchedule(info);
+            toast(info.frequency === 'off' ? 'Automatic backups are off' : 'Backup schedule saved');
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
     // A backup from elsewhere (a thumb drive, another computer): copied into
     // the backup folder, then the ordinary restore dialog, with its checks.
     async uploadBackup(input) {
@@ -2289,6 +2362,7 @@ const SettingsPage = {
 
     async loadBackups() {
         SettingsPage.loadBackupFolder();
+        SettingsPage.loadBackupSchedule();
         try {
             const backups = await API.get('/backups');
             SettingsPage._backups = backups;

@@ -59,6 +59,8 @@ _NAME_RE = re.compile(
 LEGACY_SLUG = "slowbooks"
 # The copy taken automatically just before a restore replaces the books.
 PRE_RESTORE_TAG = "before-restore"
+# The copy the schedule in Settings takes (auto_backup.py).
+AUTO_TAG = "auto"
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +769,7 @@ def list_company_backups(db: Session) -> list[dict]:
         row = rows.get(filename)
         stat = path.stat()
         pre_restore = bool(parsed and (parsed["tag"] or "").startswith(PRE_RESTORE_TAG))
+        auto = is_auto_backup(filename)
         if row is not None and row.created_at is not None:
             stamped = row.created_at
             if stamped.tzinfo is None:  # SQLite's CURRENT_TIMESTAMP is UTC
@@ -785,7 +788,9 @@ def list_company_backups(db: Session) -> list[dict]:
                 "backup_type": (
                     row.backup_type
                     if row is not None
-                    else ("pre-restore" if pre_restore else "manual")
+                    else (
+                        "pre-restore" if pre_restore else "auto" if auto else "manual"
+                    )
                 ),
                 "notes": (
                     row.notes
@@ -805,6 +810,38 @@ def list_company_backups(db: Session) -> list[dict]:
     for b in listed:
         del b["_sort"]
     return listed
+
+
+def is_auto_backup(filename: str) -> bool:
+    """True for a name the schedule made (tag "auto", or "auto-2" when two
+    fell in one second)."""
+    tag = (parse_backup_name(filename) or {}).get("tag") or ""
+    return tag == AUTO_TAG or tag.startswith(AUTO_TAG + "-")
+
+
+def prune_auto_backups(db: Session, keep: int) -> list[str]:
+    """Delete this company's automatic backups beyond the newest ``keep``:
+    the file and its row. Manual and before-restore backups are never
+    touched. Returns the names removed."""
+    autos = [
+        b["filename"] for b in list_company_backups(db) if is_auto_backup(b["filename"])
+    ]
+    removed = []
+    for name in autos[max(keep, 1) :]:
+        path = backup_path(name)
+        try:
+            if path is not None:
+                path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("Could not remove old automatic backup %s", name)
+            continue
+        removed.append(name)
+    if removed:
+        db.query(Backup).filter(Backup.filename.in_(removed)).delete(
+            synchronize_session=False
+        )
+        db.commit()
+    return removed
 
 
 def other_company(db: Session, filename: str) -> dict | None:

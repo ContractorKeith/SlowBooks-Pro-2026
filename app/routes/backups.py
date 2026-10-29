@@ -5,16 +5,19 @@
 
 
 import logging
+from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import Field
 from sqlalchemy.orm import Session
 from app.schemas.common import StrictModel
 from typing import Optional
 
 from app.database import get_db
 from app.routes._roles import may_download_backups, require_admin
-from app.services import backup_service
+from app.services import auto_backup, backup_service
 from app.services.backup_service import (
     PRE_RESTORE_TAG,
     create_backup,
@@ -69,6 +72,42 @@ def set_backup_folder(data: FolderUpdate):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _folder_info()
+
+
+class ScheduleUpdate(StrictModel):
+    frequency: Literal["off", "hours", "daily", "weekly"]
+    every_hours: int = Field(24, ge=1, le=168)
+    time: str = Field("23:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # local, HH:MM
+    weekday: int = Field(6, ge=0, le=6)  # Monday is 0
+    keep: int = Field(14, ge=1, le=365)
+
+
+def _schedule_info() -> dict:
+    schedule = auto_backup.get_schedule()
+    due = auto_backup.next_backup_at(
+        backup_service.read_backup_settings(), datetime.now()
+    )
+    return {
+        **{k: schedule[k] for k in auto_backup.DEFAULT_SCHEDULE},
+        "last_run": auto_backup.last_run(),
+        "next_run": due.isoformat(timespec="seconds") if due else None,
+        # the schedule runs inside the app, not as a service of its own
+        "running_in_app": True,
+    }
+
+
+@router.get("/schedule")
+def get_backup_schedule(request: Request):
+    """The automatic backup schedule and when it last and next runs."""
+    require_admin(request)
+    return _schedule_info()
+
+
+@router.put("/schedule")
+def set_backup_schedule(data: ScheduleUpdate):
+    # writes under /api/backups are admin-only (middleware in app.main)
+    auto_backup.set_schedule(data.model_dump())
+    return _schedule_info()
 
 
 @router.post("/upload")
