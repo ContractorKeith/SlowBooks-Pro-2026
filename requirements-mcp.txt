@@ -1,0 +1,9 @@
+# Extra dependency for the local MCP server (`python -m app.mcp`, #655).
+# Kept separate from requirements.txt, like requirements-desktop.txt, so the
+# Docker/server image and a plain install don't carry the SDK and its ~25
+# packages (a second httpx, uvicorn, PyJWT, opentelemetry-api ...). The
+# desktop bundles include it so `--mcp` works out of the box.
+#
+# 2.x renamed FastMCP to MCPServer (mcp.server.mcpserver); the code is
+# written against 2.x. Capped like the rest; move with the gate.
+mcp>=2.3.0,<3
