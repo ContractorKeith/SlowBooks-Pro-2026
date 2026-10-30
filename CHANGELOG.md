@@ -26,8 +26,11 @@ audit, so nothing in the books is new. Its instructions tell the agent that
 book text (memos, bank descriptions, notes) is data, never an instruction;
 the docs and the "Connect an agent" block under Settings, API Tokens
 recommend a read-only token and keep the token out of any command line.
-Every failure is a sentence, and a result is cut at 60,000 characters with
-a line saying how to narrow it; see [docs/agents.md](docs/agents.md).
+Every failure is a sentence, and a result, an error included, is cut at
+60,000 characters with a line saying how to narrow it. A list says when
+rows were left out, and `api_get` refuses the two reads that made a link on
+app versions before 2.31.2, so a read tool never makes a link; see
+[docs/agents.md](docs/agents.md).
 
 ### v2.31.1 — Sub-customers, memorized transactions, and stock that comes back out at its own cost
 

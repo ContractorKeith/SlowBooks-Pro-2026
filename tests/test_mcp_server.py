@@ -52,6 +52,8 @@ def test_config_defaults(env):
         "http://127.0.0.1:3001/api",
         "http://user:pw@127.0.0.1:3001",
         "http://127.0.0.1:3001?x=1",
+        "http://127.0.0.1:3001?",
+        "http://127.0.0.1:3001#",
         "not a url",
     ],
 )
@@ -154,6 +156,13 @@ def test_module_serves_the_config_sentence_under_a_client():
     assert "SLOWBOOKS_TOKEN_FILE" in out[2]["result"]["content"][0]["text"]
 
 
+def test_config_expands_variables_in_the_token_path(env, monkeypatch):
+    """%LOCALAPPDATA%\\... typed in cmd.exe arrives literal (Linux review)."""
+    monkeypatch.setenv("SB_TOKEN_DIR", str(env.parent))
+    monkeypatch.setenv("SLOWBOOKS_TOKEN_FILE", "$SB_TOKEN_DIR/token")
+    assert load_config().token == SECRET
+
+
 def test_config_token_file_is_a_directory(env, tmp_path):
     os.environ["SLOWBOOKS_TOKEN_FILE"] = str(tmp_path)
     with pytest.raises(ConfigError, match="is a directory"):
@@ -235,6 +244,22 @@ def test_client_422_is_sentences(api):
     assert "customer_id:" in str(exc.value) and "lines.0" in str(exc.value)
 
 
+def test_client_names_a_foreign_answer(api):
+    """python -m http.server on the port answered an HTML 404 that came back
+    raw (Linux review)."""
+    other = ApiClient(lambda *a: (404, "<!DOCTYPE HTML><html>not the app</html>"))
+    with pytest.raises(ApiError) as exc:
+        other.get("/api/customers")
+    assert "Something other than SlowBooks Pro answered" in str(exc.value)
+    assert "DOCTYPE" not in str(exc.value)
+    # A client-side refusal carries no HTTP status in its sentence.
+    with pytest.raises(ApiError) as exc:
+        api.get("/api/tokens")
+    assert exc.value.local and not str(exc.value).startswith("HTTP")
+    with pytest.raises(ApiError, match="control character"):
+        api.get("/api/customers\r\nX-Evil: 1")
+
+
 def test_client_post_sends_a_body(api):
     made = api.post("/api/customers", {"name": "Posted Co"})
     assert made["name"] == "Posted Co"
@@ -282,8 +307,16 @@ def test_real_transport_sentences_for_bad_answers(tmp_path, monkeypatch):
         for path in ("/api/half", "/api/junk"):
             with pytest.raises(ApiError) as exc:
                 send("GET", path, {}, None, None)
-            assert exc.value.status == 0 and "did not answer" in exc.value.detail
-            assert SECRET not in str(exc.value)
+            assert exc.value.status == 0 and exc.value.sent
+            assert "did not answer" in exc.value.detail
+            assert "IncompleteRead" not in str(exc.value)
+            assert "SSH" not in str(exc.value) and SECRET not in str(exc.value)
+        # A refused connection sent nothing, and says so (no exception text).
+        dead = urllib_transport(Config("http://127.0.0.1:9", SECRET, 5))
+        with pytest.raises(ApiError) as exc:
+            dead("GET", "/api/customers", {}, None, None)
+        assert exc.value.status == 0 and exc.value.sent is False
+        assert "Nothing was sent" in str(exc.value) and "Errno" not in str(exc.value)
     finally:
         httpd.shutdown()
 
@@ -312,14 +345,16 @@ def test_search_list_and_get_a_customer(api):
 def test_list_records_limit_and_kinds(api):
     for name in ("Alpha", "Zulu", "Quartz"):
         api.post("/api/customers", {"name": f"{name} Industries"})
-    assert len(tools.list_records(api, "customers", limit=2)) == 2
+    cut = tools.list_records(api, "customers", limit=2)
+    assert len(cut["rows"]) == 2 and (cut["shown"], cut["total"]) == (2, 3)
+    assert isinstance(tools.list_records(api, "customers", limit=10), list)
     # An unknown filter is refused, not ignored: {"customer": 3} listed every
     # invoice as if it were a filter (Mac review).
     with pytest.raises(ValueError, match="does not take customer. Filters: "):
         tools.list_records(api, "invoices", {"customer": 3})
     with pytest.raises(ValueError, match="single value"):
         tools.list_records(api, "invoices", {"status": ["open"]})
-    assert tools.list_records(api, "customers", limit=10**6) is not None
+    assert isinstance(tools.list_records(api, "customers", limit=10**6), list)
     assert tools.list_records(api, "invoices", limit=5) == []
     with pytest.raises(ValueError, match="customers.*bank_transactions"):
         tools.list_records(api, "nope")
@@ -355,11 +390,16 @@ def test_api_schema(api):
     assert any(r["path"] == "/api/customers" for r in rows)
     assert len(rows) <= 20
     assert "No route matches" in tools.api_schema(api, "/api/nothing")
+    top = tools.api_schema(api, "/api")
+    assert isinstance(top, list) and len(top) == 21 and top[-1]["more"] > 100
+    assert tools.api_schema(api, "/api/")[-1]["note"]
     # A prefix listing never offers a guarded route (Linux review).
     for prefix in ("/api/token", "/api/u", "/api/backup", "/api/sys", "/api/"):
         rows = tools.api_schema(api, prefix)
         rows = rows if isinstance(rows, list) else []  # "No route matches"
         for row in rows:
+            if "path" not in row:
+                continue  # the trailing "more" note
             assert not row["path"].startswith(
                 ("/api/tokens", "/api/users", "/api/backups", "/api/system")
             ), row
@@ -369,8 +409,25 @@ def test_api_get(api):
     assert isinstance(tools.api_get(api, "/api/accounts"), list)
     with pytest.raises(ApiError):
         tools.api_get(api, "/api/tokens")
-    with pytest.raises(ValueError, match="use api_schema"):
-        tools.api_get(api, "/openapi.json")
+    for spelling in (
+        "/openapi.json",
+        "//openapi.json",
+        "/api/../openapi.json",
+        "/%6Fpenapi.json",
+    ):
+        with pytest.raises(ValueError, match="use api_schema"):
+            tools.api_get(api, spelling)
+    # A read that made a link on older apps is never sent (#659).
+    for path in ("/api/payments/payment-link/1", "/api/employees/3/portal-token"):
+        with pytest.raises(ValueError, match="Links are made in the app"):
+            tools.api_get(api, path)
+    # Params are checked like list_records' filters, templated routes too.
+    with pytest.raises(ValueError, match="does not take bogus. Parameters: "):
+        tools.api_get(api, "/api/customers", {"bogus": "1"})
+    with pytest.raises(ValueError, match="single value"):
+        tools.api_get(api, "/api/customers", {"search": {"x": 1}})
+    with pytest.raises(ValueError, match="does not take zzz"):
+        tools.api_get(api, "/api/customers/1", {"zzz": 1})
     text = ApiClient(lambda *a: (200, "%PDF-1.7 junk"))
     with pytest.raises(ValueError, match="JSON only"):
         tools.api_get(text, "/api/reports/profit-loss/pdf")
@@ -566,6 +623,67 @@ def test_protocol_result_is_cut_at_the_cap(api):
     assert out["isError"] is False
     text = out["content"][0]["text"]
     assert len(text) < MAX_TEXT + 200 and "cut at 60,000 characters" in text
+
+
+def test_protocol_errors_are_cut_too(api):
+    from app.mcp.server import MAX_TEXT
+
+    huge = ApiClient(
+        lambda *a: (422, {"detail": [{"loc": ["body", "x"], "message": "bad"}] * 20000})
+    )
+    huge.spec = {"paths": {}}
+    out = build_server(huge).handle(
+        _req(
+            19,
+            "tools/call",
+            {"name": "api_get", "arguments": {"path": "/api/customers"}},
+        )
+    )["result"]
+    assert out["isError"] is True
+    assert len(out["content"][0]["text"]) < MAX_TEXT + 200
+    assert "cut at 60,000" in out["content"][0]["text"]
+
+
+def test_protocol_cut_never_splits_an_escape():
+    from app.mcp.server import MAX_TEXT, _cut
+
+    text = "x" * (MAX_TEXT - 3) + "\\u00e9" + "y" * 100
+    cut = _cut(text)
+    assert "\\u00" not in cut.split("\n")[0][-8:]
+    assert json.loads(json.dumps(cut))  # still a string, no stray backslash
+
+
+def test_protocol_known_versions_are_quiet(api, capsys):
+    server = build_server(api)
+    server.handle(_req(20, "initialize", {"protocolVersion": "2025-11-25"}))
+    server.handle(_req(21, "initialize", {"protocolVersion": "2024-11-05"}))
+    assert capsys.readouterr().err == ""
+
+
+def test_module_prints_nothing_but_json_on_stdout(env):
+    """A stray print before the loop is what breaks a client (Mac review)."""
+    line = json.dumps(_req(1, "ping")) + "\n"
+    r = subprocess.run(
+        [sys.executable, "-m", "app.mcp"],
+        input=line,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "SLOWBOOKS_TOKEN_FILE": str(env)},
+    )
+    assert r.returncode == 0
+    assert r.stdout.startswith("{") and len(r.stdout.splitlines()) == 1
+    assert r.stderr == ""
+
+
+def test_run_on_a_terminal_prints_and_exits_2(monkeypatch, capsys):
+    from app.mcp import server as mod
+
+    monkeypatch.delenv("SLOWBOOKS_TOKEN_FILE", raising=False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(mod, "build_server", lambda *a, **k: 1 / 0)  # never served
+    assert mod.run() == 2
+    assert "SLOWBOOKS_TOKEN_FILE" in capsys.readouterr().err
 
 
 def test_protocol_write_tool_while_writes_are_off_says_so(api):

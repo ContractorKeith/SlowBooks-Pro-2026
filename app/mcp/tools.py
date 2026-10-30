@@ -7,7 +7,13 @@ import difflib
 import re
 from typing import Optional
 
-from app.mcp.client import ApiClient, ApiError, reachable, unreachable_sentence
+from app.mcp.client import (
+    ApiClient,
+    ApiError,
+    normalise_path,
+    reachable,
+    unreachable_sentence,
+)
 
 # kind -> list route. The first eight are the books' main records.
 KINDS = {
@@ -38,7 +44,10 @@ def _kind_path(kind: str) -> str:
 
 def _spec(client: ApiClient) -> dict:
     if client.spec is None:
-        client.spec = client.get("/openapi.json")
+        spec = client.get("/openapi.json")
+        if not isinstance(spec, dict):
+            return {}  # not the app on the port; nothing cached
+        client.spec = spec
     return client.spec
 
 
@@ -92,9 +101,16 @@ def _item(client: ApiClient, op: dict) -> dict:
     return out
 
 
+LISTING = 20
+
+
 def api_schema(client: ApiClient, path: str):
-    """How to call a route: methods, parameters and request body."""
-    if not reachable(path):
+    """How to call a route: methods, parameters and request body. A prefix
+    (even /api) lists the routes under it, the first 20 with a count of the
+    rest."""
+    if path.rstrip("/") == "/api":
+        path = "/api/"
+    elif not reachable(path):
         # The schema of a route the server never sends to would only invite
         # the call; say so here as api_get would.
         return unreachable_sentence(path)
@@ -117,8 +133,12 @@ def api_schema(client: ApiClient, path: str):
         for p, item in paths.items()
         if p.startswith(path) and reachable(p)  # a guarded route is not offered
     ]
+    if len(rows) > LISTING:
+        return rows[:LISTING] + [
+            {"more": len(rows) - LISTING, "note": "Narrow the prefix to see the rest."}
+        ]
     if rows:
-        return rows[:20]
+        return rows
     return f"No route matches {path!r}. Try a shorter prefix such as /api/customers."
 
 
@@ -128,11 +148,17 @@ _HTTP = {"get", "post", "put", "patch", "delete"}
 def search(client: ApiClient, q: str, limit: int = 20) -> dict:
     """Find records by name, number or amount across the books."""
     found = client.get("/api/search", {"q": q})
-    out, left = {}, max(1, limit)
+    out, left, dropped = {}, max(1, limit), 0
     for group, rows in found.items():
-        if rows and left > 0:
-            out[group] = rows[:left]
-            left -= len(out[group])
+        if not rows:
+            continue
+        out[group] = rows[: max(0, left)]
+        dropped += len(rows) - len(out[group])
+        left -= len(out[group])
+        if not out[group]:
+            del out[group]
+    if dropped:
+        out["more"] = dropped  # matches left out: raise limit or narrow q
     return out
 
 
@@ -171,7 +197,10 @@ def list_records(
     if kind in _SERVER_LIMIT:
         params.setdefault("limit", limit)
     rows = client.get(path, params)
-    return rows[:limit] if isinstance(rows, list) else rows
+    if isinstance(rows, list) and len(rows) > limit:
+        # Never a silent cut: an agent asked "how many" must not answer 50.
+        return {"rows": rows[:limit], "shown": limit, "total": len(rows)}
+    return rows
 
 
 def get_record(client: ApiClient, kind: str, record_id: int):
@@ -211,13 +240,16 @@ def list_reports(client: ApiClient) -> list:
     return [{"name": n, "params": p} for n, p in sorted(_reports(client).items())]
 
 
-def _scalar_params(params: Optional[dict], known: list, what: str) -> dict:
+def _scalar_params(params: Optional[dict], known: Optional[list], what: str) -> dict:
     """Query parameters checked against the route: an unknown name or a
-    list/object value is refused, since the API would ignore it silently."""
+    list/object value is refused, since the API would ignore it silently.
+    known=None (no spec entry for the route) checks the values only."""
     params = dict(params or {})
     for key, value in params.items():
         if isinstance(value, (dict, list)):
             raise ValueError(f"{key!r} must be a single value, not a list or object.")
+    if known is None:
+        return params
     unknown = sorted(k for k in params if k not in known)
     if unknown:
         raise ValueError(
@@ -239,11 +271,50 @@ def report(client: ApiClient, name: str, params: Optional[dict] = None):
     return client.get(f"/api/reports/{name}", params)
 
 
+# Reads that made a link on app versions before 2.31.2 (#659): a read tool
+# never makes one, so they are refused here whatever the app's version.
+_MINTING_READS = re.compile(
+    r"^/api/(payments/payment-link/\d+|employees/\d+/portal-token)$"
+)
+
+
+def _spec_params_for(client: ApiClient, clean: str) -> Optional[list]:
+    """The GET query parameters of the spec route that matches `clean`,
+    templated segments included; None when no route matches."""
+    paths = _spec(client).get("paths", {})
+    if clean in paths:
+        return _query_params(client, clean)
+    for spec_path in paths:
+        if "{" not in spec_path:
+            continue
+        pattern = (
+            "^"
+            + re.sub(
+                r"\{[^/}]+\}",
+                r"[^/]+",
+                re.escape(spec_path).replace(r"\{", "{").replace(r"\}", "}"),
+            )
+            + "$"
+        )
+        if re.match(pattern, clean):
+            return _query_params(client, spec_path)
+    return None
+
+
 def api_get(client: ApiClient, path: str, params: Optional[dict] = None):
     """Read-only GET of any other API route that answers JSON (see api_schema
-    for the route and its parameters; the query goes in params)."""
-    if path.strip() == "/openapi.json":
+    for the route and its parameters; the query goes in params, and a
+    parameter the route does not take is refused, not ignored)."""
+    clean = normalise_path(path) if isinstance(path, str) else ""
+    if clean == "/openapi.json":
         raise ValueError("The spec is too large to return; use api_schema on a route.")
+    if _MINTING_READS.match(clean):
+        raise ValueError(
+            f"{clean} is not read here: on app versions before 2.31.2 that read "
+            "made the link. Links are made in the app."
+        )
+    known = _spec_params_for(client, clean) if clean else None
+    params = _scalar_params(params, known, clean or path)
     result = client.get(path, params)
     if isinstance(result, str):
         raise ValueError(
@@ -286,13 +357,25 @@ def _write(client: ApiClient, path: str, data, *, key=None, params=None):
     try:
         return client.post(path, data, headers=headers, params=params)
     except ApiError as exc:
-        if exc.status == 0:
+        if exc.status == 0 and exc.sent:
             raise ValueError(
                 f"{exc.detail} {_RETRY_SAME_KEY if key else _CHECK_FIRST}"
             ) from None
         if exc.status == 409:
             for theirs, ours in _OVERRIDE_WORDING:
                 exc.detail = exc.detail.replace(theirs, ours)
+                if isinstance(exc.payload, dict) and isinstance(
+                    exc.payload.get("message"), str
+                ):
+                    exc.payload["message"] = exc.payload["message"].replace(
+                        theirs, ours
+                    )
+            code = (exc.payload or {}).get("error") or (exc.payload or {}).get("code")
+            if code == "duplicate_check_number" and "allow_duplicate" not in exc.detail:
+                exc.detail += (
+                    " Call again with allow_duplicate_check_number: true once the "
+                    "user agrees."
+                )
         raise
 
 
@@ -435,14 +518,23 @@ def void_record(
     if kind == "journal_entries":
         entry = client.get(f"/api/journal/{int(record_id)}")
         source = (entry.get("source_type") or "") if isinstance(entry, dict) else ""
-        if source not in _OWN_JOURNAL_SOURCES and not source.endswith("_import"):
-            hint = (
-                f" Use void_record(kind={_SOURCE_KIND[source]!r}, record_id=...) on it."
-                if source in _SOURCE_KIND
-                else " Void that record itself."
-            )
+        own = (
+            source in _OWN_JOURNAL_SOURCES
+            or source.endswith("_import")
+            or source.endswith("_void")  # a reversal: the route says so itself
+        )
+        if not own:
+            noun = source.replace("_", " ")
+            what = ("an " if noun[0] in "aeiou" else "a ") + noun
+            if source in _SOURCE_KIND:
+                hint = (
+                    f" Find the {noun} by its number and use "
+                    f"void_record(kind={_SOURCE_KIND[source]!r}, record_id=<its id>)."
+                )
+            else:
+                hint = " Void it in the app, from its own record."
             raise ValueError(
-                f"Journal entry {int(record_id)} is the posting of a {source}, not "
+                f"Journal entry {int(record_id)} is the posting of {what}, not "
                 f"a journal of its own; voiding it here would reverse it twice.{hint}"
             )
     params = {"fee_refunded": "true"} if fee_refunded and kind == "payments" else None

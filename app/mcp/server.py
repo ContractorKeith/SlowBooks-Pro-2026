@@ -21,6 +21,9 @@ from app.mcp.client import ApiClient, ApiError, urllib_transport
 from app.mcp.config import ConfigError, load_config
 
 PROTOCOL_VERSION = "2025-06-18"
+# Versions whose tools/list and tools/call are the same as ours: a client
+# asking for one of these gets our version and no stderr line.
+COMPATIBLE_VERSIONS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 SERVER_INFO = {"name": "SlowBooks Pro", "version": __version__}
 WRITES_FLAG = "SLOWBOOKS_MCP_WRITES"
 
@@ -367,7 +370,10 @@ class Server:
             text = str(exc)
             if exc.payload is not None:
                 text += "\n" + json.dumps(exc.payload)
-            result = {"content": [{"type": "text", "text": text}], "isError": True}
+            result = {
+                "content": [{"type": "text", "text": _cut(text)}],
+                "isError": True,
+            }
         except Exception as exc:  # noqa: BLE001 - one message never ends the loop
             return _error(
                 msg_id, INTERNAL_ERROR, f"Internal error: {type(exc).__name__}"
@@ -376,7 +382,7 @@ class Server:
 
     def _initialize(self, params: dict) -> dict:
         asked = params.get("protocolVersion") if isinstance(params, dict) else None
-        if asked != PROTOCOL_VERSION:
+        if asked not in COMPATIBLE_VERSIONS:
             sys.stderr.write(
                 f"The client asked for MCP protocol {asked!r}; this server speaks "
                 f"{PROTOCOL_VERSION}. If the client refuses it, update SlowBooks "
@@ -394,12 +400,7 @@ class Server:
             raise ToolError("tools/call needs a tool name.")
         result = self.call_tool(params["name"], params.get("arguments"))
         text = result if isinstance(result, str) else json.dumps(result, default=str)
-        if len(text) > MAX_TEXT:
-            text = text[:MAX_TEXT] + (
-                f"\n... cut at {MAX_TEXT:,} characters. Narrow it: filters, a "
-                "smaller limit, or one record with get_record."
-            )
-        return {"content": [{"type": "text", "text": text}], "isError": False}
+        return {"content": [{"type": "text", "text": _cut(text)}], "isError": False}
 
     # -- stdio ---------------------------------------------------------------
 
@@ -407,20 +408,42 @@ class Server:
         """Read one JSON message per line until stdin closes."""
         stdin = stdin or sys.stdin.buffer
         stdout = stdout or sys.stdout.buffer
-        for raw in stdin:
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                message = json.loads(line)
-            except (ValueError, RecursionError):
-                response = _error(None, PARSE_ERROR, "The line is not valid JSON.")
-            else:
-                response = self.handle(message)
-            if response is not None:
-                stdout.write(json.dumps(response, default=str).encode("utf-8") + b"\n")
-                stdout.flush()
+        try:
+            for raw in stdin:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    message = json.loads(line)
+                except (ValueError, RecursionError):
+                    response = _error(None, PARSE_ERROR, "The line is not valid JSON.")
+                else:
+                    response = self.handle(message)
+                if response is not None:
+                    stdout.write(
+                        json.dumps(response, default=str).encode("utf-8") + b"\n"
+                    )
+                    stdout.flush()
+        except (BrokenPipeError, KeyboardInterrupt):
+            # The client hung up or the user stopped it: quiet exit, no trace.
+            return 0
         return 0
+
+
+def _cut(text: str) -> str:
+    """Results and errors alike are cut at MAX_TEXT, never inside a JSON
+    escape (a split \\uXXXX would be a stray backslash)."""
+    if len(text) <= MAX_TEXT:
+        return text
+    head = text[:MAX_TEXT]
+    tail = head[-6:]
+    at = tail.rfind("\\")
+    if at != -1 and (len(tail) - at) <= 6:
+        head = head[: len(head) - (len(tail) - at)]
+    return head + (
+        f"\n... cut at {MAX_TEXT:,} characters. Narrow it: filters, a "
+        "smaller limit, or one record with get_record."
+    )
 
 
 def _error(msg_id, code: int, message: str) -> dict:

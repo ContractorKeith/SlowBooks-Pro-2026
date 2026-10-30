@@ -16,10 +16,12 @@ It is the standard library only, so there is nothing to install.
    enters your shell history:
 
    ```
-   umask 077; cat > ~/.slowbooks-token
+   (umask 077; cat > ~/.slowbooks-token)
    ```
 
-   Windows PowerShell, into the app's data folder:
+   The parentheses keep the private umask to that one command.
+
+   PowerShell on Windows, into the app's data folder:
 
    ```
    New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\SlowBooksPro\data" | Out-Null
@@ -28,7 +30,9 @@ It is the standard library only, so there is nothing to install.
 
    `Read-Host` shows the token on screen as you paste it; clear the window
    after. Keep the file out of a folder that syncs to the cloud (OneDrive's
-   Desktop or Documents): a synced token has left the machine.
+   Desktop or Documents, or iCloud Drive's "Desktop & Documents" on macOS):
+   a synced token has left the machine. The default `~/.slowbooks-token` is
+   outside both.
 
 3. Start the app, then connect the agent. The server is `app/mcp` in the
    checkout; run it as `python -m app.mcp` from the checkout, or from
@@ -44,10 +48,11 @@ It is the standard library only, so there is nothing to install.
 claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=$HOME/.slowbooks-token -- /path/to/SlowBooks-Pro-2026/.venv/bin/python /path/to/SlowBooks-Pro-2026/app/mcp/__main__.py
 ```
 
-Windows, with the token in the app's data folder:
+PowerShell on Windows, with the token in the app's data folder (in cmd.exe
+write the path as `%LOCALAPPDATA%\SlowBooksPro\data\mcp-token`):
 
 ```
-claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=%LOCALAPPDATA%\SlowBooksPro\data\mcp-token -- C:\path\to\SlowBooks-Pro-2026\.venv\Scripts\python.exe C:\path\to\SlowBooks-Pro-2026\app\mcp\__main__.py
+claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE="$env:LOCALAPPDATA\SlowBooksPro\data\mcp-token" -- C:\path\to\SlowBooks-Pro-2026\.venv\Scripts\python.exe C:\path\to\SlowBooks-Pro-2026\app\mcp\__main__.py
 ```
 
 Add `-e SLOWBOOKS_MCP_WRITES=1` to let the agent post entries (with a
@@ -82,9 +87,11 @@ the checkout.
 **Desktop install.** The installed program with `--mcp` starts the same
 server (use its full path; it is not on PATH: on Windows
 `"C:\Program Files\SlowBooks Pro 2026\SlowBooksPro.exe" --mcp`, on macOS
-`/Applications/SlowBooks\ Pro.app/Contents/MacOS/SlowBooksPro --mcp`). It finds
-the app on the port in your `.env` (else 3001) and reads the token from
-`mcp-token` in the data directory:
+`/Applications/SlowBooks\ Pro.app/Contents/MacOS/SlowBooksPro --mcp`, on
+Linux `~/.local/bin/SlowBooksPro` or wherever the AppImage or binary was
+put: the file you run to start the app). It finds the app on the port in
+your `.env` (else 3001) and reads the token from `mcp-token` in the data
+directory:
 
 | Platform | Default token file |
 |----------|--------------------|
@@ -103,6 +110,17 @@ or start a server.
 | `SLOWBOOKS_URL` | `http://127.0.0.1:3001` | The running app; loopback `http://` only |
 | `SLOWBOOKS_MCP_WRITES` | off | `1` lists the write tools |
 | `SLOWBOOKS_TIMEOUT_SECONDS` | `120` | Per-request timeout, 1 to 3600 |
+
+The token file is read once, when the server starts. After you revoke a
+token and write a new one, restart the server (in Claude Code, reconnect
+with `/mcp` or restart the session).
+
+The app's API description is cached for the server's lifetime, so after
+upgrading SlowBooks Pro, restart the server.
+
+With `SlowBooksPro --mcp` and neither `--port` nor a `.env`, the server
+looks on port 3001 and sends the token to whatever answers there. If the
+app runs elsewhere, set the port (`--port`, or `SLOWBOOKS_URL`).
 
 The token comes from a file and nowhere else, so it never shows in a process
 list or an agent's config. On macOS and Linux the file must not be readable
@@ -136,6 +154,12 @@ Reads (always listed):
 | `list_reports` | The reports that can be run, with their parameters |
 | `report` | Run a report by name (see `list_reports`) |
 | `api_get` | Read-only GET of any other API route (see `api_schema`); the query goes in `params`, not in the path |
+
+`list_records` answers `{"rows": [...], "shown": N, "total": M}` when more
+rows exist than it returned, and a plain list otherwise. `search` adds
+`"more"`, the count it left out, when a group was cut. `api_schema`'s prefix
+listing says how many more routes match when it shows the first 20. A
+result, an error included, is cut at 60,000 characters.
 
 Record kinds: customers, vendors, items, accounts, invoices, bills,
 expenses, journal_entries, payments, bill_payments, bank_transactions.
@@ -175,7 +199,10 @@ company file, and the server refuses those routes before they are sent
 get past it). The token's role limits the rest: the agent can do what that
 role can. Every change is audited as `token:<label>`, using the label you
 gave the token. Revoke it under Settings, API Tokens, and the agent is
-locked out.
+locked out. `api_get` refuses the two reads that made a link on app versions
+before 2.31.2 (`/api/payments/payment-link/{id}` and
+`/api/employees/{id}/portal-token`), so a read tool never makes a link;
+links are made in the app.
 
 ## Troubleshooting
 
@@ -188,6 +215,8 @@ locked out.
 - The agent says the server is not configured: the setup sentence is in the
   server's instructions and in every tool's answer; fix it and restart the
   server (the client's reconnect).
+- The agent is locked out after you replaced a token: the old one is still
+  loaded. Restart the server.
 - "On Windows the token file must be under your user profile folder": move
   it there, for example the app's data folder.
 - "The token file ... must hold one line": the file holds the token and
@@ -200,5 +229,9 @@ locked out.
   disagree on the protocol version. Update whichever is older.
 - A tool you expect is missing: the write tools are listed only with
   `SLOWBOOKS_MCP_WRITES=1`.
+- "Something other than SlowBooks Pro answered at ...": another program is
+  on that port. Check `SLOWBOOKS_URL` and the app's port.
+- "SlowBooks Pro is not answering at ... Nothing was sent.": the app is not
+  running or is on another port.
 - Tools answer with a refusal: the app is not running, the token is revoked,
   or its role does not allow that. The API's own sentence says which.

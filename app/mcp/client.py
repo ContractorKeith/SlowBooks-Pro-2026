@@ -33,15 +33,35 @@ _REFUSED_PREFIXES = (
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, detail: str, payload: Optional[dict] = None):
+    """status 0 means no HTTP answer; `sent` says whether the request left
+    (a cut-off reply did reach the app; a refused connection did not), and
+    `local` marks a refusal made here before any request."""
+
+    def __init__(
+        self,
+        status: int,
+        detail: str,
+        payload: Optional[dict] = None,
+        *,
+        sent: bool = True,
+        local: bool = False,
+    ):
         super().__init__(status, detail)
         self.status = status
         self.detail = detail
         self.payload = payload  # the API's whole detail dict, when it sent one
+        self.sent = sent
+        self.local = local
 
     def __str__(self) -> str:
-        # Status 0 is "no answer": there is no HTTP status to show.
-        return self.detail if self.status == 0 else f"HTTP {self.status}: {self.detail}"
+        # No HTTP status to show when nothing answered or nothing was sent.
+        if self.status == 0 or self.local:
+            return self.detail
+        return f"HTTP {self.status}: {self.detail}"
+
+
+def _printable(path: str) -> str:
+    return "".join(c for c in path if c.isprintable())
 
 
 def normalise_path(path: str) -> str:
@@ -76,21 +96,35 @@ def reachable(path: str) -> bool:
 
 
 def unreachable_sentence(path: str) -> str:
-    return f"{path} is not available: the MCP server does not reach that route."
+    return (
+        f"{_printable(path)} is not available: the MCP server does not reach "
+        "that route."
+    )
 
 
 def _check_path(path: str) -> str:
-    """The normalised path to send, or a sentence."""
+    """The normalised path to send, or a sentence (nothing is sent)."""
     if not isinstance(path, str):
-        raise ApiError(400, "The path must be a string like /api/customers.")
+        raise ApiError(
+            400, "The path must be a string like /api/customers.", local=True
+        )
     if "?" in path or "#" in path:
         # Decoding a query along with the path would rewrite it (a%26b
         # became a&b); the query goes in params, where it is encoded whole.
         raise ApiError(
-            400, "A path takes no query or fragment; put the query in params."
+            400,
+            "A path takes no query or fragment; put the query in params.",
+            local=True,
+        )
+    if "\\" in path or any(not c.isprintable() for c in path):
+        raise ApiError(
+            403,
+            "The path holds a control character or a backslash; the MCP server "
+            "does not reach that route.",
+            local=True,
         )
     if not reachable(path):
-        raise ApiError(403, unreachable_sentence(path))
+        raise ApiError(403, unreachable_sentence(path), local=True)
     return normalise_path(path)
 
 
@@ -101,7 +135,7 @@ def _sentences(errors: list) -> str:
         if not isinstance(err, dict):
             out.append(str(err))
             continue
-        loc = [str(x) for x in err.get("loc", []) if x not in ("body", "query")]
+        loc = [str(x) for x in err.get("loc", []) if x not in ("body", "query", "path")]
         where = ".".join(loc)
         msg = err.get("message") or err.get("msg") or json.dumps(err)
         out.append(f"{where}: {msg}" if where else str(msg))
@@ -114,6 +148,14 @@ def _parse(raw: bytes):
         return json.loads(text)
     except ValueError:
         return text
+
+
+def _no_answer(config: Config, what: str) -> str:
+    return (
+        f"SlowBooks Pro did not answer at {config.base_url} ({what}): the request "
+        "may or may not have reached it. Check that the app is running on this "
+        "port and that nothing else is."
+    )
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -153,23 +195,28 @@ def urllib_transport(config: Config) -> Transport:
                     "which the MCP server does not follow.",
                 ) from None
             return exc.code, _parse(exc.read())
-        except (http.client.InvalidURL, UnicodeError, ValueError) as exc:
-            # Refused before anything was sent, so the outcome is known.
-            raise ApiError(400, f"The request could not be formed: {exc}") from None
-        except (
-            urllib.error.URLError,
-            http.client.HTTPException,
-            socket.timeout,
-            OSError,
-        ) as exc:
-            # Includes a half answer (IncompleteRead) and a non-HTTP answer
-            # (BadStatusLine): the app died mid-reply or something else is
-            # on the port. Status 0: the outcome is unknown.
-            reason = getattr(exc, "reason", None) or exc
+        except urllib.error.URLError as exc:
+            reason = exc.reason
+            if isinstance(reason, (ConnectionRefusedError, ConnectionError)) or (
+                isinstance(reason, OSError) and reason.errno in (61, 111)
+            ):
+                raise ApiError(
+                    0,
+                    f"SlowBooks Pro is not answering at {config.base_url}: is the "
+                    "app running, and on this port? Nothing was sent.",
+                    sent=False,
+                ) from None
+            if isinstance(reason, socket.timeout) or "timed out" in str(reason):
+                raise ApiError(0, _no_answer(config, "timed out")) from None
+            raise ApiError(0, _no_answer(config, "no reply")) from None
+        except (socket.timeout, TimeoutError):
+            raise ApiError(0, _no_answer(config, "timed out")) from None
+        except (http.client.HTTPException, OSError):
+            # A half answer (IncompleteRead) or a non-HTTP answer
+            # (BadStatusLine): the app died mid-reply, or something else is
+            # on the port. The foreign bytes are not echoed.
             raise ApiError(
-                0,
-                f"SlowBooks Pro did not answer at {config.base_url}: "
-                f"{type(exc).__name__}: {reason}",
+                0, _no_answer(config, "a reply that was not the app's")
             ) from None
 
     return send
@@ -188,6 +235,13 @@ class ApiClient:
             return payload
         detail = payload.get("detail") if isinstance(payload, dict) else payload
         extra = None
+        if not isinstance(payload, dict):
+            # The app answers JSON with "detail"; text or HTML here means
+            # another program is on the port (or a proxy page). Not echoed.
+            detail = (
+                f"Something other than SlowBooks Pro answered (HTTP {status}, not "
+                "the app's JSON). Check SLOWBOOKS_URL and the app's port."
+            )
         if isinstance(detail, dict) and isinstance(detail.get("message"), str):
             extra = detail
             detail = detail["message"]  # e.g. the possible-duplicate 409

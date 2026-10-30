@@ -31,7 +31,7 @@ class Config:
 def _base_url(raw: str) -> str:
     sentence = (
         "SLOWBOOKS_URL must be a loopback http:// address, "
-        "like http://127.0.0.1:3001"
+        "like http://127.0.0.1:3001."
     )
     try:
         parts = urlsplit(raw.strip())
@@ -40,6 +40,8 @@ def _base_url(raw: str) -> str:
         raise ConfigError(sentence) from None
     if (
         any(c.isspace() for c in raw.strip())
+        or "?" in raw
+        or "#" in raw
         or parts.scheme != "http"
         or host not in _LOOPBACK_HOSTS
         or parts.username is not None
@@ -67,7 +69,8 @@ def _under_profile(path: str) -> bool:
     profile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
 
     def norm(p):
-        return os.path.normcase(os.path.normpath(os.path.abspath(p))).lower()
+        # realpath follows a junction or symlink and expands an 8.3 name.
+        return os.path.normcase(os.path.realpath(p)).lower()
 
     root, target = norm(profile), norm(path)
     return target == root or target.startswith(root.rstrip("\\/") + os.sep)
@@ -79,7 +82,8 @@ def _read_token(raw_path: str) -> str:
             "SLOWBOOKS_TOKEN_FILE must name a file that holds the API token "
             "(create one under Settings, API Tokens)."
         )
-    path = os.path.expanduser(raw_path.strip())
+    # %LOCALAPPDATA% from a cmd.exe or a config file, ~ from a shell.
+    path = os.path.expanduser(os.path.expandvars(raw_path.strip()))
     if os.path.isdir(path):
         raise ConfigError(f"The token file {path} is a directory, not a file.")
     if not os.path.isfile(path):

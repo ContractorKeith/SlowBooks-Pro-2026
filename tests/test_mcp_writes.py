@@ -164,6 +164,14 @@ def test_unknown_outcome_sentences():
     with pytest.raises(ValueError, match="before retrying"):
         tools.void_record(gone, "invoices", 1)
 
+    # A refused connection sent nothing: no "unknown outcome" sentence.
+    def refused(*a):
+        raise ApiError(0, "Nothing was sent.", sent=False)
+
+    with pytest.raises(ApiError, match="Nothing was sent") as exc:
+        tools.record_payment(ApiClient(refused), {}, "k-1")
+    assert "may or may not" not in str(exc.value)
+
 
 def test_void_fee_refunded_only_on_payments(api):
     with pytest.raises(ValueError, match="payments only"):
@@ -176,6 +184,7 @@ def test_duplicate_409_names_the_tool_argument(api):
         tools.create_customer(api, {"name": "Dup Wording Co."})
     assert "?force=true" not in str(exc.value)
     assert "force: true" in str(exc.value)
+    assert "?force=true" not in exc.value.payload["message"]  # the relayed JSON too
 
 
 def test_void_refuses_a_documents_posting_from_the_journal(api, seed_accounts):
@@ -186,7 +195,7 @@ def test_void_refuses_a_documents_posting_from_the_journal(api, seed_accounts):
     rows = tools.list_records(api, "journal_entries", {"source_type": "invoice"})
     assert rows, "the invoice has no posting to void"
     posting = rows[-1]
-    with pytest.raises(ValueError, match="posting of a invoice.*kind='invoices'"):
+    with pytest.raises(ValueError, match="posting of an invoice.*kind='invoices'"):
         tools.void_record(api, "journal_entries", posting["id"])
     tools.void_record(api, "invoices", inv["id"])
     with pytest.raises(ValueError, match="reverse it twice"):
@@ -211,7 +220,10 @@ def test_void_refuses_a_documents_posting_from_the_journal(api, seed_accounts):
             ],
         },
     )
-    assert tools.void_record(api, "journal_entries", je["id"])
+    voided = tools.void_record(api, "journal_entries", je["id"])
+    # The reversal itself is left to the route, which names it.
+    with pytest.raises(ApiError, match="reversal entry"):
+        tools.void_record(api, "journal_entries", voided["id"])
 
 
 def test_server_lists_eighteen_tools_with_writes_on_and_eight_off(api):
