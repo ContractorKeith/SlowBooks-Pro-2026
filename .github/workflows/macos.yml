@@ -80,7 +80,6 @@ jobs:
           python -m pip install \
             -r requirements.txt \
             -r requirements-desktop.txt \
-            -r requirements-mcp.txt \
             -r packaging/macos/requirements-build.txt
 
       - name: The encrypted-file driver's wheel installed (issue #290)

@@ -114,7 +114,6 @@ jobs:
           # Windows gate): importlib.metadata reports whichever it finds
           # first, which is not necessarily the code that runs.
           pip install -r requirements.txt -r requirements-desktop.txt `
-            -r requirements-mcp.txt `
             -r packaging/windows/requirements-ocr.txt `
             pyinstaller pyinstaller-hooks-contrib pillow
           # Prove the environment holds one version of each distribution

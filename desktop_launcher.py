@@ -2500,16 +2500,8 @@ def run_mcp(port: int | None = None) -> int:
         os.environ["SLOWBOOKS_URL"] = f"http://127.0.0.1:{port}"
     if not os.environ.get("SLOWBOOKS_TOKEN_FILE"):
         os.environ["SLOWBOOKS_TOKEN_FILE"] = str(get_data_dir() / "mcp-token")
-    try:
-        from app.mcp.server import run
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.split(".")[0] == "mcp":
-            sys.stderr.write(
-                "The MCP server needs the `mcp` extra: "
-                "pip install -r requirements-mcp.txt\n"
-            )
-            return 2
-        raise
+    from app.mcp.server import run
+
     return run()
 
 

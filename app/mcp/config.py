@@ -51,6 +51,27 @@ def _base_url(raw: str) -> str:
     return raw.strip().rstrip("/")
 
 
+def _windows() -> bool:
+    return os.name == "nt"
+
+
+def _decode(raw: bytes) -> str:
+    """UTF-8 (BOM or not) or UTF-16 with a BOM, which PowerShell writes."""
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    return raw.decode("utf-8-sig")
+
+
+def _under_profile(path: str) -> bool:
+    profile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+
+    def norm(p):
+        return os.path.normcase(os.path.normpath(os.path.abspath(p))).lower()
+
+    root, target = norm(profile), norm(path)
+    return target == root or target.startswith(root.rstrip("\\/") + os.sep)
+
+
 def _read_token(raw_path: str) -> str:
     if not raw_path.strip():
         raise ConfigError(
@@ -60,15 +81,23 @@ def _read_token(raw_path: str) -> str:
     path = os.path.expanduser(raw_path.strip())
     if not os.path.isfile(path):
         raise ConfigError(f"The token file {path} does not exist.")
-    # Windows reports 0o666 for every file, so the check means nothing there.
-    if os.name != "nt" and os.stat(path).st_mode & 0o077:
+    if _windows():
+        # Windows reports 0o666 for every file; the profile folder's ACL is
+        # what keeps other accounts out, so require the file to be inside it.
+        if not _under_profile(path):
+            raise ConfigError(
+                "On Windows the token file must be under your user profile "
+                "folder (for example %LOCALAPPDATA%\\SlowBooksPro\\data\\mcp-token), "
+                "where only your account can read it."
+            )
+    elif os.stat(path).st_mode & 0o077:
         raise ConfigError(
             f"The token file {path} can be read by other users. "
             f"Run: chmod 600 {path}"
         )
     try:
-        with open(path, encoding="utf-8") as fh:
-            lines = fh.read().strip().splitlines()
+        with open(path, "rb") as fh:
+            lines = _decode(fh.read()).strip().splitlines()
     except (OSError, UnicodeDecodeError):
         raise ConfigError(f"The token file {path} could not be read.") from None
     if len(lines) != 1 or not lines[0].strip().startswith("sbp_"):

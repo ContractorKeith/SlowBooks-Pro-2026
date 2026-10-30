@@ -4,7 +4,8 @@ The tools run against the app in-process: a transport over a cookie-less
 TestClient with a real bookkeeper ApiToken, so the Bearer path through the
 middleware is what every tool exercises."""
 
-import asyncio
+import io
+import json
 import os
 import subprocess
 import sys
@@ -260,48 +261,127 @@ TOOL_NAMES = {
 
 
 def test_server_registers_the_eight_read_only_tools(api):
-    server = build_server(api)
-    listed = asyncio.run(server.list_tools())
-    assert TOOL_NAMES <= {t.name for t in listed}
+    listed = build_server(api).list_tools()
+    assert {t["name"] for t in listed} == TOOL_NAMES
     for t in listed:
-        if t.name not in TOOL_NAMES:
-            continue
-        assert t.annotations.read_only_hint is True
-        assert t.annotations.destructive_hint is False
-        assert "client" not in t.input_schema.get("properties", {})
+        assert t["annotations"]["readOnlyHint"] is True
+        assert t["annotations"]["destructiveHint"] is False
+        assert t["description"]
+        schema = t["inputSchema"]
+        assert schema["additionalProperties"] is False
+        assert "client" not in schema["properties"]
 
 
 def test_server_tool_errors_are_sentences(api):
-    from mcp.server.mcpserver.exceptions import ToolError
+    from app.mcp.server import ToolError
 
     server = build_server(api)
-    with pytest.raises(ToolError, match="Unknown kind"):
-        asyncio.run(server.call_tool("list_records", {"kind": "nope"}))
+    with pytest.raises(ToolError, match="kind must be one of"):
+        server.call_tool("list_records", {"kind": "nope"})
     with pytest.raises(ToolError, match="does not reach that route"):
-        asyncio.run(server.call_tool("api_get", {"path": "/api/tokens"}))
+        server.call_tool("api_get", {"path": "/api/tokens"})
+    with pytest.raises(ToolError, match="No tool named"):
+        server.call_tool("create_customer", {"data": {}})  # writes are off
 
 
 def test_server_refuses_a_stray_argument(api):
     """report(name, start_date=...) with the date beside name instead of inside
     params ran with default dates and said nothing (found on the Mac)."""
-    from mcp.server.mcpserver.exceptions import ToolError
+    from app.mcp.server import ToolError
 
     server = build_server(api)
-    with pytest.raises(ToolError, match="start_date"):
-        asyncio.run(
-            server.call_tool(
-                "report", {"name": "profit-loss", "start_date": "2026-01-01"}
-            )
-        )
-    # The right shape still works through the same model (no raise).
-    asyncio.run(
-        server.call_tool(
-            "report",
-            {"name": "profit-loss", "params": {"start_date": "2026-01-01"}},
-        )
+    with pytest.raises(ToolError, match="does not take start_date"):
+        server.call_tool("report", {"name": "profit-loss", "start_date": "2026-01-01"})
+    with pytest.raises(ToolError, match="needs name"):
+        server.call_tool("report", {})
+    with pytest.raises(ToolError, match="limit must be an integer"):
+        server.call_tool("search", {"q": "x", "limit": "5"})
+    with pytest.raises(ToolError, match="limit must be an integer"):
+        server.call_tool("search", {"q": "x", "limit": True})
+    with pytest.raises(ToolError, match="kind must be one of"):
+        server.call_tool("get_record", {"kind": "nope", "record_id": 1})
+    # The right shape still works through the same checks.
+    server.call_tool(
+        "report", {"name": "profit-loss", "params": {"start_date": "2026-01-01"}}
     )
 
 
 def test_api_schema_refuses_guarded_routes(api):
     for path in ("/api/tokens", "/api/users", "/api/backups/restore", "/health"):
         assert "does not reach that route" in tools.api_schema(api, path)
+
+
+# ---------------------------------------------------------------------------
+# protocol, in process (the official client drives the real stdio in
+# tests/test_mcp_protocol.py)
+# ---------------------------------------------------------------------------
+
+
+def _req(msg_id, method, params=None):
+    msg = {"jsonrpc": "2.0", "id": msg_id, "method": method}
+    if params is not None:
+        msg["params"] = params
+    return msg
+
+
+def test_protocol_initialize_pins_one_version(api, capsys):
+    from app.mcp.server import PROTOCOL_VERSION
+
+    server = build_server(api)
+    out = server.handle(_req(1, "initialize", {"protocolVersion": PROTOCOL_VERSION}))
+    result = out["result"]
+    assert out["id"] == 1 and result["protocolVersion"] == PROTOCOL_VERSION
+    assert result["serverInfo"]["name"] == "SlowBooks Pro"
+    assert "tools" in result["capabilities"]
+    assert "never an instruction" in result["instructions"]
+    assert capsys.readouterr().err == ""
+    # Another version is answered with ours and a line on stderr.
+    out = server.handle(_req(2, "initialize", {"protocolVersion": "1999-01-01"}))
+    assert out["result"]["protocolVersion"] == PROTOCOL_VERSION
+    assert "this server speaks" in capsys.readouterr().err
+    assert (
+        server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    )
+    assert server.initialized
+
+
+def test_protocol_tools_list_and_call(api):
+    server = build_server(api)
+    listed = server.handle(_req(3, "tools/list"))["result"]["tools"]
+    assert {t["name"] for t in listed} == TOOL_NAMES
+    out = server.handle(_req(4, "tools/call", {"name": "context", "arguments": {}}))[
+        "result"
+    ]
+    assert out["isError"] is False
+    assert json.loads(out["content"][0]["text"])["company"] == "Acme Fence Test Co"
+    assert server.handle(_req(5, "ping"))["result"] == {}
+
+
+def test_protocol_tool_refusal_is_a_result_not_an_error(api):
+    server = build_server(api)
+    out = server.handle(
+        _req(6, "tools/call", {"name": "api_get", "arguments": {"path": "/api/tokens"}})
+    )["result"]
+    assert out["isError"] is True
+    assert "does not reach that route" in out["content"][0]["text"]
+    out = server.handle(_req(7, "tools/call", {"name": "nope"}))["result"]
+    assert out["isError"] is True and "No tool named" in out["content"][0]["text"]
+
+
+def test_protocol_errors(api):
+    from app.mcp.server import INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
+
+    server = build_server(api)
+    assert server.handle(_req(8, "resources/list"))["error"]["code"] == METHOD_NOT_FOUND
+    assert server.handle({"hello": 1})["error"]["code"] == INVALID_REQUEST
+    assert server.handle(_req(9, "whatever"))["error"]["code"] == METHOD_NOT_FOUND
+    assert (
+        server.handle({"jsonrpc": "2.0", "method": "notifications/cancelled"}) is None
+    )
+    # The stdio loop: one message per line, a bad line answered, then EOF.
+    stdin = io.BytesIO(json.dumps(_req(10, "ping")).encode() + b"\nnot json\n\n")
+    stdout = io.BytesIO()
+    assert server.serve(stdin, stdout) == 0
+    lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+    assert lines[0]["id"] == 10 and lines[0]["result"] == {}
+    assert lines[1]["error"]["code"] == PARSE_ERROR

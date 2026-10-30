@@ -1,8 +1,6 @@
 """The MCP write tools (#655): through the Bearer transport with a bookkeeper
 token, against the seeded chart of accounts."""
 
-import asyncio
-
 import pytest
 
 from app.mcp import tools
@@ -167,15 +165,19 @@ def test_unknown_outcome_sentences():
         tools.void_record(gone, "invoices", 1)
 
 
-def test_server_registers_eighteen_tools_with_the_right_hints(api):
-    listed = {t.name: t for t in asyncio.run(build_server(api).list_tools())}
+def test_server_lists_eighteen_tools_with_writes_on_and_eight_off(api):
+    listed = {t["name"]: t for t in build_server(api, writes=True).list_tools()}
     assert len(listed) == 18
-    writes = [n for n, t in listed.items() if not t.annotations.read_only_hint]
+    writes = [n for n, t in listed.items() if not t["annotations"]["readOnlyHint"]]
     assert len(writes) == 10
-    assert listed["void_record"].annotations.destructive_hint is True
-    idem = {n for n in writes if listed[n].annotations.idempotent_hint}
+    assert listed["void_record"]["annotations"]["destructiveHint"] is True
+    idem = {n for n in writes if listed[n]["annotations"]["idempotentHint"]}
     assert idem == {"record_payment", "record_bill_payment"}
-    assert [n for n in writes if listed[n].annotations.destructive_hint] == [
+    assert [n for n in writes if listed[n]["annotations"]["destructiveHint"]] == [
         "void_record"
     ]
-    assert "client" not in listed["record_payment"].input_schema["properties"]
+    assert "client" not in listed["record_payment"]["inputSchema"]["properties"]
+    # Off by default: the write tools are not even listed.
+    off = {t["name"] for t in build_server(api).list_tools()}
+    assert len(off) == 8 and not off & set(writes)
+    assert "read-only" in build_server(api).instructions

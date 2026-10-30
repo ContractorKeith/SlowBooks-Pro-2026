@@ -4,26 +4,37 @@ SlowBooks Pro ships a small MCP server so an AI agent (Claude Code, Codex,
 Claude Desktop) can work your books. It runs on your machine over stdio,
 talks to the running app on loopback with an API token, and reaches the API
 only: it adds nothing to the books and has no database access of its own.
+It is the standard library only, so there is nothing to install.
 
 ## Setup
 
-1. Install the extra: `pip install -r requirements-mcp.txt`. The desktop
-   installers already include it.
-2. Under Settings, API Tokens, make a token. Pick the role the agent should
-   have; the API enforces it. The token is shown once, with these steps.
-3. Save the token in a private file (one line, starting with `sbp_`):
+1. Under Settings, API Tokens, make a token. Use a **read-only** token
+   unless the agent must post entries; the API enforces the role. The token
+   is shown once, with these steps.
+2. Save the token in a private file (one line, starting with `sbp_`). Type
+   the command, paste the token, then press Ctrl-D, so the token never
+   enters your shell history:
 
    ```
-   printf '%s\n' 'sbp_...' > ~/.slowbooks-token && chmod 600 ~/.slowbooks-token
+   umask 077; cat > ~/.slowbooks-token
    ```
 
-4. Start the app, then connect the agent.
+   Windows PowerShell, into the app's data folder:
+
+   ```
+   Set-Content -Encoding ascii "$env:LOCALAPPDATA\SlowBooksPro\data\mcp-token" (Read-Host 'Token')
+   ```
+
+3. Start the app, then connect the agent.
 
 **Claude Code**
 
 ```
 claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=~/.slowbooks-token -- python -m app.mcp
 ```
+
+Add `-e SLOWBOOKS_MCP_WRITES=1` to let the agent post entries (with a
+bookkeeper token).
 
 **Codex and Claude Desktop** take the same server in their config JSON:
 
@@ -40,8 +51,7 @@ claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=~/.slowbooks-token -- python -m
 ```
 
 Use the full path to the token file here; these apps do not expand `~`.
-Run it from the checkout (or point `command` at the Python that has the
-extra installed).
+Run it from the checkout.
 
 **Desktop install.** `SlowBooksPro --mcp` starts the same server. It finds
 the app on the port in your `.env` (else 3001) and reads the token from
@@ -62,15 +72,30 @@ or start a server.
 |----------|---------|---------|
 | `SLOWBOOKS_TOKEN_FILE` | none (required) | File holding the token, one line |
 | `SLOWBOOKS_URL` | `http://127.0.0.1:3001` | The running app; loopback `http://` only |
+| `SLOWBOOKS_MCP_WRITES` | off | `1` lists the write tools |
 | `SLOWBOOKS_TIMEOUT_SECONDS` | `120` | Per-request timeout, 1 to 3600 |
 
 The token comes from a file and nowhere else, so it never shows in a process
 list or an agent's config. On macOS and Linux the file must not be readable
-by others.
+by others (`chmod 600`). On Windows it must be inside your user profile
+folder, which only your account can read; a file PowerShell wrote with a
+byte-order mark or in UTF-16 is read as it is.
+
+The server sends requests to the loopback address only, with its own
+connection: a proxy setting in the environment is ignored and a redirect is
+never followed, so the token cannot leave the machine.
+
+## Protocol
+
+One MCP protocol version is pinned (`2025-06-18`), negotiated at
+`initialize`. A client that asks for another version is answered with ours
+and a line on stderr says so; if the client then refuses it, the server
+exits and the app and its REST API carry on. The server is opt-in: nothing
+in the books depends on it.
 
 ## Tools
 
-Reads:
+Reads (always listed):
 
 | Tool | Does |
 |------|------|
@@ -86,32 +111,42 @@ Reads:
 Record kinds: customers, vendors, items, accounts, invoices, bills,
 expenses, journal_entries, payments, bill_payments, bank_transactions.
 
-Writes. Each posts the data you give it to the API as-is, so the API's own
-validation answers: a missing or unknown field comes back as a sentence,
-and `api_schema` on the route lists the fields. The tools are marked as
-writes, so a client such as Claude Code asks you before running one.
+Writes (listed with `SLOWBOOKS_MCP_WRITES=1`). Each posts the data you give
+it to the API as-is, so the API's own validation answers: a missing or
+unknown field comes back as a sentence, and `api_schema` on the route lists
+the fields. The tools are marked as writes, so a client such as Claude Code
+asks you before running one.
 
 | Tool | Does |
 |------|------|
-| `create_customer`, `create_vendor`, `create_item` | Master records |
-| `create_invoice`, `create_bill` | Documents with lines |
-| `create_expense` | A paid expense, one amount or lines |
+| `create_customer`, `create_vendor`, `create_item` | Master records. Customers and vendors take `force` for the possible-duplicate question |
+| `create_invoice`, `create_bill` | Documents with lines. An invoice over the customer's credit limit is answered by `allow_over_credit_limit: true` in the data |
+| `create_expense` | A paid expense, one amount or lines; `allow_duplicate_check_number` for the duplicate-check question |
 | `create_journal_entry` | A manual journal entry; debits must equal credits |
 | `record_payment`, `record_bill_payment` | Money in and out, applied to invoices or bills. Each takes a `key` (1 to 128 characters of letters, digits, `_ . : -`): the same key with the same data books once, the same key with other data is refused, so a retry after a lost answer can never pay twice |
 | `void_record` | Void an invoice, bill, expense, journal entry, payment or bill payment with a reversing entry. Nothing is ever deleted |
 
-There is no generic write tool: a route gets a tool when a real use shows
-up. When a write's answer is lost (a timeout, the app restarted), the tool
-says so and what to do: retry a payment with the same key; check with
+A 409 that asks a question (a similar name, a used check number, a credit
+limit) comes back whole, with the API's code and the facts it needs, and the
+override is for you to answer, not the agent: the tools' instructions say
+so. There is no generic write tool: a route gets a tool when a real use
+shows up. When a write's answer is lost (a timeout, the app restarted), the
+tool says so and what to do: retry a payment with the same key; check with
 `list_records` or `search` before retrying anything else.
+
+The text in your books (bank descriptions, memos, notes) reaches the agent
+as data. The server's instructions tell it so, and to act only on what you
+ask; a read-only token is the stronger guard.
 
 ## What a token can never do
 
 No token can manage users or tokens, restore a backup or change the
-company file, and the server refuses those routes before they are sent.
-The token's role limits the rest: the agent can do what that role can.
-Every change is audited as `token:<label>`, using the label you gave the
-token. Revoke it under Settings, API Tokens, and the agent is locked out.
+company file, and the server refuses those routes before they are sent
+(the path is decoded and normalised first, so an encoded spelling does not
+get past it). The token's role limits the rest: the agent can do what that
+role can. Every change is audited as `token:<label>`, using the label you
+gave the token. Revoke it under Settings, API Tokens, and the agent is
+locked out.
 
 ## Troubleshooting
 
@@ -120,11 +155,15 @@ token. Revoke it under Settings, API Tokens, and the agent is locked out.
 - "The token file ... does not exist": check the path; use a full path in
   JSON configs.
 - "The token file ... can be read by other users": run `chmod 600` on it.
+- "On Windows the token file must be under your user profile folder": move
+  it there, for example the app's data folder.
 - "The token file ... must hold one line": the file holds the token and
   nothing else, and it starts with `sbp_`.
 - "SLOWBOOKS_URL must be a loopback http:// address": use
   `http://127.0.0.1:<port>`. The server never talks to another machine.
-- "The MCP server needs the `mcp` extra": run
-  `pip install -r requirements-mcp.txt`.
+- "The client asked for MCP protocol ...": the client and this server
+  disagree on the protocol version. Update whichever is older.
+- A tool you expect is missing: the write tools are listed only with
+  `SLOWBOOKS_MCP_WRITES=1`.
 - Tools answer with a refusal: the app is not running, the token is revoked,
   or its role does not allow that. The API's own sentence says which.

@@ -227,23 +227,32 @@ def _write(client: ApiClient, path: str, data, *, key=None, params=None):
         raise
 
 
-def _keyed(client: ApiClient, path: str, data: dict, key: str):
+_DUP_CHECK = {"allow_duplicate_check_number": "true"}
+
+
+def _keyed(client: ApiClient, path: str, data: dict, key: str, params=None):
     if not isinstance(key, str) or not _KEY_RE.fullmatch(key):
         raise ValueError(
             "key must be a string of 1 to 128 characters from A-Z a-z 0-9 _ . : -. "
             "Use one stable key per intended payment."
         )
-    return _write(client, path, data, key=key)
+    return _write(client, path, data, key=key, params=params)
 
 
-def create_customer(client: ApiClient, data: dict):
-    """Create a customer. Required: name. api_schema("/api/customers") has the rest."""
-    return _write(client, "/api/customers", data)
+def create_customer(client: ApiClient, data: dict, force: bool = False):
+    """Create a customer. Required: name. api_schema("/api/customers") has the rest.
+    Set force only after the user says yes to the similar-name 409's question."""
+    return _write(
+        client, "/api/customers", data, params={"force": "true"} if force else None
+    )
 
 
-def create_vendor(client: ApiClient, data: dict):
-    """Create a vendor. Required: name. api_schema("/api/vendors") has the rest."""
-    return _write(client, "/api/vendors", data)
+def create_vendor(client: ApiClient, data: dict, force: bool = False):
+    """Create a vendor. Required: name. api_schema("/api/vendors") has the rest.
+    Set force only after the user says yes to the similar-name 409's question."""
+    return _write(
+        client, "/api/vendors", data, params={"force": "true"} if force else None
+    )
 
 
 def create_item(client: ApiClient, data: dict):
@@ -252,7 +261,9 @@ def create_item(client: ApiClient, data: dict):
 
 
 def create_invoice(client: ApiClient, data: dict):
-    """Create an invoice. Required: customer_id, date, lines. api_schema("/api/invoices") has the rest."""
+    """Create an invoice. Required: customer_id, date, lines. api_schema("/api/invoices") has the rest.
+    The credit-limit 409 is answered by allow_over_credit_limit: true inside data,
+    only after the user says yes."""
     return _write(client, "/api/invoices", data)
 
 
@@ -261,10 +272,19 @@ def create_bill(client: ApiClient, data: dict):
     return _write(client, "/api/bills", data)
 
 
-def create_expense(client: ApiClient, data: dict):
+def create_expense(
+    client: ApiClient, data: dict, allow_duplicate_check_number: bool = False
+):
     """Record a paid expense. Required: date, paid_from_account_id, and either
-    amount + expense_account_id or lines. api_schema("/api/expenses") has the rest."""
-    return _write(client, "/api/expenses", data)
+    amount + expense_account_id or lines. api_schema("/api/expenses") has the rest.
+    Set allow_duplicate_check_number only after the user says yes to the
+    duplicate-check-number 409's question."""
+    return _write(
+        client,
+        "/api/expenses",
+        data,
+        params=_DUP_CHECK if allow_duplicate_check_number else None,
+    )
 
 
 def create_journal_entry(client: ApiClient, data: dict):
@@ -281,12 +301,22 @@ def record_payment(client: ApiClient, data: dict, key: str):
     return _keyed(client, "/api/payments", data, key)
 
 
-def record_bill_payment(client: ApiClient, data: dict, key: str):
+def record_bill_payment(
+    client: ApiClient, data: dict, key: str, allow_duplicate_check_number: bool = False
+):
     """Pay a vendor. Required data: vendor_id, date, amount; allocations apply
     it to bills (api_schema("/api/bill-payments") has the rest). key is
     required: 1 to 128 characters of A-Z a-z 0-9 _ . : -. The same key with the
-    same data books once; the same key with other data is refused."""
-    return _keyed(client, "/api/bill-payments", data, key)
+    same data books once; the same key with other data is refused.
+    Set allow_duplicate_check_number only after the user says yes to the
+    duplicate-check-number 409's question."""
+    return _keyed(
+        client,
+        "/api/bill-payments",
+        data,
+        key,
+        params=_DUP_CHECK if allow_duplicate_check_number else None,
+    )
 
 
 _VOID_PATHS = {
