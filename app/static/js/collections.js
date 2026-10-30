@@ -2,6 +2,8 @@
  * Collections — the open invoices, what reminder each has had and which is
  * next, with buttons to send the due reminders and the monthly statements
  * (#653). The reminder rules are edited under Settings -> Collections.
+ * The As of date is for looking at the list; every send is dated today,
+ * so looking ahead never sends the final reminder early.
  */
 const CollectionsPage = {
     // the page's view: kept while it is open, reset by render()
@@ -30,7 +32,7 @@ const CollectionsPage = {
                 </div>
             </div>
             <div class="toolbar">
-                <label for="coll-as-of">As of</label>
+                <label for="coll-as-of" title="Changes what the list shows. Reminders and statements are always sent as of today.">As of</label>
                 <input type="date" id="coll-as-of" value="${CollectionsPage._asOf}" onchange="CollectionsPage.filterChanged()">
                 <select id="coll-filter" aria-label="Show" onchange="CollectionsPage.filterChanged()">
                     <option value="all">All open</option>
@@ -128,16 +130,18 @@ const CollectionsPage = {
 
     _nextHtml(r) {
         const n = r.next_reminder;
-        if (!r.reminders_enabled) return '<span style="color:var(--text-muted)">off</span>';
+        if (!r.reminders_enabled) return `<span style="color:var(--text-muted)" title="${escapeHtml(r.skip_reason || '')}">off</span>`;
         if (!n) return '—';
         const when = n.ready ? '<strong>ready</strong>' : escapeHtml(formatDate(n.due_on));
-        return `${escapeHtml(n.label)}<div style="font-size:11px;color:var(--text-muted)">${when}</div>`;
+        // A tenant billed with its property is reminded wherever Settings says; the row names who
+        const to = r.billed_to_name && r.reminder_to ? `<div style="font-size:11px;color:var(--text-muted)">to ${escapeHtml(r.reminder_to)}</div>` : '';
+        return `${escapeHtml(n.label)}<div style="font-size:11px;color:var(--text-muted)">${when}</div>${to}`;
     },
 
     _rowHtml(r) {
         const num = r.invoice_number || `#${r.invoice_id}`;
         return `<tr>
-            <td><a href="#/customers/${r.customer_id}">${escapeHtml(r.customer_name)}</a></td>
+            <td><a href="#/customers/${r.customer_id}">${escapeHtml(r.customer_name)}</a>${r.billed_to_name ? `<div style="font-size:11px;color:var(--text-muted)">billed to ${escapeHtml(r.billed_to_name)}</div>` : ''}</td>
             <td><a href="#/invoices/${r.invoice_id}">${escapeHtml(num)}</a></td>
             <td>${escapeHtml(formatDate(r.date))}</td>
             <td>${escapeHtml(formatDate(r.due_date))}</td>
@@ -187,7 +191,8 @@ const CollectionsPage = {
 
     // Show a batch's result: a toast, and the errors listed when there are any
     _showResult(title, res) {
-        const headline = `Sent ${res.sent}, failed ${res.failed}, skipped ${res.skipped}`;
+        let headline = `Sent ${res.sent}, failed ${res.failed}, skipped ${res.skipped}`;
+        if (res.taken) headline += ` (${res.taken} sent by another window)`;
         const errors = res.errors || [];
         if (errors.length && typeof ReportsPage !== 'undefined' && ReportsPage._sendResult) {
             ReportsPage._sendResult(title, headline + '.', errors);
@@ -197,35 +202,48 @@ const CollectionsPage = {
         CollectionsPage.reload();
     },
 
-    async sendDueReminders() {
-        const asOf = CollectionsPage._asOf;
-        let due;
-        try { due = await API.get(`/collections/reminders/due?as_of_date=${asOf}`); } catch (err) { toast(err.message, 'error'); return; }
-        if (!due.items.length) {
-            const why = due.skipped.length ? ` ${due.skipped.length} left out: ${CollectionsPage._reasonSummary(due.skipped)}.` : '';
-            toast(`No reminders are due.${why}`, 'info');
-            return;
-        }
-        const lines = due.items.slice(0, 8).map(i =>
-            `<li>${escapeHtml(i.customer_name)} &middot; ${escapeHtml(i.invoice_number || '#' + i.invoice_id)} &middot; ${escapeHtml(i.label)}</li>`).join('');
+    // "Acme · 1001 · 7 days overdue → acme@example.com", for the confirm dialogs
+    _dueLine(i) {
+        return `<li>${escapeHtml(i.customer_name)} &middot; ${escapeHtml(i.invoice_number || '#' + i.invoice_id)} &middot; ${escapeHtml(i.label)}` +
+            `<span style="color:var(--text-muted)"> &rarr; ${escapeHtml(i.recipient || '')}</span></li>`;
+    },
+
+    // What a run would send today: the list and the dialog body, shared with
+    // Settings' switch-on preview. Resolves null when nothing is due.
+    async dueSummary() {
+        const due = await API.get('/collections/reminders/due');
+        if (!due.items.length) return { due, html: '' };
+        const lines = due.items.slice(0, 8).map(i => CollectionsPage._dueLine(i)).join('');
         const more = due.items.length > 8 ? `<li>and ${due.items.length - 8} more</li>` : '';
         const skipped = due.skipped.length
             ? `<p style="color:var(--text-muted)">${due.skipped.length} left out: ${escapeHtml(CollectionsPage._reasonSummary(due.skipped))}.</p>` : '';
+        return { due, html: `<ul style="margin:8px 0 12px 20px;">${lines}${more}</ul>${skipped}` };
+    },
+
+    async sendDueReminders() {
+        let summary;
+        try { summary = await CollectionsPage.dueSummary(); } catch (err) { toast(err.message, 'error'); return; }
+        const due = summary.due;
+        if (!due.items.length) {
+            const why = due.skipped.length ? ` ${due.skipped.length} left out: ${CollectionsPage._reasonSummary(due.skipped)}.` : '';
+            toast(`No reminders are due today.${why}`, 'info');
+            return;
+        }
+        const today = CollectionsPage._asOf !== todayISO()
+            ? `<p style="color:var(--text-muted)">Reminders are sent as of today, not the As of date shown.</p>` : '';
         CollectionsPage._confirmDialog('Send due reminders', `
-            <p>Send <strong>${due.items.length}</strong> reminder${due.items.length === 1 ? '' : 's'} by email?</p>
-            <ul style="margin:8px 0 12px 20px;">${lines}${more}</ul>${skipped}`,
+            <p>Send <strong>${due.items.length}</strong> reminder${due.items.length === 1 ? '' : 's'} by email?</p>${summary.html}${today}`,
             `Send ${due.items.length}`, async () => {
                 try {
-                    const res = await API.post('/collections/reminders/run', { invoice_ids: null, as_of_date: asOf });
+                    const res = await API.post('/collections/reminders/run', { invoice_ids: null });
                     CollectionsPage._showResult('Reminders', res);
                 } catch (err) { toast(err.message, 'error'); }
             });
     },
 
     async sendStatements() {
-        const asOf = CollectionsPage._asOf;
         let due;
-        try { due = await API.get(`/collections/statements/due?as_of_date=${asOf}`); } catch (err) { toast(err.message, 'error'); return; }
+        try { due = await API.get('/collections/statements/due'); } catch (err) { toast(err.message, 'error'); return; }
         const ready = due.items.filter(i => i.will_send);
         const held = due.items.filter(i => !i.will_send);
         const already = held.filter(i => i.reason === 'already sent this month').length;
@@ -241,7 +259,7 @@ const CollectionsPage = {
             <p>Email a statement to <strong>${ready.length}</strong> customer${ready.length === 1 ? '' : 's'}?</p>${skipped}${force}`,
             'Send statements', async () => {
                 try {
-                    const res = await API.post('/collections/statements/run', { as_of_date: asOf, force: CollectionsPage._force });
+                    const res = await API.post('/collections/statements/run', { force: CollectionsPage._force });
                     CollectionsPage._showResult('Statements', res);
                 } catch (err) { toast(err.message, 'error'); }
             });

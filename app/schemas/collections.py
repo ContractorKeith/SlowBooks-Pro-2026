@@ -1,4 +1,3 @@
-from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -29,11 +28,11 @@ class RuleResponse(BaseModel):
     body: str
 
 
+# A send is always dated today (review of #654): neither body takes a date,
+# and one sent is a 422, as every unknown field is.
 class RunRequest(StrictModel):
     invoice_ids: Optional[list[int]] = None
-    as_of_date: Optional[date] = None
 
 
 class StatementRunRequest(StrictModel):
-    as_of_date: Optional[date] = None
     force: bool = False

@@ -1,10 +1,13 @@
 """Collections (#653): reminder rules that send once, the open-invoice list,
-the run / auto-run / single-invoice endpoints.
+the run / auto-run / single-invoice endpoints, the claim before a send, and
+who is reminded about a sub-customer billed with its parent.
 
 No test reaches WeasyPrint or SMTP: the invoice PDF and send_email are
-replaced where the collections service imports them."""
+replaced where the collections service imports them. The suite's database
+is built by create_all, so the four starter rules that migration
+c8e1a4d7f305 seeds are written by the `rules` fixture instead."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +16,7 @@ from app.main import app
 from app.models.collections import InvoiceReminder, InvoiceReminderRule
 from app.models.contacts import Customer
 from app.models.invoices import Invoice, InvoiceStatus
+from app.services import collections as svc
 from app.services.settings_service import get_setting_raw, set_setting
 
 TODAY = date.today()
@@ -42,8 +46,10 @@ def mail(monkeypatch, db_session):
 
 
 @pytest.fixture
-def rules(client):
-    """The four seeded defaults, as {days_from_due: rule}."""
+def rules(client, db_session):
+    """The four starter rules, seeded as the migration seeds them, as
+    {days_from_due: rule}."""
+    svc.seed_default_rules(db_session)
     got = client.get("/api/collections/rules").json()
     return {r["days_from_due"]: r for r in got}
 
@@ -83,10 +89,14 @@ def _run(client, **body):
 # ---- rules ----
 
 
-def test_defaults_seeded_on_first_get(client):
-    r = client.get("/api/collections/rules")
-    assert r.status_code == 200
-    got = r.json()
+def test_a_read_never_seeds_and_the_seed_runs_once(client, db_session):
+    """The four defaults come from the migration, once (review of #654):
+    a GET writes nothing, a read-only token's included, and a company that
+    deleted every rule keeps an empty list."""
+    assert client.get("/api/collections/rules").json() == []
+    assert db_session.query(InvoiceReminderRule).count() == 0
+    assert svc.seed_default_rules(db_session) == 4
+    got = client.get("/api/collections/rules").json()
     assert [x["days_from_due"] for x in got] == [-3, 3, 7, 15]
     assert [x["label"] for x in got] == [
         "3 days before due",
@@ -95,8 +105,35 @@ def test_defaults_seeded_on_first_get(client):
         "15 days overdue",
     ]
     assert all(x["enabled"] for x in got)
-    # second read does not duplicate
-    assert len(client.get("/api/collections/rules").json()) == 4
+    assert svc.seed_default_rules(db_session) == 0  # a second seed adds nothing
+    for r in got:
+        assert client.delete(f"/api/collections/rules/{r['id']}").status_code == 200
+    assert client.get("/api/collections/rules").json() == []
+    assert db_session.query(InvoiceReminderRule).count() == 0
+
+
+def test_migration_seeds_the_rules_once(tmp_path):
+    """A company file walked to head by alembic has the four rules, the same
+    text the service names, and a second walk from there adds none."""
+    import sqlite3
+
+    from alembic import command
+    from alembic.config import Config
+
+    url = f"sqlite:///{(tmp_path / 'c.db').as_posix()}"
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("script_location", "migrations")
+    cfg.attributes["database_url"] = url
+    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "head")
+    with sqlite3.connect(tmp_path / "c.db") as con:
+        rows = con.execute(
+            "SELECT days_from_due, enabled, subject, body FROM "
+            "invoice_reminder_rules ORDER BY days_from_due"
+        ).fetchall()
+    assert [(d, bool(e), s, b) for d, e, s, b in rows] == [
+        (d, True, s, b) for d, s, b in svc.DEFAULT_RULES
+    ]
 
 
 def test_rule_labels():
@@ -227,10 +264,31 @@ def test_spent_rule_not_resent_next_rule_follows(client, db_session, rules, mail
     _invoice(db_session, cust, due_in=-4)
     assert _run(client).json()["sent"] == 1
     assert _run(client).json()["sent"] == 0
-    # a week later the 7 day rule matches and goes
-    later = (TODAY + timedelta(days=3)).isoformat()
-    assert _run(client, as_of_date=later).json()["sent"] == 1
+    # three days on (the invoice's due date moved back, since a send is
+    # always dated today) the 7 day rule matches and goes
+    inv = db_session.query(Invoice).one()
+    inv.due_date = TODAY - timedelta(days=7)
+    db_session.commit()
+    assert _run(client).json()["sent"] == 1
     assert len(mail) == 2
+
+
+def test_a_send_is_dated_today_never_the_as_of_date(client, db_session, rules, mail):
+    """Looking a month ahead on the Collections page must not send the final
+    reminder early: the run body takes no date (a 422, as every unknown
+    field is), the preview is today's, and only today's rule goes."""
+    cust = _customer(db_session)
+    _invoice(db_session, cust, due_in=-4)  # the 3 day rule today
+    later = (TODAY + timedelta(days=30)).isoformat()
+    assert _run(client, as_of_date=later).status_code == 422
+    assert (
+        client.post("/api/collections/statements/run", json={"as_of_date": later})
+    ).status_code == 422
+    due = client.get(f"/api/collections/reminders/due?as_of_date={later}").json()
+    assert due["as_of_date"] == TODAY.isoformat()
+    assert [i["label"] for i in due["items"]] == ["3 days overdue"]
+    assert _run(client).json()["sent"] == 1
+    assert "3 days" not in mail[0]["subject"] and "Friendly" in mail[0]["subject"]
 
 
 def test_failed_row_is_retried(client, db_session, rules, monkeypatch, mail):
@@ -302,6 +360,7 @@ def test_run_writes_audit_rows_and_counts(client, db_session, rules, mail):
         "sent": 1,
         "failed": 0,
         "skipped": 0,
+        "taken": 0,
         "errors": [],
         "ran_on": TODAY.isoformat(),
     }
@@ -393,9 +452,17 @@ def test_remind_picks_largest_matching_then_next(client, db_session, rules, mail
     cust = _customer(db_session)
     inv = _invoice(db_session, cust, due_in=-8)
     url = f"/api/collections/invoices/{inv.id}/remind"
-    assert client.post(url).json() == {"sent": True, "label": "7 days overdue"}
+    assert client.post(url).json() == {
+        "sent": True,
+        "label": "7 days overdue",
+        "to": "acme@example.com",
+    }
     # the matching rule is spent: the nearest one ahead goes next
-    assert client.post(url).json() == {"sent": True, "label": "15 days overdue"}
+    assert client.post(url).json() == {
+        "sent": True,
+        "label": "15 days overdue",
+        "to": "acme@example.com",
+    }
     r = client.post(url)
     assert r.status_code == 400
     assert r.json()["detail"] == (
@@ -501,5 +568,207 @@ def test_settings_keys_default(client):
     assert s["invoice_reminders_last_run"] == ""
 
 
-def test_rule_table_is_empty_until_first_read(db_session):
+def test_rule_table_starts_empty_in_a_create_all_database(db_session):
     assert db_session.query(InvoiceReminderRule).count() == 0
+
+
+# ---- the claim before a send ----
+
+
+def _claimed(db, inv, rule_id, when=None, status="sending"):
+    row = InvoiceReminder(
+        invoice_id=inv.id,
+        rule_id=rule_id,
+        customer_id=inv.customer_id,
+        recipient="other@example.com",
+        status=status,
+        trigger="run",
+        days_from_due=5,
+        balance_due=inv.balance_due,
+        sent_at=when or datetime.now(timezone.utc),
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_a_reminder_another_window_claimed_is_not_sent_again(
+    client, db_session, rules, mail
+):
+    """Two tabs, or the automatic run beside Send due reminders: the first
+    writes the audit row as 'sending' and the second finds it there."""
+    cust = _customer(db_session)
+    inv = _invoice(db_session, cust, due_in=-5)
+    _claimed(db_session, inv, rules[3]["id"])
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"] == []  # a live claim is spent, not due
+    assert _run(client).json()["sent"] == 0 and mail == []
+    # Remind now treats the claim as sent, as it treats a sent row: it moves
+    # on to the next rule rather than sending the claimed one twice
+    r = client.post(f"/api/collections/invoices/{inv.id}/remind")
+    assert r.status_code == 200 and r.json()["label"] == "7 days overdue"
+
+
+def test_two_live_rows_for_one_invoice_and_rule_are_refused(db_session, rules):
+    """The database holds the rule: one live row (sending or sent) per
+    invoice and rule, however the second insert is attempted."""
+    from sqlalchemy.exc import IntegrityError
+
+    cust = _customer(db_session)
+    inv = _invoice(db_session, cust, due_in=-5)
+    _claimed(db_session, inv, rules[3]["id"], status="sent")
+    with pytest.raises(IntegrityError):
+        _claimed(db_session, inv, rules[3]["id"])
+    db_session.rollback()
+    # a failed row holds nothing: a retry's claim goes in beside it
+    _claimed(db_session, inv, rules[7]["id"], status="failed")
+    _claimed(db_session, inv, rules[7]["id"])
+
+
+def test_a_stale_claim_is_marked_failed_and_tried_again(
+    client, db_session, rules, mail
+):
+    """The app closed mid-send: a 'sending' row older than ten minutes is a
+    send that never finished, so the next run marks it failed and sends."""
+    cust = _customer(db_session)
+    inv = _invoice(db_session, cust, due_in=-5)
+    old = _claimed(
+        db_session,
+        inv,
+        rules[3]["id"],
+        when=datetime.now(timezone.utc) - svc.STALE_CLAIM - timedelta(minutes=1),
+    )
+    assert _run(client).json()["sent"] == 1 and len(mail) == 1
+    db_session.expire_all()
+    assert (old.status, old.error) == ("failed", "The send did not finish.")
+    fresh = db_session.query(InvoiceReminder).filter(InvoiceReminder.id != old.id).one()
+    assert fresh.status == "sent" and fresh.rule_id == rules[3]["id"]
+
+
+def test_the_claimed_row_is_what_the_send_finishes(client, db_session, rules, mail):
+    """One row per send: claimed as 'sending', finished as 'sent' with the
+    email log's id, or 'failed' with the sentence."""
+    cust = _customer(db_session)
+    _invoice(db_session, cust, due_in=-5)
+    assert _run(client).json()["sent"] == 1
+    row = db_session.query(InvoiceReminder).one()
+    assert row.status == "sent" and row.error is None
+
+
+def test_auto_run_claims_the_day_once(client, db_session, rules, mail):
+    """Two windows opened together: the day's stamp is taken in one guarded
+    update, so the second finds it taken and sends nothing."""
+    cust = _customer(db_session)
+    _invoice(db_session, cust, due_in=-5)
+    client.put("/api/settings", json={"invoice_reminders_auto": "true"})
+    assert svc._claim_day(db_session, TODAY) is True
+    assert svc._claim_day(db_session, TODAY) is False
+    assert client.post("/api/collections/reminders/run-if-due").json() == {
+        "ran": False,
+        "reason": "already_today",
+    }
+    assert mail == []
+
+
+# ---- a sub-customer billed with its parent ----
+
+
+def _property_and_tenant(db, **tenant_flags):
+    prop = _customer(db, "Oak St", email="oak@example.com")
+    tenant = Customer(
+        name="Unit 1",
+        email="unit1@example.com",
+        is_active=True,
+        parent_customer_id=prop.id,
+        bill_with_parent=True,
+        **tenant_flags,
+    )
+    db.add(tenant)
+    db.commit()
+    inv = _invoice(db, tenant, due_in=-5, balance=900)
+    return prop, tenant, inv
+
+
+def _choose(client, who):
+    client.put("/api/settings", json={"invoice_reminders_billed_sub_to": who})
+
+
+def test_billed_sub_reminder_goes_to_the_property_by_default(
+    client, db_session, rules, mail
+):
+    prop, tenant, inv = _property_and_tenant(db_session)
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"][0]["recipient"] == "oak@example.com"
+    assert due["items"][0]["recipient_names"] == ["Oak St"]
+    assert _run(client).json()["sent"] == 1
+    call = mail[0]
+    assert call["to_email"] == "oak@example.com" and call["cc"] is None
+    assert "Hello Oak St" in call["html_body"]
+    row = db_session.query(InvoiceReminder).one()
+    assert row.recipient == "oak@example.com" and row.customer_id == tenant.id
+    listed = client.get("/api/collections/invoices").json()["items"][0]
+    assert listed["billed_to_name"] == "Oak St"
+    assert listed["reminder_to"] == "oak@example.com"
+    # the property's filter takes in the tenant billed with it
+    mine = client.get(f"/api/collections/invoices?customer_id={prop.id}").json()
+    assert [i["invoice_id"] for i in mine["items"]] == [inv.id]
+    assert mine["totals"]["balance_due"] == 900
+
+
+def test_billed_sub_reminder_to_the_tenant_or_both(client, db_session, rules, mail):
+    _property_and_tenant(db_session)
+    _choose(client, "tenant")
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"][0]["recipient"] == "unit1@example.com"
+    _choose(client, "both")
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"][0]["recipient"] == "unit1@example.com, oak@example.com"
+    assert _run(client).json()["sent"] == 1
+    call = mail[0]
+    assert call["to_email"] == "unit1@example.com" and call["cc"] == ["oak@example.com"]
+    assert "Hello Unit 1" in call["html_body"]
+    assert db_session.query(InvoiceReminder).one().recipient == (
+        "unit1@example.com, oak@example.com"
+    )
+
+
+def test_the_property_opt_out_counts_when_it_is_written_to(
+    client, db_session, rules, mail
+):
+    prop, tenant, inv = _property_and_tenant(db_session)
+    prop.invoice_reminders_enabled = False
+    db_session.commit()
+    # addressed to the property: nothing goes, and the reason names it
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"] == []
+    assert due["skipped"][0]["reason"] == "reminders are turned off for this customer"
+    listed = client.get("/api/collections/invoices").json()["items"][0]
+    assert listed["reminders_enabled"] is False
+    # both: whichever may be written to is, the tenant here
+    _choose(client, "both")
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"][0]["recipient"] == "unit1@example.com"
+    # the tenant opted out too: nobody, and the reasons name each
+    tenant.invoice_reminders_enabled = False
+    db_session.commit()
+    due = client.get("/api/collections/reminders/due").json()
+    assert due["items"] == []
+    assert due["skipped"][0]["reason"] == (
+        "Unit 1: reminders are turned off for this customer; "
+        "Oak St: reminders are turned off for this customer"
+    )
+    # the tenant's own opt-out does not hold back a reminder to the property
+    tenant.invoice_reminders_enabled = False
+    prop.invoice_reminders_enabled = True
+    db_session.commit()
+    _choose(client, "property")
+    assert _run(client).json()["sent"] == 1 and mail[0]["to_email"] == "oak@example.com"
+
+
+def test_billed_sub_setting_defaults_and_unknown_values(client):
+    assert client.get("/api/settings").json()["invoice_reminders_billed_sub_to"] == (
+        "property"
+    )
+    assert svc.billed_sub_choice({"invoice_reminders_billed_sub_to": "nobody"}) == (
+        "property"
+    )

@@ -248,4 +248,8 @@ DEFAULT_SETTINGS = {
     # that automatic run, so it happens once however often the app loads.
     "invoice_reminders_auto": "false",
     "invoice_reminders_last_run": "",
+    # Who is reminded about a sub-customer billed with its parent (a tenant
+    # billed with its property): property, tenant or both. The property,
+    # whose A/R the invoice sits on, unless chosen otherwise.
+    "invoice_reminders_billed_sub_to": "property",
 }

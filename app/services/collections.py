@@ -13,29 +13,52 @@ The rules, in one place:
   for an invoice 20 days late sends one email, not four.
 * A rule is spent for an invoice once a 'sent' audit row exists; a 'failed'
   row does not spend it, so the next run tries again.
+* Every send is dated today. The Collections page's As of date is a way of
+  looking at the list, never a date to send from: looking ahead a month
+  must not send the final reminder early (review of #654).
+* A send is claimed before it goes: the audit row is written as 'sending'
+  first, under a unique index that allows one live row (sending or sent)
+  per invoice and rule, so two windows, or the automatic run and Send due
+  reminders together, send each reminder once. A claim older than ten
+  minutes is a send that never finished (the app closed mid-run); it is
+  marked failed and tried again.
+* A sub-customer billed with its parent (a tenant billed with its property)
+  is reminded wherever Settings says (``invoice_reminders_billed_sub_to``):
+  the property, the tenant, or both, each one's own opt-out and email
+  counting.
+* The month's statement is one row per customer and calendar month
+  (``customer_statements``), the month taken from today's local date, so a
+  statement sent on the evening of the 31st is that month's, whatever the
+  clock reads in UTC.
 """
 
 import html
 import logging
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from jinja2 import StrictUndefined, TemplateError, UndefinedError
 from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.collections import InvoiceReminder, InvoiceReminderRule
+from app.models.collections import (
+    CustomerStatement,
+    InvoiceReminder,
+    InvoiceReminderRule,
+)
 from app.models.contacts import Customer
 from app.models.credit_memos import CreditMemo, CreditMemoStatus
 from app.models.email_log import EmailLog
 from app.models.invoices import Invoice, InvoiceStatus
 from app.models.payments import Payment
-from app.services.contact_balances import customer_balances
+from app.models.settings import Settings
 from app.services.donor_documents import document_label, invoice_doc_kind
 from app.services.email_service import send_email
 from app.services.pdf_service import generate_invoice_pdf, generate_statement_pdf
 from app.services.settings_service import get_all_settings, set_setting
+from app.services.sub_customers import billed_balances, billed_subs, billed_to
 from app.services.terminology import terms_from_db
 
 logger = logging.getLogger(__name__)
@@ -43,9 +66,20 @@ logger = logging.getLogger(__name__)
 # Statement candidates: recent activity means this many days back.
 STATEMENT_ACTIVITY_DAYS = 31
 
+# A 'sending' row older than this never finished; it is marked failed.
+STALE_CLAIM = timedelta(minutes=10)
+
+# Who a reminder about a sub-customer billed with its parent goes to.
+BILLED_SUB_TO = ("property", "tenant", "both")
+LAST_RUN_KEY = "invoice_reminders_last_run"
+
+# Another window claimed the send first: not sent here, not an error.
+TAKEN = object()
+
 # Wording gets firmer at each step. Placeholders: customer_name,
 # invoice_number, invoice_label, balance_due, due_date, days_overdue,
-# company_name.
+# company_name. Migration c8e1a4d7f305 seeds these four, once; a company
+# that deletes them keeps an empty list.
 DEFAULT_RULES = [
     (
         -3,
@@ -106,18 +140,58 @@ _env = SandboxedEnvironment(autoescape=False, undefined=StrictUndefined)
 
 
 class EmailNotSetUp(Exception):
-    """Something would send but no mail server is configured."""
+    """Something would send but no mail server is configured. ``message``
+    is the sentence for the screen; the routes answer with that and nothing
+    else."""
 
     def __init__(self, what: str):
         self.what = what
-        super().__init__(
+        self.message = (
             f"Email isn't set up yet, so no {what} were sent. Enter your mail "
             "server under Settings, Email, then try again."
         )
+        super().__init__(self.message)
 
 
 class RemindError(ValueError):
-    """A single-invoice reminder that cannot go; the message is for the person."""
+    """A single-invoice reminder that cannot go; ``message`` is for the person."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def _utc(dt):
+    """A stored timestamp as an aware UTC datetime (SQLite hands them back
+    naive; they were written in UTC)."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _local_date(dt) -> date | None:
+    dt = _utc(dt)
+    return dt.astimezone().date() if dt else None
+
+
+def _release_stale(db: Session, model) -> None:
+    """A 'sending' row older than STALE_CLAIM is a send that never finished:
+    marked failed, so the next run tries it again instead of waiting on a
+    claim nobody holds."""
+    cutoff = _now() - STALE_CLAIM
+    changed = False
+    for row in db.query(model).filter(model.status == "sending").all():
+        when = _utc(row.sent_at)
+        if when is None or when < cutoff:
+            row.status = "failed"
+            row.error = "The send did not finish."
+            changed = True
+    if changed:
+        db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -145,11 +219,14 @@ def rule_dict(rule: InvoiceReminderRule) -> dict:
     }
 
 
-def ensure_default_rules(db: Session) -> None:
-    """Seed the four starter rules when there are none, so the page opens
-    with a working schedule instead of an empty list."""
+def seed_default_rules(db: Session) -> int:
+    """Write the four starter rules into an empty table and return how many
+    were added. Migration c8e1a4d7f305 does this for every company file;
+    this is for a database built by create_all (the test suite). No route
+    calls it: a read never writes, and a company that deleted every rule
+    keeps an empty list (review of #654)."""
     if db.query(InvoiceReminderRule.id).first():
-        return
+        return 0
     for days, subject, body in DEFAULT_RULES:
         db.add(
             InvoiceReminderRule(
@@ -157,13 +234,11 @@ def ensure_default_rules(db: Session) -> None:
             )
         )
     db.commit()
+    return len(DEFAULT_RULES)
 
 
 def list_rules(db: Session) -> list[InvoiceReminderRule]:
-    """Every rule, softest first. Seeds the defaults on a company that has
-    none, so a run or the Collections page works before anyone has opened
-    Settings; a company that deleted every rule gets the defaults back."""
-    ensure_default_rules(db)
+    """Every rule, softest first."""
     return (
         db.query(InvoiceReminderRule).order_by(InvoiceReminderRule.days_from_due).all()
     )
@@ -197,15 +272,15 @@ def _render(text: str, ctx: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Which invoice gets which rule
+# Which invoice gets which rule, and who is told
 # ---------------------------------------------------------------------------
 
 
-def open_invoices(db: Session, invoice_ids=None, customer_id=None) -> list[Invoice]:
+def open_invoices(db: Session, invoice_ids=None, customer_ids=None) -> list[Invoice]:
     """Invoices a reminder could be about (see the module docstring)."""
     q = (
         db.query(Invoice)
-        .options(joinedload(Invoice.customer))
+        .options(joinedload(Invoice.customer).joinedload(Customer.parent))
         .filter(Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
         .filter(Invoice.balance_due > 0)
         .filter(Invoice.due_date.isnot(None))
@@ -213,8 +288,8 @@ def open_invoices(db: Session, invoice_ids=None, customer_id=None) -> list[Invoi
     )
     if invoice_ids is not None:
         q = q.filter(Invoice.id.in_(invoice_ids))
-    if customer_id is not None:
-        q = q.filter(Invoice.customer_id == customer_id)
+    if customer_ids is not None:
+        q = q.filter(Invoice.customer_id.in_(customer_ids))
     return q.order_by(Invoice.due_date, Invoice.id).all()
 
 
@@ -242,18 +317,51 @@ def next_rule(rules, days: int, spent: set):
 
 
 def _spent_by_invoice(db: Session, invoice_ids) -> dict:
+    """invoice id -> the rule ids that have gone, or are going right now
+    (a live claim counts: the other window is sending it)."""
     spent: dict = {}
     if not invoice_ids:
         return spent
     rows = (
         db.query(InvoiceReminder.invoice_id, InvoiceReminder.rule_id)
         .filter(InvoiceReminder.invoice_id.in_(list(invoice_ids)))
-        .filter(InvoiceReminder.status == "sent")
+        .filter(InvoiceReminder.status.in_(["sent", "sending"]))
         .all()
     )
     for inv_id, rule_id in rows:
         spent.setdefault(inv_id, set()).add(rule_id)
     return spent
+
+
+def billed_sub_choice(settings: dict) -> str:
+    choice = (settings.get("invoice_reminders_billed_sub_to") or "").strip()
+    return choice if choice in BILLED_SUB_TO else "property"
+
+
+def _billed_parent(customer):
+    if (
+        customer is not None
+        and customer.parent_customer_id
+        and customer.bill_with_parent
+    ):
+        return customer.parent
+    return None
+
+
+def _addressees(customer, settings: dict) -> list:
+    """Who a reminder about this customer's invoice is written to: the
+    customer, or, for a sub-customer billed with its parent, whichever of
+    the two Settings says: the property (whose A/R the invoice sits on),
+    the tenant, or both."""
+    parent = _billed_parent(customer)
+    if parent is None:
+        return [customer]
+    choice = billed_sub_choice(settings)
+    if choice == "tenant":
+        return [customer]
+    if choice == "both":
+        return [customer, parent]
+    return [parent]
 
 
 def _block_reason(customer) -> str | None:
@@ -267,38 +375,66 @@ def _block_reason(customer) -> str | None:
     return None
 
 
-def plan_reminders(db: Session, as_of: date, invoice_ids=None):
+def recipients_for(customer, settings: dict):
+    """(the customers the email goes to, why nobody does). Each addressee's
+    own inactive flag, opt-out and email count, so a property that opted
+    out is not written to about its tenant's invoice; with both named,
+    whichever may be written to is."""
+    people = _addressees(customer, settings)
+    ok, reasons = [], []
+    for person in people:
+        reason = _block_reason(person)
+        if reason is None:
+            ok.append(person)
+        elif len(people) > 1:
+            reasons.append(f"{person.name}: {reason}")
+        else:
+            reasons.append(reason)
+    if ok:
+        return ok, None
+    return [], "; ".join(reasons)
+
+
+def _emails(people) -> str:
+    return ", ".join(p.email.strip() for p in people)
+
+
+def plan_reminders(db: Session, today: date, invoice_ids=None, settings=None):
     """(sends, skipped): what a run would email and what it would pass over
     and why. Only invoices with a rule ready to go are listed in either."""
+    settings = settings or get_all_settings(db)
     rules = [r for r in list_rules(db) if r.enabled]
     invoices = open_invoices(db, invoice_ids)
     spent = _spent_by_invoice(db, [i.id for i in invoices])
     sends, skipped = [], []
     for inv in invoices:
-        days = (as_of - inv.due_date).days
+        days = (today - inv.due_date).days
         rule, ready = next_rule(rules, days, spent.get(inv.id, set()))
         if not ready:
             continue
-        reason = _block_reason(inv.customer)
+        to, reason = recipients_for(inv.customer, settings)
         if reason:
             skipped.append({"invoice": inv, "reason": reason})
         else:
-            sends.append({"invoice": inv, "rule": rule, "days": days})
+            sends.append({"invoice": inv, "rule": rule, "days": days, "to": to})
     return sends, skipped
 
 
-def preview_reminders(db: Session, as_of: date, invoice_ids=None) -> dict:
-    """Exactly what run_reminders would send, without sending."""
-    sends, skipped = plan_reminders(db, as_of, invoice_ids)
+def preview_reminders(db: Session, invoice_ids=None) -> dict:
+    """Exactly what run_reminders would send today, without sending."""
+    _release_stale(db, InvoiceReminder)
+    today = date.today()
+    sends, skipped = plan_reminders(db, today, invoice_ids)
     return {
-        "as_of_date": as_of.isoformat(),
+        "as_of_date": today.isoformat(),
         "items": [
             {
                 "invoice_id": s["invoice"].id,
                 "invoice_number": s["invoice"].invoice_number,
                 "customer_id": s["invoice"].customer_id,
                 "customer_name": s["invoice"].customer.name,
-                "recipient": s["invoice"].customer.email.strip(),
+                "recipient": _emails(s["to"]),
+                "recipient_names": [p.name for p in s["to"]],
                 "rule_id": s["rule"].id,
                 "label": rule_label(s["rule"].days_from_due),
                 "days_from_due": s["days"],
@@ -333,9 +469,9 @@ def _money(amount, invoice, home: str) -> str:
     return f"{code} {text}" if code and code != home else f"${text}"
 
 
-def _context(db, inv: Invoice, days: int, settings: dict, words, home: str) -> dict:
+def _context(inv: Invoice, to, days: int, settings: dict, words, home: str) -> dict:
     return {
-        "customer_name": inv.customer.name,
+        "customer_name": to[0].name,
         "invoice_number": inv.invoice_number,
         "invoice_label": document_label(inv, words),
         "balance_due": _money(inv.balance_due, inv, home),
@@ -350,25 +486,63 @@ def _html_body(text: str) -> str:
     return "<p>" + html.escape(text).replace("\n", "<br>") + "</p>"
 
 
-def _send_one(db, plan, settings, words, home, trigger) -> str | None:
-    """Email one reminder and record it. Returns None when it went out, else
-    the sentence to show. Commits either way, so a crash later in a run
-    keeps what has already gone."""
-    inv, rule, days = plan["invoice"], plan["rule"], plan["days"]
-    customer = inv.customer
-    recipient = customer.email.strip()
+def _latest_log_id(db: Session, entity_type: str, entity_id: int):
+    log = (
+        db.query(EmailLog.id)
+        .filter(EmailLog.entity_type == entity_type)
+        .filter(EmailLog.entity_id == entity_id)
+        .order_by(EmailLog.id.desc())
+        .first()
+    )
+    return log[0] if log else None
+
+
+def _claim_reminder(db: Session, plan, trigger: str):
+    """Write the audit row as 'sending' and commit. None when another
+    window holds a live row for this invoice and rule (the unique index
+    refused the insert): that window is sending it."""
+    inv, rule = plan["invoice"], plan["rule"]
+    row = InvoiceReminder(
+        invoice_id=inv.id,
+        rule_id=rule.id,
+        customer_id=inv.customer_id,
+        recipient=_emails(plan["to"]),
+        status="sending",
+        trigger=trigger,
+        days_from_due=plan["days"],
+        balance_due=inv.balance_due,
+        sent_at=_now(),
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return None
+    return row
+
+
+def _send_one(db, plan, settings, words, home, trigger):
+    """Claim, email and record one reminder. Returns None when it went out,
+    TAKEN when another window had claimed it, else the sentence to show.
+    Commits either way, so a crash later in a run keeps what has gone."""
+    row = _claim_reminder(db, plan, trigger)
+    if row is None:
+        return TAKEN
+    inv, rule, days, to = plan["invoice"], plan["rule"], plan["days"], plan["to"]
     label = f"{document_label(inv, words)} {inv.invoice_number}"
     error = None
     ok = False
     log_id = None
     try:
-        ctx = _context(db, inv, days, settings, words, home)
+        ctx = _context(inv, to, days, settings, words, home)
         subject = " ".join(_render(rule.subject, ctx).split())
         body = _render(rule.body, ctx)
         pdf = generate_invoice_pdf(inv, settings)
         ok = send_email(
             db=db,
-            to_email=recipient,
+            to_email=to[0].email.strip(),
+            cc=[p.email.strip() for p in to[1:]] or None,
             subject=subject,
             html_body=_html_body(body),
             attachment_bytes=pdf,
@@ -377,14 +551,7 @@ def _send_one(db, plan, settings, words, home, trigger) -> str | None:
             entity_id=inv.id,
         )
         if ok:
-            log = (
-                db.query(EmailLog.id)
-                .filter(EmailLog.entity_type == "reminder")
-                .filter(EmailLog.entity_id == inv.id)
-                .order_by(EmailLog.id.desc())
-                .first()
-            )
-            log_id = log[0] if log else None
+            log_id = _latest_log_id(db, "reminder", inv.id)
         else:
             error = "The email could not be sent (the email log has the reason)."
     except Exception:
@@ -393,77 +560,101 @@ def _send_one(db, plan, settings, words, home, trigger) -> str | None:
         logger.exception("Reminder for invoice %s failed", inv.id)
         db.rollback()
         error = "The reminder could not be prepared (the server log has the reason)."
-    db.add(
-        InvoiceReminder(
-            invoice_id=inv.id,
-            rule_id=rule.id,
-            customer_id=customer.id,
-            recipient=recipient,
-            status="sent" if ok else "failed",
-            trigger=trigger,
-            days_from_due=days,
-            balance_due=inv.balance_due,
-            email_log_id=log_id,
-            error=error,
-        )
-    )
+    row.status = "sent" if ok else "failed"
+    row.email_log_id = log_id
+    row.error = error
+    row.sent_at = _now()
     db.commit()
     if ok:
         return None
-    return f"{customer.name}, {label}: {error}"
+    return f"{to[0].name}, {label}: {error}"
 
 
-def run_reminders(db: Session, as_of: date, trigger: str, invoice_ids=None) -> dict:
-    """Send every due reminder (see plan_reminders) and report the counts.
-    Raises EmailNotSetUp when something would send and mail is not set up."""
-    sends, skipped = plan_reminders(db, as_of, invoice_ids)
+def run_reminders(db: Session, trigger: str, invoice_ids=None) -> dict:
+    """Send every reminder due today (see plan_reminders) and report the
+    counts. Raises EmailNotSetUp when something would send and mail is not
+    set up. A reminder another window claimed first counts as skipped."""
+    _release_stale(db, InvoiceReminder)
+    today = date.today()
     settings = get_all_settings(db)
+    sends, skipped = plan_reminders(db, today, invoice_ids, settings)
     if sends and not _smtp_ready(settings):
         raise EmailNotSetUp("reminders")
     words = terms_from_db(db)
     from app.services.currency import home_currency
 
     home = home_currency(db)
-    sent, errors = 0, []
+    sent, taken, errors = 0, 0, []
     for plan in sends:
-        err = _send_one(db, plan, settings, words, home, trigger)
-        if err:
-            errors.append(err)
-        else:
+        result = _send_one(db, plan, settings, words, home, trigger)
+        if result is None:
             sent += 1
+        elif result is TAKEN:
+            taken += 1
+        else:
+            errors.append(result)
     return {
         "sent": sent,
         "failed": len(errors),
-        "skipped": len(skipped),
+        "skipped": len(skipped) + taken,
+        "taken": taken,
         "errors": errors,
-        "ran_on": as_of.isoformat(),
+        "ran_on": today.isoformat(),
     }
 
 
+def _claim_day(db: Session, today: date) -> bool:
+    """Stamp today as the automatic run's date in one guarded statement
+    that succeeds only while the stamp is not already today, so two windows
+    opened together run once between them."""
+    iso = today.isoformat()
+    row = db.query(Settings).filter(Settings.key == LAST_RUN_KEY).first()
+    if row is None:
+        set_setting(db, LAST_RUN_KEY, iso)
+        try:
+            db.commit()
+        except IntegrityError:  # the other window wrote the row first
+            db.rollback()
+            return False
+        return True
+    moved = (
+        db.query(Settings)
+        .filter(
+            Settings.key == LAST_RUN_KEY,
+            or_(Settings.value.is_(None), Settings.value != iso),
+        )
+        .update({Settings.value: iso}, synchronize_session=False)
+    )
+    db.commit()
+    return moved == 1
+
+
 def run_if_due(db: Session, today: date) -> dict:
-    """The once-a-day automatic run. The date is stamped before sending so a
-    crash does not retry on every page load, but not when mail is not set up,
-    so the run happens the day it is."""
+    """The once-a-day automatic run. The date is claimed before sending so
+    a crash does not retry on every page load, but not when mail is not
+    set up, so the run happens the day it is."""
     settings = get_all_settings(db)
     if settings.get("invoice_reminders_auto") != "true":
         return {"ran": False, "reason": "off"}
-    if settings.get("invoice_reminders_last_run") == today.isoformat():
+    if settings.get(LAST_RUN_KEY) == today.isoformat():
         return {"ran": False, "reason": "already_today"}
-    sends, _ = plan_reminders(db, today)
+    sends, _ = plan_reminders(db, today, settings=settings)
     if sends and not _smtp_ready(settings):
         return {"ran": False, "reason": "no_smtp"}
-    set_setting(db, "invoice_reminders_last_run", today.isoformat())
-    db.commit()
-    return {"ran": True, **run_reminders(db, today, "auto")}
+    if not _claim_day(db, today):
+        return {"ran": False, "reason": "already_today"}
+    return {"ran": True, **run_reminders(db, "auto")}
 
 
-def remind_invoice(db: Session, invoice_id: int, as_of: date) -> dict:
-    """Send one invoice its next reminder by hand: the firmest matching rule,
-    else the nearest one ahead. Raises LookupError / RemindError /
-    EmailNotSetUp."""
+def remind_invoice(db: Session, invoice_id: int) -> dict:
+    """Send one invoice its next reminder by hand, dated today: the firmest
+    matching rule, else the nearest one ahead. Raises LookupError /
+    RemindError / EmailNotSetUp."""
+    _release_stale(db, InvoiceReminder)
+    today = date.today()
     inv = (
         db.query(Invoice)
-        .options(joinedload(Invoice.customer))
+        .options(joinedload(Invoice.customer).joinedload(Customer.parent))
         .filter(Invoice.id == invoice_id)
         .first()
     )
@@ -471,40 +662,49 @@ def remind_invoice(db: Session, invoice_id: int, as_of: date) -> dict:
         raise LookupError("Invoice not found")
     if not open_invoices(db, [invoice_id]):
         raise RemindError("This invoice isn't open, so there is nothing to remind.")
-    reason = _block_reason(inv.customer)
+    settings = get_all_settings(db)
+    to, reason = recipients_for(inv.customer, settings)
     if reason:
         raise RemindError(f"No reminder can be sent: {reason}.")
     rules = [r for r in list_rules(db) if r.enabled]
-    days = (as_of - inv.due_date).days
+    days = (today - inv.due_date).days
     spent = _spent_by_invoice(db, [invoice_id]).get(invoice_id, set())
     rule, _ready = next_rule(rules, days, spent)
     if rule is None:
         raise RemindError("Every reminder rule has already been sent for this invoice.")
-    settings = get_all_settings(db)
     if not _smtp_ready(settings):
         raise EmailNotSetUp("reminders")
     from app.services.currency import home_currency
 
-    err = _send_one(
+    result = _send_one(
         db,
-        {"invoice": inv, "rule": rule, "days": days},
+        {"invoice": inv, "rule": rule, "days": days, "to": to},
         settings,
         terms_from_db(db),
         home_currency(db),
         "manual",
     )
-    if err:
-        raise RemindError(err)
-    return {"sent": True, "label": rule_label(rule.days_from_due)}
+    if result is TAKEN:
+        raise RemindError("Another window is sending this reminder right now.")
+    if result:
+        raise RemindError(result)
+    return {"sent": True, "label": rule_label(rule.days_from_due), "to": _emails(to)}
 
 
 def invoice_rows(
     db: Session, as_of: date, customer_id=None, overdue_only: bool = False
 ) -> dict:
-    """The Collections list: every open invoice with where it stands."""
+    """The Collections list: every open invoice with where it stands as of
+    the date asked for (a way of looking, not a date to send from). A
+    customer filter on a parent takes in the sub-customers billed with it,
+    the way its A/R Aging row does."""
+    settings = get_all_settings(db)
     rules = [r for r in list_rules(db) if r.enabled]
     all_rules = {r.id: r for r in list_rules(db)}
-    invoices = open_invoices(db, customer_id=customer_id)
+    customer_ids = None
+    if customer_id is not None:
+        customer_ids = [customer_id] + [s.id for s in billed_subs(db, customer_id)]
+    invoices = open_invoices(db, customer_ids=customer_ids)
     ids = [i.id for i in invoices]
     spent = _spent_by_invoice(db, ids)
     last: dict = {}
@@ -525,6 +725,8 @@ def invoice_rows(
         rule, ready = next_rule(rules, days, spent.get(inv.id, set()))
         row = last.get(inv.id)
         last_rule = all_rules.get(row.rule_id) if row else None
+        to, reason = recipients_for(inv.customer, settings)
+        parent = _billed_parent(inv.customer)
         items.append(
             {
                 "invoice_id": inv.id,
@@ -532,11 +734,14 @@ def invoice_rows(
                 "customer_id": inv.customer_id,
                 "customer_name": inv.customer.name,
                 "customer_email": inv.customer.email,
+                "billed_to_name": parent.name if parent is not None else None,
                 "date": inv.date.isoformat(),
                 "due_date": inv.due_date.isoformat(),
                 "days_overdue": days,
                 "balance_due": float(inv.balance_due),
-                "reminders_enabled": bool(inv.customer.invoice_reminders_enabled),
+                "reminders_enabled": reason is None,
+                "reminder_to": _emails(to) if to else None,
+                "skip_reason": reason,
                 "last_reminder": (
                     {
                         "rule_id": row.rule_id,
@@ -582,6 +787,11 @@ def invoice_rows(
 # ---------------------------------------------------------------------------
 
 
+def period_of(day: date) -> str:
+    """The statement month a date falls in, "2026-10"."""
+    return day.strftime("%Y-%m")
+
+
 def _active_ids(db: Session, model, since: date, until: date, *extra) -> set:
     q = db.query(model.customer_id).filter(model.date >= since, model.date <= until)
     for cond in extra:
@@ -589,43 +799,38 @@ def _active_ids(db: Session, model, since: date, until: date, *extra) -> set:
     return {r[0] for r in q.distinct()}
 
 
-def _already_sent(db: Session, customer_id: int, as_of: date):
-    """Date of this month's statement email to the customer, or None. Read
-    from the email log, which every statement send already writes."""
-    first = datetime.combine(as_of.replace(day=1), time.min)
-    nxt = (as_of.replace(day=28) + timedelta(days=4)).replace(day=1)
-    row = (
-        db.query(EmailLog)
-        .filter(EmailLog.entity_type == "statement")
-        .filter(EmailLog.entity_id == customer_id)
-        .filter(EmailLog.status == "sent")
-        .filter(
-            EmailLog.sent_at >= first,
-            EmailLog.sent_at < datetime.combine(nxt, time.min),
+def _month_rows(db: Session, period: str) -> dict:
+    return {
+        row.customer_id: row
+        for row in db.query(CustomerStatement).filter(
+            CustomerStatement.period == period
         )
-        .order_by(EmailLog.sent_at.desc())
-        .first()
-    )
-    return row.sent_at.date() if row and row.sent_at else None
+    }
 
 
-def statement_candidates(db: Session, as_of: date) -> list[dict]:
+def statement_candidates(db: Session, today: date) -> list[dict]:
     """Customers on monthly statements who owe something or had activity in
-    the last month, with whether this month's statement has gone."""
-    since = as_of - timedelta(days=STATEMENT_ACTIVITY_DAYS)
+    the last month, with whether this month's statement has gone. What a
+    customer owes, and its activity, take in the sub-customers billed with
+    it: a property whose tenants owe is on the list though it owes nothing
+    of its own."""
+    _release_stale(db, CustomerStatement)
+    since = today - timedelta(days=STATEMENT_ACTIVITY_DAYS)
     recent = (
-        _active_ids(db, Invoice, since, as_of, Invoice.status != InvoiceStatus.VOID)
+        _active_ids(db, Invoice, since, today, Invoice.status != InvoiceStatus.VOID)
         | _active_ids(
             db,
             Payment,
             since,
-            as_of,
+            today,
             or_(Payment.is_voided.is_(False), Payment.is_voided.is_(None)),
         )
         | _active_ids(
-            db, CreditMemo, since, as_of, CreditMemo.status != CreditMemoStatus.VOID
+            db, CreditMemo, since, today, CreditMemo.status != CreditMemoStatus.VOID
         )
     )
+    routed = billed_to(db)  # sub billed with parent -> parent
+    recent |= {routed[cid] for cid in recent if cid in routed}
     customers = (
         db.query(Customer)
         .filter(Customer.is_active.is_(True), Customer.monthly_statement.is_(True))
@@ -633,18 +838,25 @@ def statement_candidates(db: Session, as_of: date) -> list[dict]:
         .all()
     )
     # Customer.balance is a stored column nothing keeps up; what a customer
-    # owes is summed from the open documents (contact_balances).
-    owed = customer_balances(db, [c.id for c in customers])
+    # owes is summed from the open documents, its billed sub-customers' too.
+    owed = billed_balances(db, [c.id for c in customers])
+    month = _month_rows(db, period_of(today))
     out = []
     for c in customers:
         balance = float(owed.get(c.id, 0))
         if balance == 0 and c.id not in recent:
             continue
         email = (c.email or "").strip()
-        sent_on = _already_sent(db, c.id, as_of)
-        reason = (
-            "no email" if not email else "already sent this month" if sent_on else None
-        )
+        row = month.get(c.id)
+        sent_on = _local_date(row.sent_at) if row and row.status == "sent" else None
+        if not email:
+            reason = "no email"
+        elif sent_on:
+            reason = "already sent this month"
+        elif row and row.status == "sending":
+            reason = "being sent right now"
+        else:
+            reason = None
         out.append(
             {
                 "customer": c,
@@ -660,7 +872,8 @@ def statement_candidates(db: Session, as_of: date) -> list[dict]:
     return out
 
 
-def statements_due(db: Session, as_of: date) -> dict:
+def statements_due(db: Session) -> dict:
+    today = date.today()
     keys = (
         "customer_id",
         "customer_name",
@@ -671,22 +884,81 @@ def statements_due(db: Session, as_of: date) -> dict:
         "reason",
     )
     return {
-        "as_of_date": as_of.isoformat(),
-        "items": [{k: c[k] for k in keys} for c in statement_candidates(db, as_of)],
+        "as_of_date": today.isoformat(),
+        "items": [{k: c[k] for k in keys} for c in statement_candidates(db, today)],
     }
 
 
-def run_statements(db: Session, as_of: date, force: bool = False) -> dict:
-    """Email each customer's statement PDF. `force` also resends to those who
-    already had one this month; a customer with no email is never sent."""
+def _claim_statement(db: Session, cand: dict, period: str, force: bool):
+    """The month's row for this customer, claimed as 'sending', or None
+    when another window has it. A new row is inserted; a failed one (or,
+    with force, a sent one) is taken over in one guarded update."""
+    customer = cand["customer"]
+    row = CustomerStatement(
+        customer_id=customer.id,
+        period=period,
+        status="sending",
+        recipient=cand["email"],
+        balance=cand["balance"],
+        sent_at=_now(),
+    )
+    db.add(row)
+    try:
+        db.commit()
+        return row
+    except IntegrityError:
+        db.rollback()
+    existing = (
+        db.query(CustomerStatement)
+        .filter(
+            CustomerStatement.customer_id == customer.id,
+            CustomerStatement.period == period,
+        )
+        .first()
+    )
+    if existing is None:
+        return None
+    allowed = ("failed", "sent") if force else ("failed",)
+    if existing.status not in allowed:
+        return None
+    moved = (
+        db.query(CustomerStatement)
+        .filter(
+            CustomerStatement.id == existing.id,
+            CustomerStatement.status == existing.status,
+        )
+        .update(
+            {
+                CustomerStatement.status: "sending",
+                CustomerStatement.recipient: cand["email"],
+                CustomerStatement.balance: cand["balance"],
+                CustomerStatement.sent_at: _now(),
+                CustomerStatement.error: None,
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    if moved != 1:
+        return None
+    db.refresh(existing)
+    return existing
+
+
+def run_statements(db: Session, force: bool = False) -> dict:
+    """Email each customer's statement PDF as of today. `force` also resends
+    to those who already had one this month; a customer with no email is
+    never sent. A statement another window is sending counts as skipped."""
     from app.routes.reports.receivables import statement_activity
 
+    today = date.today()
+    period = period_of(today)
     todo, skipped, errors = [], 0, []
-    for c in statement_candidates(db, as_of):
+    for c in statement_candidates(db, today):
         if c["reason"] == "no email":
             skipped += 1
             errors.append(f"{c['customer_name']}: no email address on file")
-        elif c["will_send"] or force:
+        elif c["will_send"] or (force and c["reason"] == "already sent this month"):
             todo.append(c)
         else:
             skipped += 1
@@ -697,10 +969,14 @@ def run_statements(db: Session, as_of: date, force: bool = False) -> dict:
     sent = failed = 0
     for c in todo:
         customer = c["customer"]
+        row = _claim_statement(db, c, period, force)
+        if row is None:
+            skipped += 1
+            continue
         ok = False
         try:
             pdf = generate_statement_pdf(
-                customer, statement_activity(db, customer, as_of), settings, as_of
+                customer, statement_activity(db, customer, today), settings, today
             )
             ok = send_email(
                 db=db,
@@ -719,6 +995,15 @@ def run_statements(db: Session, as_of: date, force: bool = False) -> dict:
         except Exception:
             logger.exception("Failed to send statement to customer %s", customer.id)
             db.rollback()
+        row.status = "sent" if ok else "failed"
+        row.email_log_id = _latest_log_id(db, "statement", customer.id) if ok else None
+        row.error = (
+            None
+            if ok
+            else "The statement could not be sent (the email log has the reason)."
+        )
+        row.sent_at = _now()
+        db.commit()
         if ok:
             sent += 1
         else:

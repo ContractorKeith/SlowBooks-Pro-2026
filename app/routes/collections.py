@@ -26,8 +26,10 @@ from app.services import collections as svc
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
 
-def _bad_request(e: Exception) -> HTTPException:
-    return HTTPException(status_code=400, detail=str(e))
+def _bad_request(e) -> HTTPException:
+    # The service's errors carry the sentence for the screen in .message;
+    # nothing of the exception itself reaches the response.
+    return HTTPException(status_code=400, detail=e.message)
 
 
 def _check_day_free(db: Session, days: int, rule_id: Optional[int] = None) -> None:
@@ -44,7 +46,7 @@ def _check_text(subject: str, body: str) -> None:
     try:
         svc.validate_template(subject, body)
     except ValueError as e:
-        raise _bad_request(e)
+        raise HTTPException(status_code=400, detail=e.args[0])
 
 
 # ---- Rules ----
@@ -52,6 +54,9 @@ def _check_text(subject: str, body: str) -> None:
 
 @router.get("/rules", response_model=list[RuleResponse])
 def list_rules(db: Session = Depends(get_db)):
+    """The rules as they are. A read writes nothing: the four starter rules
+    come from migration c8e1a4d7f305, once, and a company that deleted them
+    keeps an empty list (review of #654)."""
     return [svc.rule_dict(r) for r in svc.list_rules(db)]
 
 
@@ -115,20 +120,21 @@ def collections_invoices(
     return svc.invoice_rows(db, as_of_date or date.today(), customer_id, overdue_only)
 
 
+# Sends, and the previews of them, are always as of today (review of #654):
+# the list's As of date is for looking, and looking ahead must not send the
+# final reminder early or a second statement.
+
+
 @router.get("/reminders/due")
-def reminders_due(
-    as_of_date: Optional[date] = Query(default=None), db: Session = Depends(get_db)
-):
-    return svc.preview_reminders(db, as_of_date or date.today())
+def reminders_due(db: Session = Depends(get_db)):
+    return svc.preview_reminders(db)
 
 
 @router.post("/reminders/run")
 def reminders_run(data: Optional[RunRequest] = None, db: Session = Depends(get_db)):
     data = data or RunRequest()
     try:
-        return svc.run_reminders(
-            db, data.as_of_date or date.today(), "run", data.invoice_ids
-        )
+        return svc.run_reminders(db, "run", data.invoice_ids)
     except svc.EmailNotSetUp as e:
         raise _bad_request(e)
 
@@ -141,7 +147,7 @@ def reminders_run_if_due(db: Session = Depends(get_db)):
 @router.post("/invoices/{invoice_id}/remind")
 def remind_invoice(invoice_id: int, db: Session = Depends(get_db)):
     try:
-        return svc.remind_invoice(db, invoice_id, date.today())
+        return svc.remind_invoice(db, invoice_id)
     except LookupError:
         raise HTTPException(404, "Invoice not found")
     except (svc.RemindError, svc.EmailNotSetUp) as e:
@@ -152,10 +158,8 @@ def remind_invoice(invoice_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/statements/due")
-def statements_due(
-    as_of_date: Optional[date] = Query(default=None), db: Session = Depends(get_db)
-):
-    return svc.statements_due(db, as_of_date or date.today())
+def statements_due(db: Session = Depends(get_db)):
+    return svc.statements_due(db)
 
 
 @router.post("/statements/run")
@@ -164,6 +168,6 @@ def statements_run(
 ):
     data = data or StatementRunRequest()
     try:
-        return svc.run_statements(db, data.as_of_date or date.today(), data.force)
+        return svc.run_statements(db, data.force)
     except svc.EmailNotSetUp as e:
         raise _bad_request(e)

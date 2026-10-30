@@ -822,12 +822,19 @@ const SettingsPage = {
                     </div>
                     <div class="form-grid">
                         <div class="form-group"><label for="invoice-reminders-auto">Send reminders automatically</label>
-                            <select name="invoice_reminders_auto" id="invoice-reminders-auto">
+                            <select name="invoice_reminders_auto" id="invoice-reminders-auto" onchange="SettingsPage.previewAutoReminders(this)">
                                 <option value="false" ${s.invoice_reminders_auto !== 'true' ? 'selected' : ''}>Off</option>
                                 <option value="true" ${s.invoice_reminders_auto === 'true' ? 'selected' : ''}>On</option>
                             </select>
                             <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Once a day, when SlowBooks Pro is opened. Needs email set up.
                                 ${s.invoice_reminders_last_run ? `Last ran ${escapeHtml(formatDate(s.invoice_reminders_last_run))}.` : ''}</div></div>
+                        <div class="form-group"><label for="invoice-reminders-billed-sub-to">Remind about a sub-${T('customer').toLowerCase()} billed with its parent</label>
+                            <select name="invoice_reminders_billed_sub_to" id="invoice-reminders-billed-sub-to">
+                                <option value="property" ${(s.invoice_reminders_billed_sub_to || 'property') === 'property' ? 'selected' : ''}>The parent (whose account it is billed to)</option>
+                                <option value="tenant" ${s.invoice_reminders_billed_sub_to === 'tenant' ? 'selected' : ''}>The sub-${T('customer').toLowerCase()} itself</option>
+                                <option value="both" ${s.invoice_reminders_billed_sub_to === 'both' ? 'selected' : ''}>Both</option>
+                            </select>
+                            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">A tenant billed with its property, say. Whoever is written to must have an email and not be opted out.</div></div>
                     </div>
                     <h4 id="settings-h-reminder-rules" style="margin:12px 0 4px; font-size:12px;">Reminder rules</h4>
                     <div style="font-size:10px; color:var(--text-muted); margin-bottom:8px;">
@@ -2608,6 +2615,28 @@ const SettingsPage = {
         if (set !== undefined) SettingsPage._messages = set;
         return SettingsPage._messages;
     },
+
+    // Switching the automatic run on: show who gets an email on the first run
+    // before the setting is saved (review of #654). Turning rules on for a
+    // company with old open invoices sends the firmest reminder on each one.
+    async previewAutoReminders(select) {
+        if (!select || select.value !== 'true') return;
+        const back = () => { select.value = 'false'; SettingsPage._updateDirty(); };
+        let summary;
+        try { summary = await CollectionsPage.dueSummary(); } catch (err) { toast(err.message, 'error'); return; }
+        const n = summary.due.items.length;
+        if (!n) { toast('Nothing is due today. Once saved, the first automatic run sends whatever is due when SlowBooks Pro next opens.', 'info'); return; }
+        openModal('Reminders the first run will send', `
+            <p>The first automatic run, the next time SlowBooks Pro opens after you save, emails <strong>${n}</strong> reminder${n === 1 ? '' : 's'}:</p>
+            ${summary.html}
+            <p style="font-size:11px; color:var(--text-muted);">To hold any of them back, turn reminders off on that ${T('customer').toLowerCase()} first, or send them yourself from Collections and review the result.</p>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal(); SettingsPage._autoPreviewCancel()">Leave it off</button>
+                <button type="button" class="btn btn-primary" onclick="closeModal()">Keep it on</button>
+            </div>`);
+        SettingsPage._autoPreviewCancel = back;
+    },
+    _autoPreviewCancel() {},
 
     // Reminder rules (#653). The rows sit inside the Settings form, so the
     // controls carry no name (nothing here is sent to PUT /api/settings) and
