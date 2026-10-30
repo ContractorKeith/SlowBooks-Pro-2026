@@ -244,12 +244,12 @@ def get_portal_token(request: Request, emp_id: int, db: Session = Depends(get_db
         "portal_url": _portal_url(request, token) if token else None,
         "expires_at": _iso_utc(emp.portal_token_expires_at),
         "last_used_at": _iso_utc(emp.portal_token_last_used),
+        # Said outright, so the page never guesses from expires_at (a link
+        # from before that column existed has none, and still works).
+        "has_link": bool(emp.portal_token_hash),
     }
     if not emp.portal_token_hash:
-        answer["note"] = (
-            "This employee has no portal link yet. Make one with Make Link "
-            "(POST on this path)."
-        )
+        answer["note"] = "This employee has no portal link yet. Make Link makes one."
     elif not token:
         # A link whose encrypted copy this install's payroll key can't open:
         # it still works, and the next time the employee uses it the copy is

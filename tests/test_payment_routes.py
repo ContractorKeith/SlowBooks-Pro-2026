@@ -129,8 +129,20 @@ def test_a_read_never_makes_a_payment_link(client, db_session, invoice):
     db_session.commit()
     for who in (reader, keeper, client):
         none = who.get(f"/api/payments/payment-link/{invoice.id}")
-        assert none.status_code == 404
-        assert "no payment link yet" in none.json()["detail"]
+        assert none.status_code == 200, none.text
+        assert none.json()["url"] is None
+        assert "no payment link yet" in none.json()["note"]
+    # The read-only reader is told who to ask, not to POST (skeptic pass).
+    assert "ask an administrator or bookkeeper" in (
+        reader.get(f"/api/payments/payment-link/{invoice.id}").json()["note"]
+    )
+    assert "Copy Payment Link" in (
+        keeper.get(f"/api/payments/payment-link/{invoice.id}").json()["note"]
+    )
+    cpa = bearer("accountant", "cpa")
+    assert "an accountant's sign-in can't make one" in (
+        cpa.get(f"/api/payments/payment-link/{invoice.id}").json()["note"]
+    )
     db_session.refresh(invoice)
     assert invoice.payment_token is None
     assert reader.post(f"/api/payments/payment-link/{invoice.id}").status_code == 403

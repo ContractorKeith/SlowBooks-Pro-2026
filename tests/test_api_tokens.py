@@ -128,6 +128,10 @@ def test_an_admin_token_from_before_2_29_is_refused_and_flagged(
     }
     assert _bearer(fine["token"]).get("/api/customers").status_code == 200
     row = db_session.query(ApiToken).filter_by(label="old-root").one()
+    # Refused requests do not count as use (skeptic pass): "last used" would
+    # read as if the program got in.
+    db_session.refresh(row)
+    assert row.last_used_at is None
     assert (
         client.put(f"/api/tokens/{row.id}", json={"is_active": False}).status_code
         == 200
@@ -200,3 +204,14 @@ def test_last_used_recorded(client, db_session):
         db_session.query(ApiToken).filter_by(label="tracked").one().last_used_at
         is not None
     )
+
+
+def test_an_accountant_read_of_an_employee_link_is_refused_as_a_read(client):
+    """The portal-token GET is an administrator's even as a read; the
+    accountant's refusal used to say "cannot make this change" on a GET
+    (skeptic pass on #660)."""
+    acct = _bearer(_mint(client, "cpa", "accountant")["token"])
+    r = acct.get("/api/employees/1/portal-token")
+    assert r.status_code == 403, r.text
+    assert "cannot make this change" not in r.json()["detail"]
+    assert "administrator" in r.json()["detail"]

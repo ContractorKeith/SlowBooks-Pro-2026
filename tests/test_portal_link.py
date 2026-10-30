@@ -100,7 +100,9 @@ def test_a_read_never_makes_a_portal_link(client, db_session):
     db_session.commit()
     none = client.get(f"/api/employees/{emp['id']}/portal-token").json()
     assert none["portal_token"] is None and none["portal_url"] is None
+    assert none["has_link"] is False
     assert "no portal link yet" in none["note"]
+    assert "POST" not in none["note"]  # a person reads this on the page
     assert (
         client.get(f"/api/employees/{emp['id']}/portal-token").json()["portal_token"]
         is None
@@ -111,6 +113,10 @@ def test_a_read_never_makes_a_portal_link(client, db_session):
     assert reader.post(f"/api/employees/{emp['id']}/portal-token").status_code == 403
     assert reader.get(f"/api/employees/{emp['id']}/portal-token").status_code == 403
     made = client.post(f"/api/employees/{emp['id']}/portal-token").json()
+    assert (
+        client.get(f"/api/employees/{emp['id']}/portal-token").json()["has_link"]
+        is True
+    )
     assert made["portal_token"]
     read = client.get(f"/api/employees/{emp['id']}/portal-token").json()
     assert read["portal_token"] == made["portal_token"] and "note" not in read

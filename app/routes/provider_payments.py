@@ -204,10 +204,17 @@ def check_status(provider_name: str, invoice_id: int, db: Session = Depends(get_
 
 
 NO_PAYMENT_LINK = (
-    "This invoice has no payment link yet. Make one with POST "
-    "/api/payments/payment-link/{invoice_id} (Copy Payment Link on the "
-    "invoice does); a read-only sign-in can't."
+    "This invoice has no payment link yet. Copy Payment Link on the invoice "
+    "makes it (POST on this path)."
 )
+NO_PAYMENT_LINK_CANNOT = (
+    "This invoice has no payment link yet, and {who} can't make one: ask an "
+    "administrator or bookkeeper."
+)
+_CANNOT_MAKE = {
+    "readonly": "a read-only sign-in",
+    "accountant": "an accountant's sign-in",
+}
 
 
 def _pay_url(request: Request, invoice: Invoice) -> dict:
@@ -220,15 +227,18 @@ def get_payment_link(invoice_id: int, request: Request, db: Session = Depends(ge
     """The invoice's public payment URL as it stands. A read (#659): it used
     to make the link when the invoice had none, a write a bookkeeper's
     token or an agent's read tool reached (a read-only sign-in was refused
-    there since 2.18.0). 404 with the sentence when there is none; POST on
-    this path makes it."""
+    there since 2.18.0). With none, ``url`` is null and ``note`` says who
+    can make one, the shape the employee portal-token read answers too;
+    POST on this path makes it."""
+    from app.routes._roles import current_role
+
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     if not invoice.payment_token:
-        raise HTTPException(
-            status_code=404, detail=NO_PAYMENT_LINK.format(invoice_id=invoice.id)
-        )
+        who = _CANNOT_MAKE.get(current_role(request))
+        note = NO_PAYMENT_LINK_CANNOT.format(who=who) if who else NO_PAYMENT_LINK
+        return {"url": None, "note": note}
     return _pay_url(request, invoice)
 
 
