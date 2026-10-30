@@ -29,6 +29,7 @@ PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
 
 INSTRUCTIONS = (
     "Tools for working the books of a running SlowBooks Pro. Call `context` "
@@ -59,7 +60,7 @@ _STR = {"type": "string"}
 _INT = {"type": "integer"}
 _BOOL = {"type": "boolean"}
 _OBJ = {"type": "object"}
-_LIMIT = {"type": "integer", "minimum": 1}
+_LIMIT = {"type": "integer", "minimum": 1, "maximum": tools.MAX_LIMIT}
 
 
 def _schema(properties: dict, required: tuple = ()) -> dict:
@@ -263,6 +264,8 @@ def _check_args(name: str, schema: dict, args: dict) -> None:
             )
         if "minimum" in props[key] and value < props[key]["minimum"]:
             raise ToolError(f"{name}: {key} must be at least {props[key]['minimum']}.")
+        if "maximum" in props[key] and value > props[key]["maximum"]:
+            raise ToolError(f"{name}: {key} must be at most {props[key]['maximum']}.")
 
 
 class Server:
@@ -304,6 +307,11 @@ class Server:
             raise ToolError(str(exc), getattr(exc, "payload", None)) from None
         except ValueError as exc:
             raise ToolError(str(exc)) from None
+        except Exception as exc:  # noqa: BLE001 - a tool never takes the server down
+            raise ToolError(
+                f"{name} failed inside the server ({type(exc).__name__}: {exc}). "
+                "The books were not changed by this call unless the API says so."
+            ) from None
 
     # -- protocol ------------------------------------------------------------
 
@@ -337,6 +345,10 @@ class Server:
             if exc.payload is not None:
                 text += "\n" + json.dumps(exc.payload)
             result = {"content": [{"type": "text", "text": text}], "isError": True}
+        except Exception as exc:  # noqa: BLE001 - one message never ends the loop
+            return _error(
+                msg_id, INTERNAL_ERROR, f"Internal error: {type(exc).__name__}"
+            )
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
     def _initialize(self, params: dict) -> dict:
@@ -373,7 +385,7 @@ class Server:
                 continue
             try:
                 message = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):
                 response = _error(None, PARSE_ERROR, "The line is not valid JSON.")
             else:
                 response = self.handle(message)

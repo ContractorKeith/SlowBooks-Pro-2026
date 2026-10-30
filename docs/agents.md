@@ -25,33 +25,54 @@ It is the standard library only, so there is nothing to install.
    Set-Content -Encoding ascii "$env:LOCALAPPDATA\SlowBooksPro\data\mcp-token" (Read-Host 'Token')
    ```
 
-3. Start the app, then connect the agent.
+3. Start the app, then connect the agent. The server is `app/mcp` in the
+   checkout; run it as `python -m app.mcp` from the checkout, or from
+   anywhere by the file's full path with the Python that runs the app:
 
-**Claude Code**
+   ```
+   /path/to/SlowBooks-Pro-2026/.venv/bin/python /path/to/SlowBooks-Pro-2026/app/mcp/__main__.py
+   ```
+
+**Claude Code** (macOS and Linux)
 
 ```
-claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=~/.slowbooks-token -- python -m app.mcp
+claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=$HOME/.slowbooks-token -- /path/to/SlowBooks-Pro-2026/.venv/bin/python /path/to/SlowBooks-Pro-2026/app/mcp/__main__.py
+```
+
+Windows, with the token in the app's data folder:
+
+```
+claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=%LOCALAPPDATA%\SlowBooksPro\data\mcp-token -- C:\path\to\SlowBooks-Pro-2026\.venv\Scripts\python.exe C:\path\to\SlowBooks-Pro-2026\app\mcp\__main__.py
 ```
 
 Add `-e SLOWBOOKS_MCP_WRITES=1` to let the agent post entries (with a
 bookkeeper token).
 
-**Codex and Claude Desktop** take the same server in their config JSON:
+**Codex** takes the same server in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.slowbooks]
+command = "/path/to/SlowBooks-Pro-2026/.venv/bin/python"
+args = ["/path/to/SlowBooks-Pro-2026/app/mcp/__main__.py"]
+env = { SLOWBOOKS_TOKEN_FILE = "/home/you/.slowbooks-token" }
+```
+
+**Claude Desktop** takes it in `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "slowbooks": {
-      "command": "python",
-      "args": ["-m", "app.mcp"],
+      "command": "/path/to/SlowBooks-Pro-2026/.venv/bin/python",
+      "args": ["/path/to/SlowBooks-Pro-2026/app/mcp/__main__.py"],
       "env": { "SLOWBOOKS_TOKEN_FILE": "/home/you/.slowbooks-token" }
     }
   }
 }
 ```
 
-Use the full path to the token file here; these apps do not expand `~`.
-Run it from the checkout.
+Use full paths in these files; they do not expand `~` and do not run from
+the checkout.
 
 **Desktop install.** `SlowBooksPro --mcp` starts the same server. It finds
 the app on the port in your `.env` (else 3001) and reads the token from
@@ -102,11 +123,11 @@ Reads (always listed):
 | `context` | Company and app facts to read before working |
 | `api_schema` | How to call a route: methods, parameters and request body |
 | `search` | Find records by name, number or amount across the books |
-| `list_records` | List one kind of record; filters pass through as query parameters |
+| `list_records` | List one kind of record. `filters` are the route's own query parameters (`api_schema` lists them; an unknown one is refused, not ignored); `limit` is 1 to 500 |
 | `get_record` | One record by id |
 | `list_reports` | The reports that can be run, with their parameters |
 | `report` | Run a report by name (see `list_reports`) |
-| `api_get` | Read-only GET of any other API route (see `api_schema`) |
+| `api_get` | Read-only GET of any other API route (see `api_schema`); the query goes in `params`, not in the path |
 
 Record kinds: customers, vendors, items, accounts, invoices, bills,
 expenses, journal_entries, payments, bill_payments, bank_transactions.
@@ -124,7 +145,7 @@ asks you before running one.
 | `create_expense` | A paid expense, one amount or lines; `allow_duplicate_check_number` for the duplicate-check question |
 | `create_journal_entry` | A manual journal entry; debits must equal credits |
 | `record_payment`, `record_bill_payment` | Money in and out, applied to invoices or bills. Each takes a `key` (1 to 128 characters of letters, digits, `_ . : -`): the same key with the same data books once, the same key with other data is refused, so a retry after a lost answer can never pay twice |
-| `void_record` | Void an invoice, bill, expense, journal entry, payment or bill payment with a reversing entry. Nothing is ever deleted |
+| `void_record` | Void an invoice, bill, expense, journal entry, payment or bill payment with a reversing entry. A journal entry that is a document's posting is refused (void the document, which reverses its posting). Nothing is ever deleted |
 
 A 409 that asks a question (a similar name, a used check number, a credit
 limit) comes back whole, with the API's code and the facts it needs, and the
@@ -161,6 +182,8 @@ locked out.
   nothing else, and it starts with `sbp_`.
 - "SLOWBOOKS_URL must be a loopback http:// address": use
   `http://127.0.0.1:<port>`. The server never talks to another machine.
+- "No module named 'app'": `python -m app.mcp` was started outside the
+  checkout. Use the full path to `app/mcp/__main__.py` as above.
 - "The client asked for MCP protocol ...": the client and this server
   disagree on the protocol version. Update whichever is older.
 - A tool you expect is missing: the write tools are listed only with

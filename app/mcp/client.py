@@ -9,13 +9,14 @@
 # gives the agent a clear sentence instead of a bare 403.
 # ============================================================================
 
+import http.client
 import json
 import posixpath
 import socket
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Optional
-from urllib.parse import unquote, urlencode
+from urllib.parse import quote, unquote, urlencode
 
 from app.mcp.config import Config
 
@@ -78,10 +79,32 @@ def unreachable_sentence(path: str) -> str:
 
 
 def _check_path(path: str) -> str:
-    """The normalised path to send, or a 403 sentence."""
+    """The normalised path to send, or a sentence."""
+    if not isinstance(path, str):
+        raise ApiError(400, "The path must be a string like /api/customers.")
+    if "?" in path or "#" in path:
+        # Decoding a query along with the path would rewrite it (a%26b
+        # became a&b); the query goes in params, where it is encoded whole.
+        raise ApiError(
+            400, "A path takes no query or fragment; put the query in params."
+        )
     if not reachable(path):
         raise ApiError(403, unreachable_sentence(path))
     return normalise_path(path)
+
+
+def _sentences(errors: list) -> str:
+    """A 422's list of errors as one line of sentences: `field: message`."""
+    out = []
+    for err in errors:
+        if not isinstance(err, dict):
+            out.append(str(err))
+            continue
+        loc = [str(x) for x in err.get("loc", []) if x not in ("body", "query")]
+        where = ".".join(loc)
+        msg = err.get("message") or err.get("msg") or json.dumps(err)
+        out.append(f"{where}: {msg}" if where else str(msg))
+    return " ".join(out)
 
 
 def _parse(raw: bytes):
@@ -103,7 +126,9 @@ def urllib_transport(config: Config) -> Transport:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
 
     def send(method, path, params, body, headers):
-        url = config.base_url + path
+        # The path arrives decoded (normalise_path); quote it again so a
+        # space or a non-ASCII character is a valid URL, not an exception.
+        url = config.base_url + quote(path)
         if params:
             url += "?" + urlencode(params, doseq=True)
         hdrs = {
@@ -127,11 +152,23 @@ def urllib_transport(config: Config) -> Transport:
                     "which the MCP server does not follow.",
                 ) from None
             return exc.code, _parse(exc.read())
-        except (urllib.error.URLError, socket.timeout, OSError) as exc:
+        except (http.client.InvalidURL, UnicodeError, ValueError) as exc:
+            # Refused before anything was sent, so the outcome is known.
+            raise ApiError(400, f"The request could not be formed: {exc}") from None
+        except (
+            urllib.error.URLError,
+            http.client.HTTPException,
+            socket.timeout,
+            OSError,
+        ) as exc:
+            # Includes a half answer (IncompleteRead) and a non-HTTP answer
+            # (BadStatusLine): the app died mid-reply or something else is
+            # on the port. Status 0: the outcome is unknown.
             reason = getattr(exc, "reason", None) or exc
             raise ApiError(
                 0,
-                f"SlowBooks Pro did not answer at {config.base_url}: {reason}",
+                f"SlowBooks Pro did not answer at {config.base_url}: "
+                f"{type(exc).__name__}: {reason}",
             ) from None
 
     return send
@@ -153,8 +190,10 @@ class ApiClient:
         if isinstance(detail, dict) and isinstance(detail.get("message"), str):
             extra = detail
             detail = detail["message"]  # e.g. the possible-duplicate 409
+        elif isinstance(detail, list):
+            detail = _sentences(detail)  # a 422: one sentence per field
         elif detail and not isinstance(detail, str):
-            detail = json.dumps(detail)  # a validation error is a list
+            detail = json.dumps(detail)
         raise ApiError(
             status, detail or f"the request failed with status {status}", extra
         )

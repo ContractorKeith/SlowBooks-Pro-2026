@@ -165,6 +165,42 @@ def test_unknown_outcome_sentences():
         tools.void_record(gone, "invoices", 1)
 
 
+def test_void_refuses_a_documents_posting_from_the_journal(api, seed_accounts):
+    """After voiding invoice 1001, void_record(journal_entries, <its posting>)
+    reversed the posting a second time (Mac review; the route is main's)."""
+    cust, inv = _customer_invoice(api)
+    api.post(f"/api/invoices/{inv['id']}/send")
+    rows = tools.list_records(api, "journal_entries", {"source_type": "invoice"})
+    assert rows, "the invoice has no posting to void"
+    posting = rows[-1]
+    with pytest.raises(ValueError, match="posting of a invoice.*kind='invoices'"):
+        tools.void_record(api, "journal_entries", posting["id"])
+    tools.void_record(api, "invoices", inv["id"])
+    with pytest.raises(ValueError, match="reverse it twice"):
+        tools.void_record(api, "journal_entries", posting["id"])
+    # A journal of its own still voids.
+    je = tools.create_journal_entry(
+        api,
+        {
+            "date": "2026-09-10",
+            "description": "own entry",
+            "lines": [
+                {
+                    "account_id": seed_accounts["6000"].id,
+                    "debit": "10.00",
+                    "credit": "0",
+                },
+                {
+                    "account_id": seed_accounts["1000"].id,
+                    "debit": "0",
+                    "credit": "10.00",
+                },
+            ],
+        },
+    )
+    assert tools.void_record(api, "journal_entries", je["id"])
+
+
 def test_server_lists_eighteen_tools_with_writes_on_and_eight_off(api):
     listed = {t["name"]: t for t in build_server(api, writes=True).list_tools()}
     assert len(listed) == 18

@@ -26,6 +26,8 @@ KINDS = {
 }
 # Routes that take their own `limit`, so the page is cut server-side too.
 _SERVER_LIMIT = {"invoices", "bills", "bank_transactions"}
+# The most rows one call returns: 50 invoices are already ~20k tokens.
+MAX_LIMIT = 500
 
 
 def _kind_path(kind: str) -> str:
@@ -134,12 +136,38 @@ def search(client: ApiClient, q: str, limit: int = 20) -> dict:
     return out
 
 
+def _query_params(client: ApiClient, path: str) -> Optional[list]:
+    """The names a route's GET accepts, or None when the spec has no entry."""
+    op = (_spec(client).get("paths", {}).get(path) or {}).get("get")
+    if not isinstance(op, dict):
+        return None
+    return [p["name"] for p in op.get("parameters", []) if p.get("in") == "query"]
+
+
 def list_records(
     client: ApiClient, kind: str, filters: Optional[dict] = None, limit: int = 50
 ):
-    """List one kind of record; filters pass through as query parameters."""
+    """List one kind of record; filters are the route's own query parameters
+    (api_schema on the route lists them; an unknown one is refused, not
+    ignored). limit is 1 to 500."""
     path = _kind_path(kind)
+    limit = max(1, min(int(limit), MAX_LIMIT))
     params = dict(filters or {})
+    for key, value in params.items():
+        if isinstance(value, (dict, list)):
+            raise ValueError(
+                f"Filter {key!r} must be a single value, not a list or object."
+            )
+    known = _query_params(client, path)
+    if known is not None:
+        # The API ignores a parameter it does not take, so {"customer": 3}
+        # would list every invoice as if it were a filter. Refuse instead.
+        unknown = sorted(k for k in params if k not in known)
+        if unknown:
+            raise ValueError(
+                f"{path} does not take {', '.join(unknown)}. "
+                f"Filters: {', '.join(known) or 'none'}."
+            )
     if kind in _SERVER_LIMIT:
         params.setdefault("limit", limit)
     rows = client.get(path, params)
@@ -329,14 +357,51 @@ _VOID_PATHS = {
 }
 
 
+# A journal entry the server will void: one that is a journal of its own.
+# A document's posting (invoice, bill, payment, ...) is voided through the
+# document, which reverses the posting with it; voiding the posting here as
+# well would take it off the books twice.
+_OWN_JOURNAL_SOURCES = {
+    "",
+    "manual",
+    "qbo_journal",
+    "qbo_ledger",
+    "iif_import",
+    "opening_balance",
+    "accountants_copy",
+}
+_SOURCE_KIND = {
+    "invoice": "invoices",
+    "bill": "bills",
+    "expense": "expenses",
+    "check": "expenses",
+    "payment": "payments",
+    "bill_payment": "bill_payments",
+}
+
+
 def void_record(
     client: ApiClient, kind: str, record_id: int, fee_refunded: bool = False
 ):
     """Void a record with a reversing entry (nothing is deleted). kind: invoices,
-    bills, expenses, journal_entries, payments, bill_payments. fee_refunded
+    bills, expenses, journal_entries, payments, bill_payments. A journal entry
+    that is a document's posting is refused: void the document. fee_refunded
     applies to payments only: the provider gave the processing fee back."""
     if kind not in _VOID_PATHS:
         raise ValueError(f"Unknown kind {kind!r}. Kinds: {', '.join(_VOID_PATHS)}.")
+    if kind == "journal_entries":
+        entry = client.get(f"/api/journal/{int(record_id)}")
+        source = (entry.get("source_type") or "") if isinstance(entry, dict) else ""
+        if source not in _OWN_JOURNAL_SOURCES and not source.endswith("_import"):
+            hint = (
+                f" Use void_record(kind={_SOURCE_KIND[source]!r}, record_id=...) on it."
+                if source in _SOURCE_KIND
+                else " Void that record itself."
+            )
+            raise ValueError(
+                f"Journal entry {int(record_id)} is the posting of a {source}, not "
+                f"a journal of its own; voiding it here would reverse it twice.{hint}"
+            )
     params = {"fee_refunded": "true"} if fee_refunded and kind == "payments" else None
     return _write(
         client, f"{_VOID_PATHS[kind]}/{int(record_id)}/void", None, params=params
