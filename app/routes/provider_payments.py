@@ -203,30 +203,47 @@ def check_status(provider_name: str, invoice_id: int, db: Session = Depends(get_
     return {"status": "not_paid", "provider_status": result.status}
 
 
+NO_PAYMENT_LINK = (
+    "This invoice has no payment link yet. Make one with POST "
+    "/api/payments/payment-link/{invoice_id} (Copy Payment Link on the "
+    "invoice does); a read-only sign-in can't."
+)
+
+
+def _pay_url(request: Request, invoice: Invoice) -> dict:
+    base_url = str(request.base_url).rstrip("/")
+    return {"url": f"{base_url}/pay/{invoice.payment_token}"}
+
+
 @router.get("/payment-link/{invoice_id}")
 def get_payment_link(invoice_id: int, request: Request, db: Session = Depends(get_db)):
-    """Get the public payment URL for an invoice (provider-agnostic)."""
+    """The invoice's public payment URL as it stands. A read (#659): it used
+    to make the link when the invoice had none, a write a bookkeeper's
+    token or an agent's read tool reached (a read-only sign-in was refused
+    there since 2.18.0). 404 with the sentence when there is none; POST on
+    this path makes it."""
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-
     if not invoice.payment_token:
-        # Making the link writes the invoice's token: a read-only sign-in
-        # reads a link that exists but can't make one (skytech, 2.18.0
-        # gate: this GET was a write the read-only role could reach).
-        from app.routes._roles import current_role
+        raise HTTPException(
+            status_code=404, detail=NO_PAYMENT_LINK.format(invoice_id=invoice.id)
+        )
+    return _pay_url(request, invoice)
 
-        if current_role(request) == "readonly":
-            raise HTTPException(
-                status_code=403,
-                detail="This invoice has no payment link yet, and a read-only "
-                "sign-in can't make one: ask an administrator or bookkeeper.",
-            )
+
+@router.post("/payment-link/{invoice_id}")
+def make_payment_link(invoice_id: int, request: Request, db: Session = Depends(get_db)):
+    """Make the invoice's public payment link, or answer the one it has
+    (the link is stable: making it twice is the same link). A write, so
+    the roles that may write reach it and a read-only one cannot (#659)."""
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if not invoice.payment_token:
         invoice.payment_token = str(uuid.uuid4())
         db.commit()
-
-    base_url = str(request.base_url).rstrip("/")
-    return {"url": f"{base_url}/pay/{invoice.payment_token}"}
+    return _pay_url(request, invoice)
 
 
 @router.post("/{provider_name}/payout")

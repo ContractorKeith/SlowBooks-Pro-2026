@@ -398,8 +398,10 @@ const EmployeesPage = {
         // A link whose saved copy this install can't open still works; it
         // just can't be shown or copied until the employee uses it again.
         if (!url) {
+            // No link yet (a read never makes one, #659): Make Link does.
+            const none = !token.portal_token && !token.expires_at;
             return `<p style="margin:0 0 6px 0">${escapeHtml(token.note || 'This link can’t be shown here.')}</p>
-                <button class="btn btn-sm btn-secondary" onclick="EmployeesPage._regeneratePortalToken(${id})">Rotate Token</button>`;
+                <button class="btn btn-sm ${none ? 'btn-primary' : 'btn-secondary'}" data-write onclick="EmployeesPage._regeneratePortalToken(${id})">${none ? 'Make Link' : 'Rotate Token'}</button>`;
         }
 
         let html = `
@@ -461,7 +463,7 @@ const EmployeesPage = {
     async _regeneratePortalToken(id) {
         try {
             await API.post(`/employees/${id}/portal-token`, {});
-            toast('Portal token rotated');
+            toast('Portal link ready');
             // Re-fetch + re-render to pick up the new expires_at and reset last_used
             EmployeesPage._loadPortal(id);
         } catch (err) {

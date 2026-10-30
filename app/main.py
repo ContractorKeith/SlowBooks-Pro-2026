@@ -160,6 +160,7 @@ from app.services.closing_date import (
     PASSWORD_HEADER as _CLOSING_PASSWORD_HEADER,
     password_from_header as _closing_password_from_header,
 )
+from app.services.api_token_service import ADMIN_TOKEN_REFUSAL
 from app.services.api_token_service import resolve as _resolve_api_token
 from app.services.served_companies import CompanyUnavailable, sentence_of
 
@@ -1175,6 +1176,18 @@ async def _require_session(request: Request, call_next):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Not authenticated"},
+            )
+        if token_principal.get("role") == "admin":
+            # Tokens have not been made as administrators since 2.29.0
+            # (#434), but one made earlier kept working until revoked
+            # (#659). It is refused now, with what to do instead; the
+            # row stays, flagged under Settings, API Tokens, until an
+            # administrator revokes it.
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": ADMIN_TOKEN_REFUSAL.format(label=token_principal["label"])
+                },
             )
         # Tokens cannot manage identities — a leaked bookkeeper token must
         # not be able to mint itself an admin token or a user account.

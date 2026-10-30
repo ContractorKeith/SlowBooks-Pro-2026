@@ -18,6 +18,15 @@ from app.models.users import VALID_ROLES  # noqa: F401 — re-exported for route
 _LAST_USED_RESOLUTION = timedelta(minutes=5)
 
 
+# An administrator's token from before 2.29.0 (#659): refused at the door.
+ADMIN_TOKEN_REFUSAL = (
+    'The API token "{label}" was made as an administrator, and API tokens '
+    "can't be administrators any more. Revoke it under Settings, API Tokens, "
+    "and make a bookkeeper, accountant or read-only token for the program "
+    "that uses it."
+)
+
+
 def generate_token() -> str:
     return TOKEN_PREFIX + secrets.token_urlsafe(32)
 
