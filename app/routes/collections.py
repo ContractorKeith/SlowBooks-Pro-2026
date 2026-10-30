@@ -45,8 +45,8 @@ def _check_day_free(db: Session, days: int, rule_id: Optional[int] = None) -> No
 def _check_text(subject: str, body: str) -> None:
     try:
         svc.validate_template(subject, body)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=e.args[0])
+    except svc.TemplateInvalid as e:
+        raise _bad_request(e)
 
 
 # ---- Rules ----

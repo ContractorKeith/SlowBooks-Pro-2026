@@ -161,6 +161,14 @@ class RemindError(ValueError):
         super().__init__(message)
 
 
+class TemplateInvalid(ValueError):
+    """A rule's subject or body that cannot be used; ``message`` says why."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -245,26 +253,30 @@ def list_rules(db: Session) -> list[InvoiceReminderRule]:
 
 
 def validate_template(subject: str, body: str) -> None:
-    """Render both texts once against sample values; raise ValueError saying
-    what is wrong (a blank, a bad tag, or a placeholder we do not have)."""
+    """Render both texts once against sample values; raise TemplateInvalid
+    saying what is wrong (a blank, a bad tag, or a placeholder we do not
+    have). Its message names the placeholder or Jinja's own sentence about
+    the text, never a stack."""
     if not (subject or "").strip():
-        raise ValueError("The subject can't be blank.")
+        raise TemplateInvalid("The subject can't be blank.")
     if not (body or "").strip():
-        raise ValueError("The message can't be blank.")
+        raise TemplateInvalid("The message can't be blank.")
     for text in (subject, body):
         try:
             _env.from_string(text).render(**_SAMPLE_CONTEXT)
         except UndefinedError as e:
-            m = re.match(r"'(\w+)' is undefined", str(e))
-            name = m.group(1) if m else str(e)
+            m = re.match(r"'(\w+)' is undefined", e.message or "")
+            name = m.group(1) if m else "that one"
             allowed = ", ".join("{{ %s }}" % k for k in _SAMPLE_CONTEXT)
-            raise ValueError(
+            raise TemplateInvalid(
                 f"Unknown placeholder: {name}. You can use {allowed}."
             ) from e
         except TemplateError as e:
-            raise ValueError(f"The text has a formatting error: {e}") from e
+            raise TemplateInvalid(
+                f"The text has a formatting error: {e.message or 'check the braces'}"
+            ) from e
         except Exception as e:  # sandbox refusals and the like
-            raise ValueError("The text can't be used as a template.") from e
+            raise TemplateInvalid("The text can't be used as a template.") from e
 
 
 def _render(text: str, ctx: dict) -> str:
