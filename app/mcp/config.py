@@ -39,7 +39,8 @@ def _base_url(raw: str) -> str:
     except ValueError:
         raise ConfigError(sentence) from None
     if (
-        parts.scheme != "http"
+        any(c.isspace() for c in raw.strip())
+        or parts.scheme != "http"
         or host not in _LOOPBACK_HOSTS
         or parts.username is not None
         or parts.password is not None
@@ -79,6 +80,8 @@ def _read_token(raw_path: str) -> str:
             "(create one under Settings, API Tokens)."
         )
     path = os.path.expanduser(raw_path.strip())
+    if os.path.isdir(path):
+        raise ConfigError(f"The token file {path} is a directory, not a file.")
     if not os.path.isfile(path):
         raise ConfigError(f"The token file {path} does not exist.")
     if _windows():
@@ -92,7 +95,7 @@ def _read_token(raw_path: str) -> str:
             )
     elif os.stat(path).st_mode & 0o077:
         raise ConfigError(
-            f"The token file {path} can be read by other users. "
+            f"The token file {path} can be read or changed by other users. "
             f"Run: chmod 600 {path}"
         )
     try:

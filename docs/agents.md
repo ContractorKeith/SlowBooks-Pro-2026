@@ -22,8 +22,13 @@ It is the standard library only, so there is nothing to install.
    Windows PowerShell, into the app's data folder:
 
    ```
+   New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\SlowBooksPro\data" | Out-Null
    Set-Content -Encoding ascii "$env:LOCALAPPDATA\SlowBooksPro\data\mcp-token" (Read-Host 'Token')
    ```
+
+   `Read-Host` shows the token on screen as you paste it; clear the window
+   after. Keep the file out of a folder that syncs to the cloud (OneDrive's
+   Desktop or Documents): a synced token has left the machine.
 
 3. Start the app, then connect the agent. The server is `app/mcp` in the
    checkout; run it as `python -m app.mcp` from the checkout, or from
@@ -74,7 +79,10 @@ env = { SLOWBOOKS_TOKEN_FILE = "/home/you/.slowbooks-token" }
 Use full paths in these files; they do not expand `~` and do not run from
 the checkout.
 
-**Desktop install.** `SlowBooksPro --mcp` starts the same server. It finds
+**Desktop install.** The installed program with `--mcp` starts the same
+server (use its full path; it is not on PATH: on Windows
+`"C:\Program Files\SlowBooks Pro 2026\SlowBooksPro.exe" --mcp`, on macOS
+`/Applications/SlowBooks\ Pro.app/Contents/MacOS/SlowBooksPro --mcp`). It finds
 the app on the port in your `.env` (else 3001) and reads the token from
 `mcp-token` in the data directory:
 
@@ -175,7 +183,11 @@ locked out.
   variable is unset. Set it to the token file's path.
 - "The token file ... does not exist": check the path; use a full path in
   JSON configs.
-- "The token file ... can be read by other users": run `chmod 600` on it.
+- "The token file ... can be read or changed by other users": run
+  `chmod 600` on it.
+- The agent says the server is not configured: the setup sentence is in the
+  server's instructions and in every tool's answer; fix it and restart the
+  server (the client's reconnect).
 - "On Windows the token file must be under your user profile folder": move
   it there, for example the app's data folder.
 - "The token file ... must hold one line": the file holds the token and

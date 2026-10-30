@@ -115,7 +115,7 @@ def api_schema(client: ApiClient, path: str):
             ),
         }
         for p, item in paths.items()
-        if p.startswith(path)
+        if p.startswith(path) and reachable(p)  # a guarded route is not offered
     ]
     if rows:
         return rows[:20]
@@ -211,19 +211,46 @@ def list_reports(client: ApiClient) -> list:
     return [{"name": n, "params": p} for n, p in sorted(_reports(client).items())]
 
 
+def _scalar_params(params: Optional[dict], known: list, what: str) -> dict:
+    """Query parameters checked against the route: an unknown name or a
+    list/object value is refused, since the API would ignore it silently."""
+    params = dict(params or {})
+    for key, value in params.items():
+        if isinstance(value, (dict, list)):
+            raise ValueError(f"{key!r} must be a single value, not a list or object.")
+    unknown = sorted(k for k in params if k not in known)
+    if unknown:
+        raise ValueError(
+            f"{what} does not take {', '.join(unknown)}. "
+            f"Parameters: {', '.join(known) or 'none'}."
+        )
+    return params
+
+
 def report(client: ApiClient, name: str, params: Optional[dict] = None):
-    """Run a report by name (see list_reports)."""
+    """Run a report by name (see list_reports for its parameters; an unknown
+    one is refused, not ignored)."""
     known = _reports(client)
     if name not in known:
         close = difflib.get_close_matches(name, known, n=5, cutoff=0.4)
         hint = f" Closest: {', '.join(close)}." if close else ""
         raise ValueError(f"No report named {name!r}.{hint} Use list_reports.")
+    params = _scalar_params(params, [p["name"] for p in known[name]], f"Report {name}")
     return client.get(f"/api/reports/{name}", params)
 
 
 def api_get(client: ApiClient, path: str, params: Optional[dict] = None):
-    """Read-only GET of any other API route (see api_schema)."""
-    return client.get(path, params)
+    """Read-only GET of any other API route that answers JSON (see api_schema
+    for the route and its parameters; the query goes in params)."""
+    if path.strip() == "/openapi.json":
+        raise ValueError("The spec is too large to return; use api_schema on a route.")
+    result = client.get(path, params)
+    if isinstance(result, str):
+        raise ValueError(
+            f"api_get returns JSON only; {path} answered text (a PDF, CSV or page). "
+            "Open that in the app."
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +269,17 @@ _CHECK_FIRST = (
 )
 
 
+# The API's 409s name a URL parameter; here it is a tool argument.
+_OVERRIDE_WORDING = (
+    (
+        "Pass ?force=true to create anyway.",
+        "Call again with force: true once the user agrees.",
+    ),
+    ("?allow_duplicate_check_number=true", "allow_duplicate_check_number: true"),
+    ("allow_duplicate_check_number=true", "allow_duplicate_check_number: true"),
+)
+
+
 def _write(client: ApiClient, path: str, data, *, key=None, params=None):
     """POST a write; a lost connection or timeout becomes an unknown-outcome sentence."""
     headers = {"Idempotency-Key": key} if key else None
@@ -252,6 +290,9 @@ def _write(client: ApiClient, path: str, data, *, key=None, params=None):
             raise ValueError(
                 f"{exc.detail} {_RETRY_SAME_KEY if key else _CHECK_FIRST}"
             ) from None
+        if exc.status == 409:
+            for theirs, ours in _OVERRIDE_WORDING:
+                exc.detail = exc.detail.replace(theirs, ours)
         raise
 
 
@@ -389,6 +430,8 @@ def void_record(
     applies to payments only: the provider gave the processing fee back."""
     if kind not in _VOID_PATHS:
         raise ValueError(f"Unknown kind {kind!r}. Kinds: {', '.join(_VOID_PATHS)}.")
+    if fee_refunded and kind != "payments":
+        raise ValueError("fee_refunded applies to payments only.")
     if kind == "journal_entries":
         entry = client.get(f"/api/journal/{int(record_id)}")
         source = (entry.get("source_type") or "") if isinstance(entry, dict) else ""

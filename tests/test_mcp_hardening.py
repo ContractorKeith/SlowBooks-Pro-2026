@@ -41,6 +41,10 @@ def _ok(h):
 def test_transport_ignores_proxy_env(monkeypatch):
     for name in ("http_proxy", "HTTP_PROXY", "ALL_PROXY", "all_proxy"):
         monkeypatch.setenv(name, "http://127.0.0.1:9")
+    # A no_proxy naming loopback (common on CI runners) would let the default
+    # opener pass too; clear it so this test fails without ProxyHandler({}).
+    for name in ("no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
     srv, seen = _serve(_ok)
     try:
         send = urllib_transport(

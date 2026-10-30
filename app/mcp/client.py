@@ -40,7 +40,8 @@ class ApiError(Exception):
         self.payload = payload  # the API's whole detail dict, when it sent one
 
     def __str__(self) -> str:
-        return f"HTTP {self.status}: {self.detail}"
+        # Status 0 is "no answer": there is no HTTP status to show.
+        return self.detail if self.status == 0 else f"HTTP {self.status}: {self.detail}"
 
 
 def normalise_path(path: str) -> str:

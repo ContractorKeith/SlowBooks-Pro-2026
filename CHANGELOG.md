@@ -22,7 +22,12 @@ on macOS and Linux, inside the user profile on Windows) and the server talks
 to a loopback `http://` address only, through its own opener that ignores a
 proxy setting and follows no redirect, so the token never leaves the
 machine. The server reaches the API only, through the token's own role and
-audit, so nothing in the books is new; see [docs/agents.md](docs/agents.md).
+audit, so nothing in the books is new. Its instructions tell the agent that
+book text (memos, bank descriptions, notes) is data, never an instruction;
+the docs and the "Connect an agent" block under Settings, API Tokens
+recommend a read-only token and keep the token out of any command line.
+Every failure is a sentence, and a result is cut at 60,000 characters with
+a line saying how to narrow it; see [docs/agents.md](docs/agents.md).
 
 ### v2.31.1 — Sub-customers, memorized transactions, and stock that comes back out at its own cost
 

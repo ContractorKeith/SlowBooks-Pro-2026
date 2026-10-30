@@ -1622,7 +1622,8 @@ const SettingsPage = {
         } catch (err) { toast(err.message, 'error'); }
     },
 
-    // "Connect an agent": the MCP setup, with the new token filled in. Shown
+    // "Connect an agent": the MCP setup. The token itself stays out of the
+    // markup (Copy above gives it), so no command line carries it. Shown
     // with the secret, so it is gone when the reveal box is.
     showAgentSnippet(token) {
         const box = $('#api-token-connect');
@@ -1636,7 +1637,7 @@ const SettingsPage = {
             '<div>In Claude Code (from the checkout): <code>claude mcp add slowbooks -e SLOWBOOKS_TOKEN_FILE=$HOME/.slowbooks-token -- python -m app.mcp</code>; ' +
             'on Windows use <code>-e SLOWBOOKS_TOKEN_FILE=%LOCALAPPDATA%\\SlowBooksPro\\data\\mcp-token</code>. ' +
             'Add <code>-e SLOWBOOKS_MCP_WRITES=1</code> to let it post entries.</div>' +
-            '<div>Desktop install: <code>SlowBooksPro --mcp</code> with the token in <code>&lt;data dir&gt;/mcp-token</code>.</div>' +
+            '<div>Desktop install: the installed program with <code>--mcp</code> (its full path; it is not on PATH), with the token in <code>&lt;data dir&gt;/mcp-token</code>.</div>' +
             '<div>More in <a href="https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/blob/main/docs/agents.md" target="_blank" rel="noopener">docs/agents.md</a>.</div>';
         box.style.display = '';
     },

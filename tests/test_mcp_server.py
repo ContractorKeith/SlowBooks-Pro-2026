@@ -121,17 +121,49 @@ def test_config_timeout_valid(env, monkeypatch):
     assert load_config().timeout == 30
 
 
-def test_module_exits_2_without_token_file():
+def test_module_serves_the_config_sentence_under_a_client():
+    """A setup error used to end the process before initialize, and the user
+    saw only "Connection closed" (Linux review). Under a client (stdin is a
+    pipe) the server answers with the sentence instead; exit stays 2."""
     clean = {k: v for k, v in os.environ.items() if not k.startswith("SLOWBOOKS_")}
+    lines = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "context", "arguments": {}},
+        },
+    ]
     r = subprocess.run(
         [sys.executable, "-m", "app.mcp"],
         env=clean,
+        input="".join(json.dumps(m) + "\n" for m in lines),
         capture_output=True,
         text=True,
         timeout=60,
     )
     assert r.returncode == 2
     assert "SLOWBOOKS_TOKEN_FILE" in r.stderr
+    out = [json.loads(line) for line in r.stdout.splitlines()]
+    assert "not configured" in out[0]["result"]["instructions"]
+    assert "SLOWBOOKS_TOKEN_FILE" in out[0]["result"]["instructions"]
+    assert len(out[1]["result"]["tools"]) == 8
+    assert out[2]["result"]["isError"] is True
+    assert "SLOWBOOKS_TOKEN_FILE" in out[2]["result"]["content"][0]["text"]
+
+
+def test_config_token_file_is_a_directory(env, tmp_path):
+    os.environ["SLOWBOOKS_TOKEN_FILE"] = str(tmp_path)
+    with pytest.raises(ConfigError, match="is a directory"):
+        load_config()
+
+
+def test_config_refuses_whitespace_inside_the_url(env, monkeypatch):
+    monkeypatch.setenv("SLOWBOOKS_URL", "http://127.0.0.1\t:3001")
+    with pytest.raises(ConfigError, match="loopback http://"):
+        load_config()
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +187,11 @@ def test_client_without_detail_falls_back_to_status(api):
     bare = ApiClient(lambda *a: (502, ""))
     with pytest.raises(ApiError, match="HTTP 502: .*502"):
         bare.get("/api/customers")
+    # No answer has no HTTP status to show.
+    assert (
+        str(ApiError(0, "SlowBooks Pro did not answer"))
+        == "SlowBooks Pro did not answer"
+    )
 
 
 @pytest.mark.parametrize(
@@ -302,6 +339,12 @@ def test_reports(api):
         tools.report(api, "profit-los")
     with pytest.raises(ValueError, match="No report named"):
         tools.report(api, "not-a-report")
+    # A wrong parameter ran the report with its defaults and said nothing
+    # (Linux review); it is refused with the report's own parameters named.
+    with pytest.raises(ValueError, match="does not take end, start. Parameters: "):
+        tools.report(api, "profit-loss", {"start": "2026-01-01", "end": "2026-12-31"})
+    with pytest.raises(ValueError, match="single value"):
+        tools.report(api, "profit-loss", {"start_date": ["2026-01-01"]})
 
 
 def test_api_schema(api):
@@ -312,12 +355,25 @@ def test_api_schema(api):
     assert any(r["path"] == "/api/customers" for r in rows)
     assert len(rows) <= 20
     assert "No route matches" in tools.api_schema(api, "/api/nothing")
+    # A prefix listing never offers a guarded route (Linux review).
+    for prefix in ("/api/token", "/api/u", "/api/backup", "/api/sys", "/api/"):
+        rows = tools.api_schema(api, prefix)
+        rows = rows if isinstance(rows, list) else []  # "No route matches"
+        for row in rows:
+            assert not row["path"].startswith(
+                ("/api/tokens", "/api/users", "/api/backups", "/api/system")
+            ), row
 
 
 def test_api_get(api):
     assert isinstance(tools.api_get(api, "/api/accounts"), list)
     with pytest.raises(ApiError):
         tools.api_get(api, "/api/tokens")
+    with pytest.raises(ValueError, match="use api_schema"):
+        tools.api_get(api, "/openapi.json")
+    text = ApiClient(lambda *a: (200, "%PDF-1.7 junk"))
+    with pytest.raises(ValueError, match="JSON only"):
+        tools.api_get(text, "/api/reports/profit-loss/pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -356,8 +412,10 @@ def test_server_tool_errors_are_sentences(api):
         server.call_tool("list_records", {"kind": "nope"})
     with pytest.raises(ToolError, match="does not reach that route"):
         server.call_tool("api_get", {"path": "/api/tokens"})
-    with pytest.raises(ToolError, match="No tool named"):
-        server.call_tool("create_customer", {"data": {}})  # writes are off
+    with pytest.raises(ToolError, match="writes are off"):
+        server.call_tool("create_customer", {"data": {}})
+    with pytest.raises(ToolError, match="record_id must be at most"):
+        server.call_tool("get_record", {"kind": "customers", "record_id": 10**30})
 
 
 def test_server_refuses_a_stray_argument(api):
@@ -491,6 +549,31 @@ def test_protocol_survives_a_failing_tool_and_a_deep_line(api, monkeypatch):
     lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
     assert lines[0]["error"]["code"] == PARSE_ERROR
     assert lines[1]["id"] == 14 and lines[1]["result"] == {}
+
+
+def test_protocol_result_is_cut_at_the_cap(api):
+    from app.mcp.server import MAX_TEXT
+
+    big = ApiClient(lambda *a: (200, [{"name": "x" * 1000}] * 200))
+    big.spec = {"paths": {}}
+    out = build_server(big).handle(
+        _req(
+            17,
+            "tools/call",
+            {"name": "api_get", "arguments": {"path": "/api/customers"}},
+        )
+    )["result"]
+    assert out["isError"] is False
+    text = out["content"][0]["text"]
+    assert len(text) < MAX_TEXT + 200 and "cut at 60,000 characters" in text
+
+
+def test_protocol_write_tool_while_writes_are_off_says_so(api):
+    out = build_server(api).handle(
+        _req(18, "tools/call", {"name": "create_customer", "arguments": {"data": {}}})
+    )["result"]
+    assert out["isError"] is True
+    assert "SLOWBOOKS_MCP_WRITES=1" in out["content"][0]["text"]
 
 
 def test_protocol_instructions_say_book_text_is_data(api):

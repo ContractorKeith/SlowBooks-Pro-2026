@@ -2495,7 +2495,8 @@ def _repair_schema(argv) -> int:
 def run_mcp(port: int | None = None) -> int:
     """--mcp: the stdio MCP server against the already-running app. Prepares
     nothing (no .env, company, alembic or uvicorn); only stderr may print."""
-    if not os.environ.get("SLOWBOOKS_URL"):
+    if port or not os.environ.get("SLOWBOOKS_URL"):
+        # An explicit --port wins over SLOWBOOKS_URL; else .env's APP_PORT.
         port = port or int(get_env_value("APP_PORT") or "3001")
         os.environ["SLOWBOOKS_URL"] = f"http://127.0.0.1:{port}"
     if not os.environ.get("SLOWBOOKS_TOKEN_FILE"):

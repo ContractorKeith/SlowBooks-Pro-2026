@@ -165,6 +165,19 @@ def test_unknown_outcome_sentences():
         tools.void_record(gone, "invoices", 1)
 
 
+def test_void_fee_refunded_only_on_payments(api):
+    with pytest.raises(ValueError, match="payments only"):
+        tools.void_record(api, "invoices", 1, fee_refunded=True)
+
+
+def test_duplicate_409_names_the_tool_argument(api):
+    tools.create_customer(api, {"name": "Dup Wording Co"})
+    with pytest.raises(ApiError) as exc:
+        tools.create_customer(api, {"name": "Dup Wording Co."})
+    assert "?force=true" not in str(exc.value)
+    assert "force: true" in str(exc.value)
+
+
 def test_void_refuses_a_documents_posting_from_the_journal(api, seed_accounts):
     """After voiding invoice 1001, void_record(journal_entries, <its posting>)
     reversed the posting a second time (Mac review; the route is main's)."""

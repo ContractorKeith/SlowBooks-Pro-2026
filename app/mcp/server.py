@@ -50,6 +50,9 @@ WRITES_OFF = (
     " This server is read-only: the write tools are off until it is started "
     f"with {WRITES_FLAG}=1."
 )
+# A result larger than this is cut: 50 invoices are ~80k characters, and a
+# client that cannot take the size fails or spills the books to a file.
+MAX_TEXT = 60_000
 
 KIND_LIST = ", ".join(tools.KINDS)
 VOID_LIST = ", ".join(tools._VOID_PATHS)
@@ -57,7 +60,7 @@ VOID_LIST = ", ".join(tools._VOID_PATHS)
 # JSON Schema fragments. Every tool schema forbids unknown arguments, so a
 # date beside `name` instead of inside `params` is refused, not ignored.
 _STR = {"type": "string"}
-_INT = {"type": "integer"}
+_INT = {"type": "integer", "minimum": 1, "maximum": 2**63 - 1}  # a row id
 _BOOL = {"type": "boolean"}
 _OBJ = {"type": "object"}
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": tools.MAX_LIMIT}
@@ -223,6 +226,8 @@ _ARTICLE = {
     "boolean": "a boolean",
     "object": "an object",
 }
+_WRITE_NAMES = {fn.__name__ for fn, _, _ in WRITE_TOOLS}
+
 _TYPES = {
     "string": str,
     "integer": int,
@@ -271,10 +276,21 @@ def _check_args(name: str, schema: dict, args: dict) -> None:
 class Server:
     """The tool server, protocol only: `handle` answers one message."""
 
-    def __init__(self, client: ApiClient, writes: bool = False):
+    def __init__(
+        self, client: Optional[ApiClient], writes: bool = False, problem: str = ""
+    ):
+        """`problem` is a configuration sentence: the server still answers
+        initialize and tools/list, so the agent can show the user what to
+        fix, and every tool call answers that sentence."""
         self.client = client
         self.writes = writes
+        self.problem = problem
         self.instructions = INSTRUCTIONS + (WRITES_ON if writes else WRITES_OFF)
+        if problem:
+            self.instructions = (
+                f"SlowBooks Pro's MCP server is not configured: {problem} Every "
+                "tool answers this until it is fixed and the server restarted. "
+            ) + self.instructions
         self._tools: dict[str, tuple[Callable, dict, dict]] = {}
         for fn, schema, annotations in READ_TOOLS + (WRITE_TOOLS if writes else []):
             self._tools[fn.__name__] = (fn, schema, annotations)
@@ -296,8 +312,15 @@ class Server:
     def call_tool(self, name: str, args: Optional[dict]) -> Any:
         """Run a tool; a refusal raises ToolError with the sentence."""
         if name not in self._tools:
+            if name in _WRITE_NAMES:
+                raise ToolError(
+                    f"{name} is a write tool and writes are off. Start the server "
+                    f"with {WRITES_FLAG}=1 (and a bookkeeper token) to post entries."
+                )
             known = ", ".join(self._tools)
             raise ToolError(f"No tool named {name!r}. Tools: {known}.")
+        if self.problem:
+            raise ToolError(f"The MCP server is not configured: {self.problem}")
         fn, schema, _ = self._tools[name]
         args = args or {}
         _check_args(name, schema, args)
@@ -371,6 +394,11 @@ class Server:
             raise ToolError("tools/call needs a tool name.")
         result = self.call_tool(params["name"], params.get("arguments"))
         text = result if isinstance(result, str) else json.dumps(result, default=str)
+        if len(text) > MAX_TEXT:
+            text = text[:MAX_TEXT] + (
+                f"\n... cut at {MAX_TEXT:,} characters. Narrow it: filters, a "
+                "smaller limit, or one record with get_record."
+            )
         return {"content": [{"type": "text", "text": text}], "isError": False}
 
     # -- stdio ---------------------------------------------------------------
@@ -404,15 +432,23 @@ def writes_enabled(env: Optional[dict] = None) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def build_server(client: ApiClient, writes: bool = False) -> Server:
-    return Server(client, writes=writes)
+def build_server(
+    client: Optional[ApiClient], writes: bool = False, problem: str = ""
+) -> Server:
+    return Server(client, writes=writes, problem=problem)
 
 
 def run() -> int:
     try:
         config = load_config()
     except ConfigError as exc:
+        # On a terminal, say it and stop. Under an MCP client, stopping shows
+        # the user only "Connection closed": serve instead, with the sentence
+        # in the instructions and in every tool's answer.
         sys.stderr.write(f"{exc}\n")
+        if sys.stdin.isatty():
+            return 2
+        build_server(None, writes=writes_enabled(), problem=str(exc)).serve()
         return 2
     server = build_server(ApiClient(urllib_transport(config)), writes=writes_enabled())
     return server.serve()

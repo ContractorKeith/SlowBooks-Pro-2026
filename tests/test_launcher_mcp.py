@@ -62,3 +62,7 @@ def test_mcp_leaves_set_values_alone(monkeypatch, mcp_run):
     assert dl.main() == 0
     assert os.environ["SLOWBOOKS_URL"] == "http://localhost:9000"
     assert os.environ["SLOWBOOKS_TOKEN_FILE"] == "somewhere"
+    # An explicit --port wins over the variable (it was ignored silently).
+    monkeypatch.setattr(sys, "argv", ["SlowBooksPro", "--mcp", "--port", "4300"])
+    assert dl.main() == 0
+    assert os.environ["SLOWBOOKS_URL"] == "http://127.0.0.1:4300"

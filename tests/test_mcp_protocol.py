@@ -71,7 +71,11 @@ def params(stand_in, tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text(SECRET + "\n")
     token_file.chmod(0o600)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("SLOWBOOKS_")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("SLOWBOOKS_") and k.lower() != "no_proxy"
+    }
     env.update(
         {
             "SLOWBOOKS_URL": stand_in,
